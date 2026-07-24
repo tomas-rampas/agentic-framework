@@ -24,8 +24,8 @@
 | **python-expert** | Python development, web frameworks, data science, automation |
 | **typescript-expert** | TypeScript/JavaScript development, React/Next.js, Node.js backends |
 | **mql-trading-dev** | MQL4/MQL5 and C/C++ development for MetaTrader, Expert Advisors, indicators, trading systems |
-| **powershell-expert** | PowerShell automation, Windows administration, cloud scripting |
-| **bash-expert** | Bash/shell scripting, Linux automation, Unix system administration |
+| **powershell-expert** | Windows command-line executor — runs delegated shell work; PowerShell automation, Windows administration |
+| **bash-expert** | Command-line executor — runs delegated shell work; Bash/POSIX scripting, Linux/CI automation |
 | **database-specialist** | Database design, schema optimization, query optimization, SQL/NoSQL |
 | **frontend-specialist** | Frontend UI development, React/Vue/Angular, responsive design |
 | **security-specialist** | Security audits, vulnerability assessment, authentication, compliance |
@@ -48,7 +48,8 @@
 - **MQL4/MQL5 & MetaTrader trading systems** → mql-trading-dev
 
 ### Scripting & Automation
-- **Bash/shell scripting** → bash-expert
+- **Any shell command a task needs run** → bash-expert (POSIX/CI) or powershell-expert (Windows) — see the blanket execution policy below
+- **Bash/shell script authoring** → bash-expert
 - **PowerShell automation** → powershell-expert
 - **Infrastructure automation** → devops-orchestrator
 

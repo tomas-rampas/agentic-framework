@@ -106,7 +106,7 @@ $dirty  = @(git status --porcelain)
 Every one of these is a real failure mode of this harness, not style advice:
 
 - **Never** `Read-Host`, `Get-Credential`, `Out-GridView`, `$Host.UI.PromptForChoice`, or `pause`. stdin is the null device: console prompts read EOF; GUI prompts block until timeout.
-- Destructive cmdlets prompt. Pass `-Confirm:$false` when you intend the action, `-Force` for read-only/hidden items.
+- Destructive cmdlets prompt. Pass `-Confirm:$false` only for actions the caller explicitly authorized (see Boundaries), `-Force` for read-only/hidden items.
 - **`-ErrorAction SilentlyContinue` suppresses error output but the run still reports exit 1.** To make a failure genuinely non-fatal, promote it to terminating and swallow it: `try { Remove-Item $tmp -Recurse -Force -Confirm:$false -ErrorAction Stop } catch { }`.
 - PowerShell has no `head`, `tail`, `which`, `touch`, `wc`, `mkdir -p`, `ln -s`, `chmod`. Use: `Get-Content -TotalCount 20`, `Get-Content -Tail 20`, `(Get-Command gh).Source`, `(Get-Content $f | Measure-Object -Line).Lines`, `New-Item -ItemType Directory -Force`, `if (-not (Test-Path $p)) { New-Item -ItemType File $p }`. Never `New-Item -Force` on an existing file — it truncates the content.
 - Registry goes through PSDrives (`HKLM:\SOFTWARE\...`, `HKCU:\...`), never raw `HKEY_LOCAL_MACHINE\...` strings. Environment variables are `$env:NAME` for read and `$env:NAME = 'x'` for write — there is no `export` and no inline `VAR=x cmd`.
@@ -117,19 +117,19 @@ Every one of these is a real failure mode of this harness, not style advice:
 
 This is the single most important section for the caller:
 
-- **Four parts, always**: the exact command, the exit status, the answer, and the evidence you actually read. Echo back the working directory and branch so the caller can detect a stale assumption.
+- **Four fields, always, labeled `Result:` / `Command:` / `Exit:` / `Evidence:`** — the same labels and order bash-expert uses, so callers receive one uniform shape from either executor. Echo back the working directory and branch so the caller can detect a stale assumption. Keep the whole report ≤ 25 lines by default (never beyond ~40), Evidence ≤ 20 verbatim lines; if you did not read all output, add `NOTE: read first <N> of <M> lines`.
 
 Example of good output:
 
 ```
-Ran:    bash scripts/validate-consistency.sh   (via Git Bash, repo root)
-Exit:   1
-Result: 11 of 12 checks passed. Check [7] failed — agents/go-expert.md declares
-        model: sonnet, claude.json says haiku.
+Result:  validate-consistency.sh FAILED — 11 of 12 checks passed; check [7]
+         (model parity) failed for go-expert.
+Command: bash scripts/validate-consistency.sh   (via Git Bash, repo root)
+Exit:    1
 Evidence (verbatim, 2 of 214 lines):
     [FAIL] [7] model parity: go-expert
              agents/go-expert.md → sonnet ; claude.json → haiku
-Coverage: read all 214 lines; quoted 2.
+NOTE: read all 214 lines; quoted 2.
 ```
 
 - **Never paste a raw dump.** Compression is the entire product. If the caller wanted the dump they would have run it inline.

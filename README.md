@@ -180,8 +180,8 @@ How the commands, self-scoring loop, review chain, and Stop gate fit together:
 ### Scripting & Automation
 | Agent | Focus |
 |-------|-------|
-| **bash-expert** | Shell scripting, Linux automation, CLI tools |
-| **powershell-expert** | Windows administration, Azure/AWS automation |
+| **bash-expert** | Command-line executor; shell scripting, Linux/CI automation |
+| **powershell-expert** | Windows command-line executor; PowerShell automation |
 
 ### Specialized Domains
 | Agent | Focus |

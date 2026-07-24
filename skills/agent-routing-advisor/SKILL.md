@@ -18,7 +18,7 @@ Analyze a task and recommend the right agent(s) from this framework's roster, pl
 | Category | Agents | Route here when |
 |---|---|---|
 | language_experts | rust-expert, csharp-expert, go-expert, java-expert, python-expert, typescript-expert, mql-trading-dev | Implementation in a specific language/stack, including backend/API work |
-| automation_experts | bash-expert, powershell-expert | Shell scripting, OS automation |
+| automation_experts | bash-expert, powershell-expert | Executing any shell command (blanket policy), shell scripting, OS automation |
 | domain_specialists | database-specialist, frontend-specialist, security-specialist, uiux-specialist | Schema/query work, UI components, security audits, UX/accessibility |
 | infrastructure_operations | devops-orchestrator | CI/CD, containers, IaC, deployment |
 | architecture_planning | system-architect, product-owner | System design, technical decisions; requirements, user stories |
@@ -31,17 +31,17 @@ Match dominant signals in the task description:
 
 - Rust, cargo, tokio → rust-expert. C#, .NET, ASP.NET Core, Azure → csharp-expert. Go, goroutines, gRPC → go-expert. Java, Spring Boot, Maven/Gradle → java-expert. Python, Django/Flask, pandas → python-expert. TypeScript/JavaScript, React/Next.js, Node → typescript-expert. MQL4/MQL5, MetaTrader, Expert Advisors → mql-trading-dev.
 - "REST API", "backend", "microservice" → the language expert for the project's stack (not a generic backend agent).
-- Bash/Linux automation → bash-expert. PowerShell/Windows/cloud scripting → powershell-expert.
+- Running any command line — builds, tests, git/gh operations, jq/yq processing, log grinding — → bash-expert (POSIX/CI) or powershell-expert (Windows). Bash/Linux script authoring → bash-expert. PowerShell/Windows/cloud scripting → powershell-expert.
 - Schema, migrations, query optimization, SQL/NoSQL → database-specialist.
 - UI components, responsive design, CSS → frontend-specialist. Design systems, user flows, accessibility audits → uiux-specialist.
 - Authentication, encryption, vulnerabilities, compliance → security-specialist.
 - CI/CD, Kubernetes, Docker, Terraform → devops-orchestrator.
 - Architecture, scalability, technical trade-offs → system-architect. Requirements, backlog, user stories → product-owner.
-- Investigate, debug, profile, benchmark, evaluate → comprehensive-analyst.
+- Investigate, debug, profile, benchmark, evaluate → comprehensive-analyst (which itself delegates any commands it needs run to the executor agents, per the blanket policy).
 - Documentation deliverables → technical-docs-writer.
 - Review of implemented code → code-review-gatekeeper. Final independent review of the branch diff vs base → peer-review-critic (final gate only; see below).
 
-Decision order: (1) single language implementation → that language expert; (2) clearly one specialized domain → that specialist; (3) spans domains → multi-agent workflow; (4) ambiguous or investigative → comprehensive-analyst first.
+Decision order: (0) the task is purely running/summarizing commands → bash-expert or powershell-expert; (1) single language implementation → that language expert; (2) clearly one specialized domain → that specialist; (3) spans domains → multi-agent workflow; (4) ambiguous or investigative → comprehensive-analyst first.
 
 ## Review Gates (Mandatory Ending)
 

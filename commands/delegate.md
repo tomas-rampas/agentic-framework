@@ -31,7 +31,9 @@ spans domains. Available specialists:
 - **Quality / docs:** `code-review-gatekeeper`, `peer-review-critic`, `technical-docs-writer`
 
 ## Command-line execution
-This overrides the don't-follow-a-keyword-table guidance above for shell work specifically: Delegate every shell command this workflow needs — validators, git/gh calls, JSON/YAML
+This overrides the don't-follow-a-keyword-table guidance above for shell work
+specifically: delegate every shell command this workflow needs — validators,
+git/gh calls, JSON/YAML
 processing, test and build runs — to **bash-expert** (POSIX/Git Bash) or
 **powershell-expert** (PowerShell/Windows) instead of running it inline. Executors
 return the exact command, its integer exit code, and a distilled result (verbatim
