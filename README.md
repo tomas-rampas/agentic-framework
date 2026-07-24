@@ -25,6 +25,7 @@ This framework extends Claude Code CLI with:
 | **Git** | Version control |
 | **PowerShell 7.3+ (`pwsh`)** | Runs the hook scripts (`hooks/*.ps1`, 7.0+) and the installer (`scripts/install.ps1`, 7.3+ for order-preserving case-sensitive JSON parsing) — required on every platform |
 | **bash + jq** | Validation and doc-generation tooling (Git Bash works on Windows) |
+| **gh + yq** | Command-line executor agents (bash-expert / powershell-expert): GitHub CLI queries and YAML processing; run `gh auth login` once. yq is mikefarah v4 |
 | **Node.js/npm** | filesystem, context7, sequential-thinking MCP servers via `npx` |
 | **uv (`uvx`)** | serena + fetch MCP servers |
 | **shellcheck** | Shell-script linting (optional, used by CI) |
@@ -180,8 +181,8 @@ How the commands, self-scoring loop, review chain, and Stop gate fit together:
 ### Scripting & Automation
 | Agent | Focus |
 |-------|-------|
-| **bash-expert** | Shell scripting, Linux automation, CLI tools |
-| **powershell-expert** | Windows administration, Azure/AWS automation |
+| **bash-expert** | Command-line executor; shell scripting, Linux/CI automation |
+| **powershell-expert** | Windows command-line executor; PowerShell automation |
 
 ### Specialized Domains
 | Agent | Focus |

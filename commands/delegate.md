@@ -30,6 +30,16 @@ spans domains. Available specialists:
 - **Plan / analyze:** `system-architect`, `product-owner`, `comprehensive-analyst`
 - **Quality / docs:** `code-review-gatekeeper`, `peer-review-critic`, `technical-docs-writer`
 
+## Command-line execution
+This overrides the don't-follow-a-keyword-table guidance above for shell work
+specifically: delegate every shell command this workflow needs — validators,
+git/gh calls, JSON/YAML processing, test and build runs — to
+**bash-expert** (POSIX/Git Bash) or
+**powershell-expert** (PowerShell/Windows) instead of running it inline. Executors
+return the exact command, its integer exit code, and a distilled result (verbatim
+fenced where it will be used literally). Read files with Read/Grep/Glob directly —
+never via shell.
+
 ## How to frame a delegated task
 Always hand an agent a **concrete** task, never a vague one. Specify: the exact
 file path(s), the behavior / acceptance criteria, the test location, and what

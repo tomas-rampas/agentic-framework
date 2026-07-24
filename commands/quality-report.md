@@ -15,6 +15,14 @@ Generate a quality assessment of the framework by inspecting actual configuratio
 /quality-report [--detailed]
 ```
 
+## Command-line execution
+Delegate every shell command this workflow needs — validators, git/gh calls, JSON/YAML
+processing, test and build runs — to **bash-expert** (POSIX/Git Bash) or
+**powershell-expert** (PowerShell/Windows) instead of running it inline. Executors
+return the exact command, its integer exit code, and a distilled result (verbatim
+fenced where it will be used literally). Read files with Read/Grep/Glob directly —
+never via shell.
+
 ## What This Command Does
 
 ### 1. Configuration Integrity

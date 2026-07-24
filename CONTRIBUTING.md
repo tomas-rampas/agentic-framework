@@ -35,6 +35,12 @@ color: <color-name>
 ...
 ```
 
+The `description` must be one physical line. Most agents use a plain (unquoted)
+scalar; if the text contains `: ` (colon-space) sequences, wrap the whole value
+in double quotes and escape interior quotes as `\"` and literal `\n` markers as
+`\\n` — see `agents/bash-expert.md` for the quoted form. Both parse to the same
+value; strict YAML parsers only accept the quoted form when colons appear.
+
 ### 2. Register in `claude.json`
 
 In the `.sub_agents` object, add an entry with `model`, `specialization`, and `focus`:

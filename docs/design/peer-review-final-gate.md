@@ -27,10 +27,37 @@ verdict=APPROVED|CHANGES_REQUIRED    <- line 2, parsed from the report's VERDICT
 The verdict comes from the standardized machine-readable line the `peer-review-critic`
 agent definition requires as the last line of its report (`VERDICT: APPROVED` or
 `VERDICT: CHANGES_REQUIRED`). The **last** occurrence in the report wins, so an earlier
-quoted mention cannot spoof it. Each qualifying run overwrites the marker — the latest
-review is the one that counts, which is what a fix → re-review loop needs. The
-`SubagentStop` source (`agent_type` + `last_assistant_message`) also covers background
-subagent launches, whose `PostToolUse` fires before any report text exists.
+quoted mention cannot spoof it. Each qualifying run overwrites the marker (stale
+re-emissions excepted; see Stale-verdict protection below) — the latest review is the one
+that counts, which is what a fix → re-review loop needs. The `SubagentStop` source
+(`agent_type` + `last_assistant_message`) also covers background subagent launches, whose
+`PostToolUse` fires before any report text exists.
+
+## Stale-verdict protection
+
+The mechanism previously allowed any stop of the peer-review-critic agent to overwrite
+the session's recorded verdict, risking gate bypass if a stale instance re-emitted an old
+outcome. Revised guards now prevent such stale re-recordings:
+
+The recorder deduplicates on the reporting agent's instance ID (when available) across
+HEAD changes. Each verdict-bearing write consumes the agent instance, so a repeated stop
+of the same instance cannot re-record a verdict while HEAD is unchanged; after new
+commits the same instance may record again (the fix → re-review loop). Consumed IDs live
+in a per-session `.verdict-sources` file alongside the marker. When an instance ID is
+unavailable, the marker's `head=<git sha>` field enables asymmetric contradiction
+detection: escalation to CHANGES_REQUIRED always records (fail-safe); a flip to APPROVED
+is ignored unless HEAD has provably moved (fail-closed), since a gate unlock without a
+review of new code risks bypass. Each suppression is logged to a companion
+`.verdict-suppressed` file beside the marker — timestamp, which guard fired, old and new
+verdict, and HEAD — so dropped verdicts stay forensically visible. The marker is always
+written before the instance ID is consumed, so a failed write cannot burn the instance's
+retry ability. All failure paths fail-open to legacy last-write-wins behavior; there is
+no cross-process lock, so near-simultaneous hook firings can race, degrading toward
+reduced protection — never marker corruption; residual stale-overwrite windows are
+bounded and strictly narrower than legacy last-write-wins. The stale-resume threat
+model is a same-instance re-emission of an already-delivered report: instance dedupe is
+therefore symmetric by design (first verdict per instance per HEAD wins), while the
+id-less guard alone carries the asymmetric escalation rule.
 
 ## Gate decision (given committed, clean, ahead-of-base feature-branch work)
 

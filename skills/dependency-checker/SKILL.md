@@ -1,6 +1,6 @@
 ---
 name: dependency-checker
-description: Verify the framework's toolchain (git, bash, jq, PowerShell 7+, Node.js/npx, uv/uvx, shellcheck, Claude Code CLI) is installed and working — use when setting up the framework, after system updates, or when hooks, validators, or MCP servers fail with "command not found".
+description: Verify the framework's toolchain (git, bash, jq, gh, yq, PowerShell 7+, Node.js/npx, uv/uvx, shellcheck, Claude Code CLI) is installed and working — use when setting up the framework, after system updates, or when hooks, validators, MCP servers, or the executor agents fail with "command not found".
 ---
 
 # Dependency Checker
@@ -21,6 +21,8 @@ Verify that every external tool this framework actually depends on is installed,
 | git | Install scripts (hard requirement); the Stop-gate hook's branch-vs-base checks; all repo workflows |
 | bash (Git Bash on Windows) | `scripts/validate-consistency.sh`, `scripts/validate-hooks.sh`, `scripts/validate-framework.sh`, `scripts/generate-docs.sh`, `tests/consistency.test.sh` |
 | jq | The bash validators (`validate-consistency.sh` aborts without it); parsing the registry (`claude.json`) and `settings.template.json` |
+| gh (GitHub CLI) | The command-line executor agents (bash-expert, powershell-expert): PR/issue/run queries, log grinding, `gh api` reads; must be authenticated |
+| yq (mikefarah v4) | The executor agents: YAML processing and agent-frontmatter extraction (`yq --front-matter=extract`) |
 | PowerShell 7+ (`pwsh`) | Every hook script in `hooks/` carries `#Requires -Version 7.0`; `scripts/install.ps1`; `tests/hooks.test.ps1` |
 | Node.js + npx | The `filesystem`, `context7`, and `sequential-thinking` MCP servers in `.mcp.json` (launched via `npx -y`) |
 | uv (`uvx`) | The `serena` and `fetch` MCP servers in `.mcp.json` (launched via `uvx`) |
@@ -42,6 +44,14 @@ Run each probe and classify the result as OK (with version), MISSING, or WRONG V
 ### jq
 - Probe: `jq --version`
 - Pass: 1.6 or newer. Sanity check: `jq -e '.sub_agents | length > 0' claude.json` from the repo root exits 0.
+
+### gh (GitHub CLI)
+- Probe: `gh --version`, then `gh auth status` (exit 0 = authenticated; never pass `--show-token`).
+- Pass: 2.0+. Unauthenticated gh means the executor agents' GitHub queries all fail — remediate with `gh auth login`.
+
+### yq
+- Probe: `yq --version`
+- Pass: must report `https://github.com/mikefarah/yq` v4+. The Python `yq` (a jq wrapper) has incompatible syntax and does NOT satisfy this dependency.
 
 ### PowerShell 7+
 - Probe: `pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'`
@@ -78,6 +88,8 @@ If a smoke check fails while all version probes pass, the problem is configurati
 ### Windows
 - git: `winget install Git.Git` (includes Git Bash)
 - jq: `winget install jqlang.jq`
+- gh: `winget install GitHub.cli`, then `gh auth login`
+- yq: `winget install MikeFarah.yq`
 - PowerShell 7: `winget install Microsoft.PowerShell`
 - Node.js: `winget install OpenJS.NodeJS.LTS`
 - uv: `winget install astral-sh.uv` (or `irm https://astral.sh/uv/install.ps1 | iex`)
@@ -86,12 +98,12 @@ If a smoke check fails while all version probes pass, the problem is configurati
 - After installing, restart the terminal (and Claude Code) so PATH changes are picked up. Verify the tool is visible from BOTH pwsh and Git Bash — hooks run under pwsh, validators under bash.
 
 ### macOS
-- `brew install git jq node uv shellcheck`
+- `brew install git jq gh yq node uv shellcheck`
 - `brew install --cask powershell` (provides `pwsh`)
 - Claude Code: `npm install -g @anthropic-ai/claude-code` or the native installer
 
 ### Linux (Debian/Ubuntu)
-- `sudo apt-get install -y git jq shellcheck`
+- `sudo apt-get install -y git jq shellcheck gh` (gh may need the GitHub CLI apt repo); yq: download the mikefarah binary from GitHub releases (the apt `yq` is the incompatible Python wrapper)
 - Node.js: distro package or NodeSource setup script for a current LTS
 - PowerShell 7: Microsoft package repository (`packages.microsoft.com`), then `sudo apt-get install -y powershell`
 - uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
@@ -104,6 +116,7 @@ Present results as a single table: Tool | Status | Version found | Needed by | F
 - All required tools OK → framework is fully operational; suggest `scripts/install.ps1` if hooks are not yet installed to `~/.claude`.
 - Any of git / bash / jq / pwsh missing → validators or hooks WILL fail; list the exact install command for the user's platform.
 - node/npx or uvx missing → core framework works, but the corresponding MCP servers in `.mcp.json` will not start; say which ones.
+- gh or yq missing (or gh unauthenticated, or yq is the Python wrapper) → the command-line executor agents degrade: GitHub queries and YAML processing fail; give the platform install command.
 - Only shellcheck missing → note it as optional and move on.
 
 Do not fabricate percentages, scores, or tool inventories beyond the table above, and do not install anything without the user asking — report and recommend.

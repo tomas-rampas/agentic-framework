@@ -78,8 +78,8 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
 │ python-expert     │ Python web, data science, automation           │ ✅ Ready│
 │ typescript-expert │ TypeScript/JS, React/Next.js, Node.js          │ ✅ Ready│
 │ mql-trading-dev   │ MQL4/MQL5, MetaTrader, trading systems          │ ✅ Ready│
-│ bash-expert       │ Bash/shell scripting, Linux automation         │ ✅ Ready│
-│ powershell-expert │ PowerShell, Windows admin, Azure scripting     │ ✅ Ready│
+│ bash-expert       │ CLI executor; Bash scripting, Linux automation │ ✅ Ready│
+│ powershell-expert │ Windows CLI executor; PowerShell automation    │ ✅ Ready│
 └───────────────────┴────────────────────────────────────────────────┴────────┘
 ```
 
@@ -169,8 +169,8 @@ java-expert          → Java/Spring Boot
 python-expert        → Python development
 typescript-expert    → TypeScript/JavaScript
 mql-trading-dev      → MQL4/MQL5 & MetaTrader trading systems
-bash-expert          → Bash/shell scripting
-powershell-expert    → PowerShell automation
+bash-expert          → Command-line execution & shell scripting
+powershell-expert    → Windows command-line execution & PowerShell
 ```
 
 ### Domain Specialists (4 agents)

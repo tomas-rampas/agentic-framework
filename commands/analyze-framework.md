@@ -19,6 +19,14 @@ Perform a comprehensive analysis of the Claude Code CLI Agentic Framework, check
 - `--detailed`: Include detailed analysis of each component
 - `--export`: Export results to `framework-health-report.md`
 
+## Command-line execution
+Delegate every shell command this workflow needs — validators, git/gh calls, JSON/YAML
+processing, test and build runs — to **bash-expert** (POSIX/Git Bash) or
+**powershell-expert** (PowerShell/Windows) instead of running it inline. Executors
+return the exact command, its integer exit code, and a distilled result (verbatim
+fenced where it will be used literally). Read files with Read/Grep/Glob directly —
+never via shell.
+
 ## What This Command Does
 
 The authoritative implementation is the anti-drift tooling — this command runs it and interprets the results:
