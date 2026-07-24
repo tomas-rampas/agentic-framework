@@ -166,11 +166,16 @@ try {
             }
 
             if ($alreadyConsumed) {
-                # Instance already recorded: PROCEED only if HEAD moved (genuine re-review)
+                # Instance already recorded: PROCEED only if HEAD provably moved
+                # (genuine re-review of new commits). Dedupe is SYMMETRIC by design:
+                # first verdict per instance per HEAD wins, in both directions —
+                # the threat model is a same-instance re-emission of an already-
+                # delivered report (see tests R2.b/R8.b). Do not "fix" this to
+                # always-allow CHANGES_REQUIRED; that reintroduces the stale-CR
+                # relock this guard exists to prevent.
                 if ($existingHead) {
-                    # Proceed only when H_now ≠ '' AND H_old ≠ '' AND H_now ≠ H_old
-                    if ((-not $currentHead) -or (-not $existingHead) -or ($currentHead -eq $existingHead)) {
-                        # Suppress this write
+                    if ((-not $currentHead) -or ($currentHead -eq $existingHead)) {
+                        # HEAD unknown or unchanged: suppress this write
                         $shouldSuppress = $true
                     }
                 } else {

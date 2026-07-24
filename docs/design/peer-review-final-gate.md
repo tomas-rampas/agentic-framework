@@ -53,7 +53,11 @@ verdict, and HEAD — so dropped verdicts stay forensically visible. The marker 
 written before the instance ID is consumed, so a failed write cannot burn the instance's
 retry ability. All failure paths fail-open to legacy last-write-wins behavior; there is
 no cross-process lock, so near-simultaneous hook firings can race, degrading toward
-reduced protection, never corruption or silent bypass.
+reduced protection — never marker corruption; residual stale-overwrite windows are
+bounded and strictly narrower than legacy last-write-wins. The stale-resume threat
+model is a same-instance re-emission of an already-delivered report: instance dedupe is
+therefore symmetric by design (first verdict per instance per HEAD wins), while the
+id-less guard alone carries the asymmetric escalation rule.
 
 ## Gate decision (given committed, clean, ahead-of-base feature-branch work)
 
