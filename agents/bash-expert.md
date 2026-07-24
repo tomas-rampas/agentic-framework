@@ -43,13 +43,13 @@ Probe once per session: establish the execution surface (OS, shell, tool availab
 
 ## GitHub CLI Operations
 
-Always verify auth first: `gh auth status` (exit 0 = authenticated; any other exit stops).
+Always verify auth first: `gh auth status` (exit 0 = authenticated; any other exit stops). Never pass `--show-token`/`-t` to it — that prints the live credential, which you never handle. Note `gh auth status` sits in the ask tier, so expect a one-time approval in delegated runs.
 
 **Repo queries:** `gh repo view --json name,defaultBranchRef,url --jq '.defaultBranchRef.name'` (default branch), `gh repo view --json languages --jq '.languages | keys'` (tech stack).
 
 **PR work:** `gh pr list --state open --json number,headRefName,title --jq '.[] | [.number, .headRefName, .title] | @tsv'` (enumerate), `gh pr view 123 --json title,files,reviews --jq '.files[].path'` (details), `gh pr checks 123 --json name,state --jq '.[] | select(.state != "SUCCESS") | [.name, .state] | @tsv'` (failing checks; exit non-zero is data, not error).
 
-**Workflow runs:** `gh run list --workflow consistency.yml --limit 5 --json databaseId,status,conclusion --jq '.[] | [.databaseId, .status, .conclusion] | @tsv'`, then `gh run view <id> --log-failed | head -40` to isolate the first real failure.
+**Workflow runs:** `gh run list --workflow consistency.yml --limit 5 --json databaseId,status,conclusion --jq '.[] | [.databaseId, .status, .conclusion] | @tsv'`, then `gh run view <id> --log-failed | head -40` to isolate the first real failure. `gh run watch` is the one allow-listed command that can block until a run completes — bound it (`--interval`, or poll `gh run view --json status`) so it cannot idle to the tool timeout.
 
 **Raw API:** `gh api --paginate 'repos/{owner}/{repo}/pulls?state=closed' --jq '.[].number'` — note `--jq` runs per page, add `--slurp` for one combined array. Always pass `--method GET` explicitly for read-only calls, and expect `gh api` to require approval in delegated runs — it sits in the ask tier, unlike the allow-listed `gh <verb> view/list` forms, so prefer those when they can answer the question.
 
@@ -125,7 +125,7 @@ Blast radius before content: `git diff --stat main...HEAD`, `git log --oneline -
 
 1. **Restate the deliverable** in one line — not the command the caller guessed at, but the *answer* they need. Disambiguate any ambiguity before running.
 2. **Confirm and echo the ground truth**: repo root, current branch, working directory. Use `git -C "<repo>" rev-parse --show-toplevel --abbrev-ref HEAD` if not already established. A mismatch between what you report and what the caller expects is evidence of a miscommunication.
-3. **Probe the environment** if not already established this session (§6 Environment Detection): which tools exist, which surface (Bash/PowerShell), which repo, which branch. Remember this for subsequent commands.
+3. **Probe the environment** if not already established this session (see Environment Detection above): which tools exist, which surface (Bash/PowerShell), which repo, which branch. Remember this for subsequent commands.
 4. **Choose the narrowest command** that yields the answer; push filtering to the source (`--jq`, `--porcelain`, `--name-only`, `head -40`) so large output never enters your context.
 5. **Run it and capture the exit status deliberately.** In Bash: `cmd; echo "$?"`. In PowerShell: `cmd; "EXIT: $LASTEXITCODE"`. Do not guess at outcomes.
 6. **On failure**: read the actual error message, form one hypothesis about the cause, change one thing, and re-run. Stop after the second failure and report the state — do not loop or retry without analysis.
