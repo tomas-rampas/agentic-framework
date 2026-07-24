@@ -30,6 +30,14 @@ Claude Code executes only hooks registered in a settings file's `hooks` block. T
 | `session-start-context.ps1` | `SessionStart` | — | Injects branch/review status into context |
 | `pretooluse-delegation-hint.ps1` | `PreToolUse` | `Write\|Edit` | Advisory specialist-agent hint |
 
+## Command-line execution
+Delegate every shell command this workflow needs — validators, git/gh calls, JSON/YAML
+processing, test and build runs — to **bash-expert** (POSIX/Git Bash) or
+**powershell-expert** (PowerShell/Windows) instead of running it inline. Executors
+return the exact command, its integer exit code, and a distilled result (verbatim
+fenced where it will be used literally). Read files with Read/Grep/Glob directly —
+never via shell.
+
 ## Validation Checks
 
 Run the validator (shared logic with `validate-consistency.sh` check 3 — the two cannot drift):

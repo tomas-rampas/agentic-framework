@@ -73,7 +73,7 @@
 ### Agent Capabilities
 - Agents have FULL TOOL ACCESS within their domain of expertise
 - Agents read and write files directly without requesting permission
-- Agents execute commands and run tests as needed
+- Agents execute commands and run tests as needed, within the command-line execution policy below
 - Agents create implementations, configurations, and documentation
 - Agents validate and test their work independently
 - Agents make technical decisions within their specialization
@@ -85,10 +85,25 @@
 
 ### Agent Empowerment
 - Agents have unrestricted access to tools within their domain
-- Agents implement solutions directly without additional delegation
+- Agents implement solutions directly; the one routine onward delegation is command-line work, per the policy below
 - Agents create concrete deliverables and working implementations
 - Agents validate their work and ensure quality standards
 - Agents operate autonomously with full technical authority
+
+### 🖥️ Command-line Execution Policy (blanket)
+- Delegate **all** command-line work — builds, tests, git and gh operations, JSON/YAML
+  processing with jq/yq, log grinding, any shell command — to the executor agents:
+  **bash-expert** (POSIX shell, Git Bash, Linux/CI/containers) or **powershell-expert**
+  (PowerShell, Windows-native administration). They run on the cheap model tier, so
+  routing shell work to them preserves the weekly quota of Opus/Sonnet/Fable-tier callers.
+- Never shell out to read or search files — use the Read/Grep/Glob tools directly.
+- **bash-expert** and **powershell-expert** are terminal executors: they run everything
+  themselves and never delegate onward, to any agent or to themselves.
+- **peer-review-critic** and **spec-compliance-reviewer** are exempt by design: their
+  tools allowlist omits the Agent tool, so they gather their own evidence directly.
+- Executors return a distilled report: working directory and branch, the exact command,
+  its integer exit code, the result (verbatim fenced block for anything used literally),
+  and an explicit note if output was truncated.
 
 ### Orchestration Guidelines
 When delegating tasks to specialized agents:
