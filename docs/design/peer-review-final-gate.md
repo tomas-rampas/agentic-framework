@@ -27,10 +27,26 @@ verdict=APPROVED|CHANGES_REQUIRED    <- line 2, parsed from the report's VERDICT
 The verdict comes from the standardized machine-readable line the `peer-review-critic`
 agent definition requires as the last line of its report (`VERDICT: APPROVED` or
 `VERDICT: CHANGES_REQUIRED`). The **last** occurrence in the report wins, so an earlier
-quoted mention cannot spoof it. Each qualifying run overwrites the marker — the latest
-review is the one that counts, which is what a fix → re-review loop needs. The
-`SubagentStop` source (`agent_type` + `last_assistant_message`) also covers background
-subagent launches, whose `PostToolUse` fires before any report text exists.
+quoted mention cannot spoof it. Each qualifying run overwrites the marker (stale
+re-emissions excepted; see Stale-verdict protection below) — the latest review is the one
+that counts, which is what a fix → re-review loop needs. The `SubagentStop` source
+(`agent_type` + `last_assistant_message`) also covers background subagent launches, whose
+`PostToolUse` fires before any report text exists.
+
+## Stale-verdict protection
+
+The mechanism previously allowed any stop of the peer-review-critic agent to overwrite
+the session's recorded verdict, risking gate bypass if a stale instance re-emitted an old
+outcome. Two guards now prevent such stale re-recordings:
+
+The recorder deduplicates on the reporting agent's instance ID (when available). Each
+verdict-bearing write consumes the agent instance, so a repeated stop of the same instance
+cannot re-record a verdict; consumed IDs live in a per-session `.verdict-sources` file
+alongside the marker. When an instance ID is unavailable, the marker's new `head=<git
+sha>` field enables contradiction detection — a contradicting verdict is ignored if HEAD
+has not moved (presumed stale); a moved HEAD always allows recording, supporting the
+normal fix → re-review loop pattern. All failure paths fail-open to legacy last-write-wins
+behavior.
 
 ## Gate decision (given committed, clean, ahead-of-base feature-branch work)
 
