@@ -164,7 +164,15 @@
       "Bash(gh auth token:*)",
       "Bash(gh repo delete:*)",
       "Bash(gh release delete:*)",
-      "Bash(gh secret set:*)"
+      "Bash(gh secret set:*)",
+      "Bash(gh extension install:*)",
+      "Bash(gh extension upgrade:*)",
+      "Bash(gh alias set:*)",
+      "Bash(gh alias delete:*)",
+      "Bash(gh alias import:*)",
+      "Bash(gh config set:*)",
+      "Bash(gh auth refresh:*)",
+      "Bash(gh auth logout:*)"
     ],
     "defaultMode": "default"
   },
