@@ -222,16 +222,30 @@ Assert 'R3.b: different id=B replaces A, CHANGES_REQUIRED wins' ($r.Code -eq 0 -
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Same-HEAD contradiction guard (fallback when id is empty or unresolvable)
+# Asymmetric semantics: escalation (CHANGES_REQUIRED) always lands; APPROVED suppressed at same HEAD
 # ──────────────────────────────────────────────────────────────────────────────
 
-# R4: id-ABSENT payloads at same HEAD: APPROVED recorded, then contradicting CHANGES_REQUIRED → marker stays APPROVED
-$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r4'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; cwd = $scratch; last_assistant_message = "No issues found.`nVERDICT: APPROVED" })
-$m = Get-Content (Join-Path $stateDir 'peer-review' 'r4') -Raw
-Assert 'R4.a: id-absent APPROVED recorded at HEAD' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED' -and $m -match 'head=')
+# R4 (flipped): id-ABSENT, asymmetric same-HEAD guard
+# (a) CHANGES_REQUIRED recorded first
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r4a'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; cwd = $scratch; last_assistant_message = "Blockers found.`nVERDICT: CHANGES_REQUIRED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'r4a') -Raw
+Assert 'R4.a: id-absent CHANGES_REQUIRED recorded at HEAD' ($r.Code -eq 0 -and $m -match 'verdict=CHANGES_REQUIRED' -and $m -match 'head=')
 
-$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r4'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; cwd = $scratch; last_assistant_message = "Actually blockers found.`nVERDICT: CHANGES_REQUIRED" })
-$m = Get-Content (Join-Path $stateDir 'peer-review' 'r4') -Raw
-Assert 'R4.b: id-absent CHANGES_REQUIRED at same HEAD does not contradict APPROVED' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED' -and $m -notmatch 'CHANGES_REQUIRED')
+# (b) APPROVED at same HEAD → suppressed (stays CHANGES_REQUIRED), audit line written
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r4a'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; cwd = $scratch; last_assistant_message = "Re-review: all clear.`nVERDICT: APPROVED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'r4a') -Raw
+$suppressed = Get-Content (Join-Path $stateDir 'peer-review' 'r4a.verdict-suppressed') -Raw -ErrorAction SilentlyContinue
+Assert 'R4.b: id-absent APPROVED at same HEAD suppressed (stays CHANGES_REQUIRED)' ($r.Code -eq 0 -and $m -match 'verdict=CHANGES_REQUIRED' -and $m -notmatch 'APPROVED')
+Assert 'R4.b: suppression audit line created with guard=same-head-approve' ($r.Code -eq 0 -and $suppressed -match 'guard=same-head-approve')
+
+# R4 (asymmetric escalation): APPROVED recorded first, then CHANGES_REQUIRED → escalates
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r4b'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; cwd = $scratch; last_assistant_message = "No issues found.`nVERDICT: APPROVED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'r4b') -Raw
+Assert 'R4.c: id-absent APPROVED recorded at HEAD' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED' -and $m -match 'head=')
+
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r4b'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; cwd = $scratch; last_assistant_message = "Actually blockers found.`nVERDICT: CHANGES_REQUIRED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'r4b') -Raw
+Assert 'R4.d: id-absent CHANGES_REQUIRED at same HEAD escalates over APPROVED' ($r.Code -eq 0 -and $m -match 'verdict=CHANGES_REQUIRED' -and $m -notmatch 'APPROVED')
 
 # R5: id-absent, HEAD MOVES → verdicts can change (fix → re-review)
 $r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r5'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; cwd = $scratch; last_assistant_message = "Initial review: blockers.`nVERDICT: CHANGES_REQUIRED" })
@@ -265,6 +279,46 @@ Assert 'R6.c: tool_use_id dedupe on verdict-bearing events (use-456 is new to ve
 $r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r6'; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_use_id = 'use-456'; tool_response = "Third attempt contradicts.`nVERDICT: CHANGES_REQUIRED" })
 $m = Get-Content (Join-Path $stateDir 'peer-review' 'r6') -Raw
 Assert 'R6.d: same tool_use_id on repeat verdict (use-456 already listed) blocked' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED')
+
+# ──────────────────────────────────────────────────────────────────────────────
+# NEW: HEAD-qualified instance dedupe (HEAD moved → re-review allowed)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# R7: same id at different HEAD → records (fix → re-review succeeds)
+$headBefore = git -C $scratch rev-parse HEAD
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r7'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'instance-Z'; cwd = $scratch; last_assistant_message = "Initial review: blockers.`nVERDICT: CHANGES_REQUIRED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'r7') -Raw
+Assert 'R7.a: id=Z CHANGES_REQUIRED recorded at HEAD1' ($r.Code -eq 0 -and $m -match 'verdict=CHANGES_REQUIRED' -and $m -match "head=$headBefore")
+
+# Advance HEAD (simulate a fix commit)
+Set-Content -Path (Join-Path $scratch 'r7-fix.txt') -Value 'fixed'
+git -C $scratch add -A; git -C $scratch commit -qm 'fix for r7'
+$headAfter = git -C $scratch rev-parse HEAD
+
+# Same id at new HEAD → records (dedupe allows re-review because HEAD moved)
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r7'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'instance-Z'; cwd = $scratch; last_assistant_message = "Re-review after fix: all clear.`nVERDICT: APPROVED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'r7') -Raw
+Assert 'R7.b: same id=Z at HEAD2 records APPROVED (HEAD moved)' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED' -and $m -match "head=$headAfter")
+
+# Reset for R8
+git -C $scratch reset -q --hard HEAD~1
+
+# ──────────────────────────────────────────────────────────────────────────────
+# NEW: same id, same HEAD → suppressed (no re-review without commits)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# R8: same id at same HEAD → suppressed both directions
+$headStatic = git -C $scratch rev-parse HEAD
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r8'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'instance-W'; cwd = $scratch; last_assistant_message = "Review: approved.`nVERDICT: APPROVED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'r8') -Raw
+Assert 'R8.a: id=W APPROVED recorded at HEAD' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED' -and $m -match "head=$headStatic")
+
+# Same id, same HEAD, contradicting verdict → suppressed (stays APPROVED), audit line written
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'r8'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'instance-W'; cwd = $scratch; last_assistant_message = "Re-check: blockers.`nVERDICT: CHANGES_REQUIRED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'r8') -Raw
+$suppressed = Get-Content (Join-Path $stateDir 'peer-review' 'r8.verdict-suppressed') -Raw -ErrorAction SilentlyContinue
+Assert 'R8.b: same id=W at same HEAD suppressed (stays APPROVED)' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED' -and $m -notmatch 'CHANGES_REQUIRED')
+Assert 'R8.b: suppression audit line created with guard=instance-dedupe' ($r.Code -eq 0 -and $suppressed -match 'guard=instance-dedupe')
 
 Write-Host "session-start-context.ps1"
 

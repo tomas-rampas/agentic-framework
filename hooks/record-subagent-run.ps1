@@ -11,29 +11,34 @@
 #   line 1: ISO timestamp (legacy format ends here)
 #   line 2: verdict=APPROVED|CHANGES_REQUIRED — present only when the report text
 #           contains the standardized "VERDICT:" line (agents/peer-review-critic.md).
-#   line 3: head=<sha> (git HEAD at time of verdict record; enables same-HEAD contradiction guard).
+#   line 3: head=<sha> (git HEAD at time of verdict record; enables HEAD-qualified guards).
 # The verdict line must occupy a whole line; of qualifying lines the LAST wins, so
 # quoted mentions cannot spoof the real one. A marker without a verdict line keeps
 # the legacy "reviewer ran" semantics (the gate treats it as unlocking — fail-open).
 #
 # Stale-verdict hardening (applies only when a verdict is parsed):
-#   1. Instance dedupe (primary): Resolves an instance ID from the payload (SubagentStop:
-#      first non-empty of agent_id, agent_session_id, subagent_id, task_id, or marker
-#      basename; PostToolUse: tool_use_id). A per-session sources file tracks consumed IDs.
-#      If ID is non-empty and already consumed → no write (repeat of same instance).
-#      If ID is non-empty and new → append to sources file after write.
-#      NOTE: Field availability is undocumented in Claude Code's hook schema (checked 2026-07-24).
-#   2. Same-HEAD contradiction guard (fallback when ID is empty): Stores current git HEAD
-#      on line 3 (head=<sha>). If existing marker holds a DIFFERENT verdict and both are
-#      at the same non-empty HEAD → no write (presumed stale at unchanged commit).
-#      HEAD moved, or either unknown, or same verdict → write proceeds (allows fix → re-review).
+#   1. Instance dedupe, HEAD-qualified (primary): Resolves an instance ID from the payload
+#      (SubagentStop: first non-empty of agent_id, agent_session_id, subagent_id, task_id,
+#      or full agent_transcript_path run through [^\w-] strip; PostToolUse: tool_use_id).
+#      A per-session sources file tracks consumed IDs. If ID is non-empty and already
+#      consumed: PROCEED only when current HEAD ≠ empty AND old HEAD ≠ empty AND they differ
+#      (genuine re-review after commits). Otherwise SUPPRESS and audit.
+#   2. Id-less same-HEAD contradiction guard, asymmetric (fallback): When ID is empty and
+#      existing marker holds a DIFFERENT verdict: if new verdict is CHANGES_REQUIRED, always
+#      PROCEED (escalation safe). If new is APPROVED (displacing CHANGES_REQUIRED), PROCEED
+#      only when current HEAD ≠ empty AND old HEAD ≠ empty AND they differ; else SUPPRESS
+#      and audit (fail-safe toward locked gate).
 #
 # A run that parsed a verdict overwrites the marker: the latest review is the one
-# that counts, which is what a fix -> re-review loop needs. A run with NO parseable
-# verdict never downgrades an existing verdict-bearing marker — both events fire for
-# the same run (and a background launch's PostToolUse has no report text), so an
-# unconditional overwrite would erase a real CHANGES_REQUIRED and unlock the gate.
+# that counts, which is what a fix → re-review loop needs. Suppression events append
+# to <state>/peer-review/<sessionId>.verdict-suppressed (audit trail; errors ignored).
+# A run with NO parseable verdict never downgrades an existing verdict-bearing marker
+# — both events fire for the same run (and a background launch's PostToolUse has no report
+# text), so an unconditional overwrite would erase a real CHANGES_REQUIRED and unlock.
 # Silent and fail-open; also prunes markers older than 7 days.
+#
+# Concurrency note: No cross-process lock on sources/marker files; near-simultaneous hook
+# firings can race during read-decide-write. Accepted; fail direction is reduced protection.
 
 try {
     $payload = [Console]::In.ReadToEnd() | ConvertFrom-Json -ErrorAction Stop
@@ -90,19 +95,37 @@ try {
 
     # Only apply stale-verdict guards when a verdict was parsed.
     if ($null -ne $verdict) {
-        # ────────────────────────────────────────────────────────────────────────
-        # GUARD 1: Instance dedupe (primary prevention against stale overwrites)
-        # ────────────────────────────────────────────────────────────────────────
+        # Initialize variables used in all guards and suppression logging
+        $currentHead = ''
         $instanceId = $null
+        $existingVerdict = $null
+        $existingHead = ''
+        $sourcesFile = ''
+        $suppressedFile = ''
+
+        # Compute git HEAD once, early, reused in all guards (collapse duplicate git calls)
+        $cwd = [string]$payload.cwd
+        if (-not $cwd) { $cwd = (Get-Location).Path }
+
+        if (Test-Path $cwd) {
+            $headOutput = @(git -C $cwd rev-parse HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0 -and $headOutput.Count -gt 0) {
+                $currentHead = [string]$headOutput[0]
+            }
+        }
+
+        # ────────────────────────────────────────────────────────────────────────
+        # GUARD 1: Instance dedupe, HEAD-qualified (primary prevention)
+        # ────────────────────────────────────────────────────────────────────────
         if ([string]$payload.hook_event_name -eq 'SubagentStop') {
             # Try fields in priority order; undocumented so coalesce defensively.
             $instanceId = [string]$payload.agent_id
             if (-not $instanceId) { $instanceId = [string]$payload.agent_session_id }
             if (-not $instanceId) { $instanceId = [string]$payload.subagent_id }
             if (-not $instanceId) { $instanceId = [string]$payload.task_id }
-            # Fallback: derive from transcript path basename (minus extension) if present
+            # Fallback: use full agent_transcript_path run through [^\w-] strip (avoid leaf-name collisions)
             if (-not $instanceId -and $payload.agent_transcript_path) {
-                $instanceId = [System.IO.Path]::GetFileNameWithoutExtension([string]$payload.agent_transcript_path)
+                $instanceId = ([string]$payload.agent_transcript_path -replace '[^\w-]', '')
             }
         } else {
             # PostToolUse: use tool_use_id
@@ -114,94 +137,104 @@ try {
         if ($instanceId -eq '') { $instanceId = $null }
 
         $sourcesFile = Join-Path $reviewDir "$sessionId.verdict-sources"
+        $suppressedFile = Join-Path $reviewDir "$sessionId.verdict-suppressed"
+
+        $shouldSuppress = $false
+
+        # Extract existing marker data (if it exists) for both guards and audit logging
+        if (Test-Path $marker) {
+            $existing = Get-Content -Path $marker -Raw -ErrorAction SilentlyContinue
+            $m = [regex]::Matches($existing, '(?m)^\s*verdict=(APPROVED|CHANGES_REQUIRED)\s*$')
+            if ($m.Count -gt 0) {
+                $existingVerdict = $m[$m.Count - 1].Groups[1].Value
+            }
+            $m = [regex]::Matches($existing, '(?m)^\s*head=(.+?)\s*$')
+            if ($m.Count -gt 0) {
+                $existingHead = $m[$m.Count - 1].Groups[1].Value
+            }
+        }
 
         if ($null -ne $instanceId) {
             # Check if this instance was already consumed
             $alreadyConsumed = $false
             if (Test-Path $sourcesFile) {
                 $consumed = Get-Content -Path $sourcesFile -ErrorAction SilentlyContinue
-                if ($consumed -contains $instanceId) {
+                # Case-sensitive comparison
+                if ($consumed -ccontains $instanceId) {
                     $alreadyConsumed = $true
                 }
             }
 
             if ($alreadyConsumed) {
-                # Instance already recorded; do not re-record.
-                exit 0
-            }
-        }
-
-        # ────────────────────────────────────────────────────────────────────────
-        # GUARD 2: Same-HEAD contradiction guard (fallback when ID is empty)
-        # ────────────────────────────────────────────────────────────────────────
-        $currentHead = ''
-        $cwd = [string]$payload.cwd
-        if (-not $cwd) { $cwd = (Get-Location).Path }
-
-        if (Test-Path $cwd) {
-            $headOutput = @(git -C $cwd rev-parse HEAD 2>$null)
-            if ($LASTEXITCODE -eq 0 -and $headOutput.Count -gt 0) {
-                $currentHead = [string]$headOutput[0]
-            }
-        }
-
-        if ($null -eq $instanceId -and (Test-Path $marker)) {
-            # No instance ID: check if existing marker contradicts at same HEAD.
-            $existing = Get-Content -Path $marker -Raw -ErrorAction SilentlyContinue
-            $existingVerdict = $null
-            $existingHead = ''
-
-            # Extract verdict from existing marker
-            $m = [regex]::Matches($existing, '(?m)^\s*verdict=(APPROVED|CHANGES_REQUIRED)\s*$')
-            if ($m.Count -gt 0) {
-                $existingVerdict = $m[$m.Count - 1].Groups[1].Value
-            }
-
-            # Extract head from existing marker
-            $m = [regex]::Matches($existing, '(?m)^\s*head=(.+?)\s*$')
-            if ($m.Count -gt 0) {
-                $existingHead = $m[$m.Count - 1].Groups[1].Value
-            }
-
-            # If existing verdict differs, current HEAD is non-empty, and both heads match → presume stale
-            if ($null -ne $existingVerdict -and $existingVerdict -ne $verdict -and `
-                $currentHead -and $existingHead -and $currentHead -eq $existingHead) {
-                # Contradiction at unchanged HEAD without instance proof: presumed stale.
-                exit 0
-            }
-        }
-
-        # Write the marker with instance tracking (if ID was resolvable)
-        if ($null -ne $instanceId) {
-            # Append instance ID to sources file (for dedupe on subsequent calls)
-            Add-Content -Path $sourcesFile -Value $instanceId -ErrorAction SilentlyContinue
-        }
-    }
-
-    $lines = @((Get-Date -Format 'o'))
-    if ($verdict) {
-        $lines += "verdict=$verdict"
-        # Add head line only when a verdict is being recorded
-        $cwd = [string]$payload.cwd
-        if (-not $cwd) { $cwd = (Get-Location).Path }
-        if (Test-Path $cwd) {
-            $headOutput = @(git -C $cwd rev-parse HEAD 2>$null)
-            if ($LASTEXITCODE -eq 0 -and $headOutput.Count -gt 0) {
-                $head = [string]$headOutput[0]
-                if ($head) {
-                    $lines += "head=$head"
+                # Instance already recorded: PROCEED only if HEAD moved (genuine re-review)
+                if ($existingHead) {
+                    # Proceed only when H_now ≠ '' AND H_old ≠ '' AND H_now ≠ H_old
+                    if ((-not $currentHead) -or (-not $existingHead) -or ($currentHead -eq $existingHead)) {
+                        # Suppress this write
+                        $shouldSuppress = $true
+                    }
+                } else {
+                    # No existing head; suppress (shouldn't happen but fail safe)
+                    $shouldSuppress = $true
                 }
             }
         }
+
+        # ────────────────────────────────────────────────────────────────────────
+        # GUARD 2: Id-less same-HEAD contradiction guard, asymmetric (fallback)
+        # ────────────────────────────────────────────────────────────────────────
+        if ($null -eq $instanceId -and $existingVerdict -and -not $shouldSuppress) {
+            # No instance ID and existing marker has verdict: check for contradiction at same HEAD
+            # Asymmetric: V_new == CHANGES_REQUIRED → always proceed (escalation safe)
+            # V_new == APPROVED → proceed only if HEAD moved
+            if ($existingVerdict -ne $verdict) {
+                if ($verdict -eq 'APPROVED') {
+                    # Trying to displace CHANGES_REQUIRED with APPROVED: check HEAD
+                    if ((-not $currentHead) -or (-not $existingHead) -or ($currentHead -eq $existingHead)) {
+                        # Same HEAD or unknown: suppress (fail-safe)
+                        $shouldSuppress = $true
+                    }
+                }
+                # If CHANGES_REQUIRED, always proceed (escalation always safe)
+            }
+        }
+
+        if ($shouldSuppress) {
+            # Log suppression audit and exit
+            $timestamp = Get-Date -Format 'o'
+            $oldStr = if ($null -ne $existingVerdict) { $existingVerdict } else { '-' }
+            $headStr = if ($currentHead) { $currentHead } else { '-' }
+            $guardName = if ($null -ne $instanceId) { 'instance-dedupe' } else { 'same-head-approve' }
+            $auditLine = "$timestamp guard=$guardName old=$oldStr new=$verdict head=$headStr"
+            Add-Content -Path $suppressedFile -Value $auditLine -ErrorAction SilentlyContinue
+            exit 0
+        }
     }
-    Set-Content -Path $marker -Value ($lines -join "`n") -NoNewline
 
+    # Write the marker FIRST (with error handling), then append id to sources file
+    # Always write at least the timestamp (records that reviewer ran); add verdict/head only if verdict was parsed
+    $lines = @((Get-Date -Format 'o'))
+    if ($verdict) {
+        $lines += "verdict=$verdict"
+        if ($currentHead) {
+            $lines += "head=$currentHead"
+        }
+    }
+
+    try {
+        Set-Content -Path $marker -Value ($lines -join "`n") -NoNewline -ErrorAction Stop
+    } catch {
+        # Marker write failed; exit without consuming the id
+        exit 0
+    }
+
+    # Only after successful marker write, append id to sources file (if non-null and verdict was parsed)
+    if ($verdict -and $null -ne $instanceId) {
+        Add-Content -Path $sourcesFile -Value $instanceId -ErrorAction SilentlyContinue
+    }
+
+    # Prune markers older than 7 days (single pass covers marker + verdict-sources + verdict-suppressed files)
     Get-ChildItem -Path $reviewDir -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } |
-        Remove-Item -Force -ErrorAction SilentlyContinue
-
-    # Also clean up aged sources files (*.verdict-sources)
-    Get-ChildItem -Path $reviewDir -Filter '*.verdict-sources' -ErrorAction SilentlyContinue |
         Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } |
         Remove-Item -Force -ErrorAction SilentlyContinue
 

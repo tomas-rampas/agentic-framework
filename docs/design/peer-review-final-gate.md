@@ -37,16 +37,23 @@ that counts, which is what a fix → re-review loop needs. The `SubagentStop` so
 
 The mechanism previously allowed any stop of the peer-review-critic agent to overwrite
 the session's recorded verdict, risking gate bypass if a stale instance re-emitted an old
-outcome. Two guards now prevent such stale re-recordings:
+outcome. Revised guards now prevent such stale re-recordings:
 
-The recorder deduplicates on the reporting agent's instance ID (when available). Each
-verdict-bearing write consumes the agent instance, so a repeated stop of the same instance
-cannot re-record a verdict; consumed IDs live in a per-session `.verdict-sources` file
-alongside the marker. When an instance ID is unavailable, the marker's new `head=<git
-sha>` field enables contradiction detection — a contradicting verdict is ignored if HEAD
-has not moved (presumed stale); a moved HEAD always allows recording, supporting the
-normal fix → re-review loop pattern. All failure paths fail-open to legacy last-write-wins
-behavior.
+The recorder deduplicates on the reporting agent's instance ID (when available) across
+HEAD changes. Each verdict-bearing write consumes the agent instance, so a repeated stop
+of the same instance cannot re-record a verdict while HEAD is unchanged; after new
+commits the same instance may record again (the fix → re-review loop). Consumed IDs live
+in a per-session `.verdict-sources` file alongside the marker. When an instance ID is
+unavailable, the marker's `head=<git sha>` field enables asymmetric contradiction
+detection: escalation to CHANGES_REQUIRED always records (fail-safe); a flip to APPROVED
+is ignored unless HEAD has provably moved (fail-closed), since a gate unlock without a
+review of new code risks bypass. Each suppression is logged to a companion
+`.verdict-suppressed` file beside the marker — timestamp, which guard fired, old and new
+verdict, and HEAD — so dropped verdicts stay forensically visible. The marker is always
+written before the instance ID is consumed, so a failed write cannot burn the instance's
+retry ability. All failure paths fail-open to legacy last-write-wins behavior; there is
+no cross-process lock, so near-simultaneous hook firings can race, degrading toward
+reduced protection, never corruption or silent bypass.
 
 ## Gate decision (given committed, clean, ahead-of-base feature-branch work)
 
