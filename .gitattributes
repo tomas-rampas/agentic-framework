@@ -1,6 +1,9 @@
 # Normalise all text files to LF on commit and checkout
 * text=auto eol=lf
 
+# Pin shell scripts to LF line endings
+*.sh text eol=lf
+
 # Force binary files to never be modified
 *.png binary
 *.jpg binary
