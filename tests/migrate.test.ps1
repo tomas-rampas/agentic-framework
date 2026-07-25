@@ -412,10 +412,26 @@ git -C $claudeHome commit -m "initial" 2>$null | Out-Null
 
 $r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply')
 
-Assert 'dirty checkout aborts with message' ($r.Out -imatch 'ABORT.*uncomitted|dirty')
+Assert 'dirty checkout aborts with message' ($r.Out -imatch 'ABORT.*uncommitted|dirty')
 Assert 'settings.json was still modified' (-not (Get-Content (Join-Path $claudeHome 'settings.json') -Raw | ConvertFrom-Json -AsHashtable).hooks.Stop)
 Assert 'framework hook files deleted despite abort' (-not (Test-Path (Join-Path $claudeHome 'hooks' 'stop-peer-review-gate.ps1')))
 Assert '.git still exists after abort' ((Test-Path (Join-Path $claudeHome '.git')))
+
+# Verify orphan-group fix: no group with matcher but no hooks key
+$settingsContent = Get-Content (Join-Path $claudeHome 'settings.json') -Raw | ConvertFrom-Json -AsHashtable
+$hasOrphanGroup = $false
+foreach ($eventName in $settingsContent.hooks.Keys) {
+    $eventArray = $settingsContent.hooks[$eventName]
+    if ($eventArray -is [array]) {
+        foreach ($entry in $eventArray) {
+            if ($entry -is [System.Collections.IDictionary] -and $entry.ContainsKey('matcher') -and -not $entry.ContainsKey('hooks')) {
+                $hasOrphanGroup = $true
+                break
+            }
+        }
+    }
+}
+Assert 'no orphan groups (matcher with no hooks)' (-not $hasOrphanGroup)
 
 # ── Test 8: NEAR-NAME CUSTOM HOOK SURVIVES ──────────────────────────────────────
 Write-Host 'near-name custom hook: not falsely matched'
@@ -483,6 +499,134 @@ New-Item -ItemType Directory -Force -Path $claudeHome | Out-Null
 $r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply')
 Assert 'empty fixture -Apply exits 0' ($r.Code -eq 0)
 Assert 'empty fixture reports nothing to do' ($r.Out -imatch 'not found|nothing to do')
+
+# ── Test 11: REAL ORPHAN-GROUP REGRESSION TEST ────────────────────────────
+Write-Host 'orphan-group regression: matcher-only groups are dropped'
+
+Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
+$workRoot   = Join-Path ([IO.Path]::GetTempPath()) ("migrate-test-" + [guid]::NewGuid().ToString('N'))
+$sandboxDir = Join-Path $workRoot 'home'
+$claudeHome = Join-Path $sandboxDir '.claude'
+$claudeJson = Join-Path $sandboxDir '.claude.json'
+New-Item -ItemType Directory -Force -Path $claudeHome | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $claudeHome 'hooks') | Out-Null
+
+# Fixture: PostToolUse with (a) group containing ONLY framework hook record-subagent-run with matcher,
+#          (b) another group with foreign hook to keep hooks block alive
+$settings = @{
+    hooks = @{
+        PostToolUse = @(
+            @{
+                matcher = "Task|Agent"
+                hooks   = @(
+                    @{
+                        type    = "command"
+                        command = "pwsh -NoProfile -File `"$HOME/.claude/hooks/record-subagent-run.ps1`""
+                        timeout = 10
+                    }
+                )
+            },
+            @{
+                matcher = "Read|Write"
+                hooks   = @(
+                    @{
+                        type    = "command"
+                        command = "pwsh -NoProfile -File `"$HOME/.claude/hooks/my-foreign-logger.ps1`""
+                        timeout = 10
+                    }
+                )
+            }
+        )
+    }
+}
+$settings | ConvertTo-Json -Depth 16 | Set-Content (Join-Path $claudeHome 'settings.json') -NoNewline
+
+# Create hook files
+'# framework hook' | Set-Content (Join-Path $claudeHome 'hooks' 'record-subagent-run.ps1') -NoNewline
+'# foreign hook' | Set-Content (Join-Path $claudeHome 'hooks' 'my-foreign-logger.ps1') -NoNewline
+'# framework hook' | Set-Content (Join-Path $claudeHome 'hooks' 'session-start-context.ps1') -NoNewline
+
+# MCP config (needed for full migrator run)
+'{"mcpServers":{}}' | Set-Content $claudeJson -NoNewline
+
+$r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply')
+
+# Helper: Assert no orphan groups exist in a hashtable parsed with -AsHashtable
+function Assert-NoOrphans {
+    param([System.Collections.IDictionary]$Settings, [string]$Label)
+    $orphans = @()
+    if ($Settings.hooks) {
+        foreach ($eventName in $Settings.hooks.Keys) {
+            $eventArray = $Settings.hooks[$eventName]
+            if ($eventArray -is [array]) {
+                foreach ($idx in 0..($eventArray.Count - 1)) {
+                    $entry = $eventArray[$idx]
+                    if ($entry -is [System.Collections.IDictionary]) {
+                        if ($entry.ContainsKey('matcher') -and -not $entry.ContainsKey('hooks')) {
+                            $orphans += "$eventName[$idx] matcher=$($entry['matcher'])"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return $orphans.Count -eq 0
+}
+
+# Self-check: Verify the assertion CAN fail by constructing a synthetic orphan
+function Test-AssertionCanFail {
+    $synthetic = @{
+        hooks = @{
+            TestEvent = @(
+                @{ matcher = 'X' }
+            )
+        }
+    }
+    return -not (Assert-NoOrphans $synthetic 'self-check')
+}
+
+Assert 'assertion helper can detect orphans (self-check)' (Test-AssertionCanFail)
+
+# Parse result and verify fix
+$settingsAfter = Get-Content (Join-Path $claudeHome 'settings.json') -Raw | ConvertFrom-Json -AsHashtable
+
+Assert 'PostToolUse event exists after -Apply' ($null -ne $settingsAfter.hooks.PostToolUse)
+Assert 'PostToolUse is an array' ($settingsAfter.hooks.PostToolUse -is [array])
+
+# Verify: the matcher="Task|Agent" group (framework-only) is GONE entirely, not a stub
+$taskAgentGroupExists = $false
+foreach ($group in $settingsAfter.hooks.PostToolUse) {
+    if ($group.ContainsKey('matcher') -and $group['matcher'] -eq 'Task|Agent') {
+        $taskAgentGroupExists = $true
+        break
+    }
+}
+Assert 'framework-only group (matcher=Task|Agent) is dropped entirely' (-not $taskAgentGroupExists)
+
+# Verify: the foreign hook's group survives
+$foreignGroupExists = $false
+$foreignHookPreserved = $false
+foreach ($group in $settingsAfter.hooks.PostToolUse) {
+    if ($group.ContainsKey('matcher') -and $group['matcher'] -eq 'Read|Write') {
+        $foreignGroupExists = $true
+        if ($group.ContainsKey('hooks')) {
+            foreach ($hook in $group['hooks']) {
+                if ($hook.command -match 'my-foreign-logger') {
+                    $foreignHookPreserved = $true
+                }
+            }
+        }
+    }
+}
+Assert 'foreign hook group (matcher=Read|Write) survives' $foreignGroupExists
+Assert 'foreign hook command intact' $foreignHookPreserved
+
+# Final comprehensive orphan check
+Assert 'no orphan groups remain after migration' (Assert-NoOrphans $settingsAfter 'post-migrate')
+
+# Verify framework hook files are deleted
+Assert 'framework hook files deleted' (-not (Test-Path (Join-Path $claudeHome 'hooks' 'record-subagent-run.ps1')))
+Assert 'foreign hook file preserved' ((Test-Path (Join-Path $claudeHome 'hooks' 'my-foreign-logger.ps1')))
 
 # ── Teardown ───────────────────────────────────────────────────────────────────
 Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue

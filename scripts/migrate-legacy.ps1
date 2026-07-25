@@ -300,11 +300,8 @@ if (-not (Test-Path $settingsPath)) {
 
                     # Update or prune the inner hooks array
                     if ($filteredInnerHooks.Count -eq 0) {
-                        $groupEntry.Remove('hooks')
-                        # Only keep the group if it still has other keys (like 'matcher')
-                        if ($groupEntry.Count -gt 0) {
-                            $filteredEventArray += $groupEntry
-                        }
+                        # Drop the entire group from the event array if its hooks array is empty
+                        # (a matcher with no hooks is dead weight)
                     } else {
                         $groupEntry['hooks'] = @($filteredInnerHooks)
                         $filteredEventArray += $groupEntry
@@ -570,7 +567,7 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
             $statusOutput = git -C $claudeHome status --porcelain 2>$null
             if ($LASTEXITCODE -eq 0 -and $statusOutput) {
                 $checkoutCanProceed = $false
-                $checkoutAbortReason = 'uncomitted changes'
+                $checkoutAbortReason = 'uncommitted changes'
             }
 
             # Check for unpushed commits

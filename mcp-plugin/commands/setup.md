@@ -94,6 +94,7 @@ try {
 # EXAMPLE: Copy and paste this into YOUR OWN terminal:
 # EXAMPLE: Secure token capture and persistence
 read -r -s -p "Paste your Context7 API key: " C7KEY
+# (the -p prompt flag is bash-specific — run this snippet under bash; zsh users: `printf 'Paste your Context7 API key: '; read -r -s C7KEY`)
 echo
 if ! echo "$C7KEY" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null; then
   echo "ERROR: API key contains invalid characters. Must match ^[A-Za-z0-9_-]+ without spaces or special chars" >&2
@@ -196,6 +197,7 @@ Detect the user's login shell and append to its profile (with guard to prevent d
 # EXAMPLE: Option C - Validate and persist token (user provides in chat)
 # EXAMPLE: Secure token capture and persistence
 read -r -s -p "Paste your Context7 API key: " C7KEY
+# (the -p prompt flag is bash-specific — run this snippet under bash; zsh users: `printf 'Paste your Context7 API key: '; read -r -s C7KEY`)
 echo
 if ! echo "$C7KEY" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null; then
   echo "ERROR: API key contains invalid characters. Must match ^[A-Za-z0-9_-]+$ without spaces or special chars." >&2
