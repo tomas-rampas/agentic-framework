@@ -5,7 +5,7 @@ description: Display configuration status and health information for framework a
 
 Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
 
-# Agent Status Command
+# /agentic-framework:agent-status — Agent Configuration Status
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Check the configuration status and health of all 21 specialized agents in the fr
 ## Usage
 
 ```
-/agent-status [agent-name]
+/agentic-framework:agent-status [agent-name]
 ```
 
 ## Command-line execution
@@ -83,6 +83,6 @@ The roster and its categories are defined in `${CLAUDE_PLUGIN_ROOT}/claude.json`
 ## Integration
 
 Works with:
-- `/list-agents` — Agent catalog with capabilities
-- `/validate-hooks` — Hook coverage verification
-- `/analyze-framework` — Overall framework health
+- `/agentic-framework:list-agents` — Agent catalog with capabilities
+- `/agentic-framework:validate-hooks` — Hook coverage verification
+- `/agentic-framework:analyze-framework` — Overall framework health

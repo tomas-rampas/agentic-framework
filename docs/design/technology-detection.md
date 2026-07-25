@@ -1,7 +1,7 @@
 # Design: technology-detection (advisory delegation hint)
 
 **Status: implemented** — `hooks/pretooluse-delegation-hint.ps1` (PreToolUse, matcher
-`Write|Edit`), registered via `settings.template.json`.
+`Write|Edit`), registered via the plugin's `hooks/hooks.json`.
 
 ## Purpose
 

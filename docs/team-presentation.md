@@ -303,13 +303,25 @@ sequenceDiagram
 
 ## 4. Getting started
 
-```bash
-git clone <repo> ~/.claude
-pwsh -NoProfile -File ~/.claude/scripts/install.ps1   # settings + hooks + state dir
-bash ~/.claude/scripts/validate-consistency.sh        # expect: RESULT: PASS
+**Modern plugin-based installation (4.0+):**
+
+```
+/plugin marketplace add tomas-rampas/claude-agentic-framework
+/plugin install agentic-framework@claude-agentic-framework
+/agentic-framework:validate-hooks
+/agentic-framework:analyze-framework
 ```
 
-Prereqs: Claude Code CLI, git, PowerShell 7+, bash + jq; Node/npx and uv for the MCP servers.
+Optional: install the MCP servers plugin:
+```
+/plugin install agentic-framework-mcp@claude-agentic-framework
+/agentic-framework-mcp:setup
+```
+
+**Prerequisites:** Claude Code CLI, git, PowerShell 7+, bash + jq; Node/npx and uv for the optional MCP servers.
+
+**Legacy installation (pre-4.0, historical reference):**
+See [README.md Migration section](README.md#migration-existing-local-clones) if you have an existing local clone to migrate.
 
 ---
 

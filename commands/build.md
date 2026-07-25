@@ -3,7 +3,7 @@ description: Build exactly what a spec describes, then loop build ⇆ spec-compl
 argument-hint: <spec name, e.g. "user-auth" — omit to use the single approved spec>
 ---
 
-# /build — Spec → Build ⇆ Review Loop
+# /agentic-framework:build — Spec → Build ⇆ Review Loop
 
 ## Your role
 You are the **builder** in the spec → build → review loop. The spec is the
@@ -12,12 +12,12 @@ build against it requirement by requirement, you fix what fails, and the loop
 repeats **until the review passes clean** — without asking the user to catch
 mistakes in between.
 
-`/build` is the lightweight standalone loop: one autonomous run, whole-build
+`/agentic-framework:build` is the lightweight standalone loop: one autonomous run, whole-build
 reviews, no plan-approval stops. For multi-domain objectives that warrant
-human-gated planning and per-todo commits, use `/delegate` instead — it
-consumes the same spec with scoped per-todo reviews. `/delegate` may hand
+human-gated planning and per-todo commits, use `/agentic-framework:delegate` instead — it
+consumes the same spec with scoped per-todo reviews. `/agentic-framework:delegate` may hand
 execution off to this loop for single-feature objectives (its spec/plan
-approval is the go-ahead); `/build` itself never invokes `/delegate` — it only
+approval is the go-ahead); `/agentic-framework:build` itself never invokes `/agentic-framework:delegate` — it only
 borrows its Routing section and quality bar. Never run both loops
 independently on the same objective.
 
@@ -29,7 +29,7 @@ Resolve the spec to build:
 - No argument: if exactly one spec has `Status: approved`, use it; otherwise
   list the candidates and ask.
 - If the spec is missing or still `Status: draft`, stop and point the user to
-  `/spec` — building without an approved contract defeats the loop.
+  `/agentic-framework:spec` — building without an approved contract defeats the loop.
 
 Read the **whole spec** before writing anything: every REQ/EDGE item and its
 `Acceptance:` criterion, the Out of scope fence, the Definition of Done.
@@ -44,11 +44,11 @@ Read the **whole spec** before writing anything: every REQ/EDGE item and its
   discover the spec is wrong or incomplete mid-build, **stop and tell the
   user** so the spec can be amended; never silently improvise.
 - Route implementation work to specialist sub-agents per the **Routing**
-  section of `commands/delegate.md` (do not re-derive routing rules here).
+  section of the `/agentic-framework:delegate` command (do not re-derive routing rules here).
   Frame each delegated task with the REQ-IDs it delivers and their acceptance
   criteria.
 - Honour the project's quality bar (build/lint/format/tests clean) exactly as
-  `commands/delegate.md` §4 defines it.
+  the `/agentic-framework:delegate` command §4 defines it.
 - For a substantial diff, once the bar is green, the `code-scoring-loop`
   skill structures a polish pass before review: a fixed rubric, the diff
   scored by the matching specialist, weakest parts rewritten until the score
@@ -75,7 +75,7 @@ files/tests is not built — go back to step 1, don't rationalize.
 2. On `VERDICT: APPROVED` — the loop is done; go to §4.
 3. On `VERDICT: CHANGES_REQUIRED` — apply **each** `Fix:` from the report
    (delegating to specialists as in §1), re-run the quality bar, update the
-   coverage section, and launch a **fresh** review.
+   coverage section, and launch a **fresh** `/agentic-framework:review-spec` review.
 4. Iteration cap: **3 reviews**. If the third review still fails, stop and
    report — the remaining findings, what you tried, and your best diagnosis
    (usually a spec defect or a genuinely hard fix). Never loop indefinitely

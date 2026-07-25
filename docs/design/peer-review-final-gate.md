@@ -1,7 +1,7 @@
 # Design: peer-review-final-gate (Stop hook)
 
 **Status: implemented** — `hooks/stop-peer-review-gate.ps1` + `hooks/record-subagent-run.ps1`,
-registered in `settings.json` via `settings.template.json` (see `scripts/install.ps1`).
+shipped with the **agentic-framework plugin** via `hooks/hooks.json` (exec-form PowerShell with `${CLAUDE_PLUGIN_ROOT}` substitution).
 This document is the design rationale; the scripts are the source of truth for behavior.
 
 ## Purpose

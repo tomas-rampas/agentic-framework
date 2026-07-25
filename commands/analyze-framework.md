@@ -5,7 +5,7 @@ description: Perform comprehensive framework health check and analysis
 
 Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
 
-# Framework Health Analysis Command
+# /agentic-framework:analyze-framework — Framework Health Analysis
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Perform a comprehensive analysis of the Claude Code CLI Agentic Framework, check
 ## Usage
 
 ```
-/analyze-framework [--detailed] [--export]
+/agentic-framework:analyze-framework [--detailed] [--export]
 ```
 
 **Options:**
@@ -152,23 +152,23 @@ Generates `framework-health-report.md` with executive summary, findings, remedia
 
 ### 1. Daily Health Check
 ```bash
-/analyze-framework
+/agentic-framework:analyze-framework
 ```
 
 ### 2. Post-Update Validation
 ```bash
-/analyze-framework --detailed
+/agentic-framework:analyze-framework --detailed
 # After updating agents, hooks, or configuration
 ```
 
 ### 3. Documentation/Reporting
 ```bash
-/analyze-framework --detailed --export
+/agentic-framework:analyze-framework --detailed --export
 ```
 
 ### 4. Troubleshooting
 ```bash
-/analyze-framework --detailed
+/agentic-framework:analyze-framework --detailed
 ```
 
 ## Expected Issues and Remediation
@@ -193,10 +193,10 @@ Remediation: bash scripts/generate-docs.sh --write
 
 ## Integration with Other Commands
 
-- Use with `/validate-hooks` for hook-specific analysis
-- Combine with `/list-agents` to see agent details
-- Follow up with `/agent-status` for configuration status
-- Use `/quality-report` for a quality assessment
+- Use with `/agentic-framework:validate-hooks` for hook-specific analysis
+- Combine with `/agentic-framework:list-agents` to see agent details
+- Follow up with `/agentic-framework:agent-status` for configuration status
+- Use `/agentic-framework:quality-report` for a quality assessment
 
 ## Notes
 

@@ -5,7 +5,7 @@ description: Guide for adding a new real Claude Code hook to this framework (Pow
 
 # Adding a New Hook
 
-Hooks in this framework are real Claude Code hooks: PowerShell 7 scripts in `hooks/` that read a JSON payload on stdin and optionally emit a JSON decision on stdout. They are registered in the `"hooks"` block of `settings.template.json` and installed to `~/.claude/settings.json` by `scripts/install.ps1`. Study `hooks/stop-peer-review-gate.ps1` (blocking Stop gate) and `hooks/pretooluse-delegation-hint.ps1` (advisory) as reference implementations before writing anything.
+Hooks in this framework are real Claude Code hooks: PowerShell 7 scripts in `hooks/` that read a JSON payload on stdin and optionally emit a JSON decision on stdout. They are registered in `hooks/hooks.json` (exec-form with `${CLAUDE_PLUGIN_ROOT}` variable substitution) and automatically loaded by Claude Code when the agentic-framework plugin is installed. Study `hooks/stop-peer-review-gate.ps1` (blocking Stop gate) and `hooks/pretooluse-delegation-hint.ps1` (advisory) as reference implementations before writing anything.
 
 ## Hook Contract
 
@@ -29,9 +29,9 @@ Rules every hook script must follow:
 8. Never reference retired agent or file names — `bash scripts/validate-hooks.sh` scans hook scripts for deprecated names and fails on any hit.
 9. Blocking output is reserved for Stop-like gates; everything else must be advisory (`systemMessage`) or silent.
 
-## Step 2: Register in settings.template.json
+## Step 2: Register in hooks/hooks.json
 
-Add an entry under the `"hooks"` key. The event name must be one of the real Claude Code events: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Notification`, `Stop`, `SubagentStop`, `SessionStart`, `SessionEnd`, `PreCompact` — anything else fails validation.
+Add an entry under the matching event. The event name must be one of the real Claude Code events: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Notification`, `Stop`, `SubagentStop`, `SessionStart`, `SessionEnd`, `PreCompact` — anything else fails validation.
 
 ```json
 "PostToolUse": [
@@ -40,7 +40,8 @@ Add an entry under the `"hooks"` key. The event name must be one of the real Cla
     "hooks": [
       {
         "type": "command",
-        "command": "pwsh -NoProfile -File \"$HOME/.claude/hooks/<name>.ps1\"",
+        "command": "pwsh",
+        "args": ["-NoProfile", "-File", "${CLAUDE_PLUGIN_ROOT}/hooks/<name>.ps1"],
         "timeout": 10
       }
     ]
@@ -48,8 +49,9 @@ Add an entry under the `"hooks"` key. The event name must be one of the real Cla
 ]
 ```
 
+- Event keys (PreToolUse, PostToolUse, Stop, etc.) live inside the top-level `hooks` object — the structure is `{ "hooks": { "Stop": [...], "PostToolUse": [...] } }`.
 - `matcher` is a regex over tool names for tool events (omit it for Stop/SessionStart-style events).
-- Keep the literal `$HOME/.claude/hooks` prefix — `scripts/install.ps1` rewrites it to the resolved absolute path at install time.
+- Use `${CLAUDE_PLUGIN_ROOT}` as the path prefix — Claude Code substitutes it at runtime to the installed plugin root.
 - Use a short `timeout` in seconds (10 for advisory, 15 for git-inspecting gates).
 - If the event already has an entry with the same matcher, append your hook to its inner `hooks` array instead of adding a duplicate matcher block.
 
@@ -68,17 +70,23 @@ Run: `pwsh -NoProfile -File tests/hooks.test.ps1` — exit 0 means all assertion
 
 Run `bash scripts/validate-hooks.sh`. It enforces registration parity and must pass:
 
-- every script registered in `settings.template.json` exists in `hooks/`,
+- every script registered in `hooks/hooks.json` exists in `hooks/`,
 - every `hooks/*.ps1` is registered (no dead scripts),
 - every registered event is a real Claude Code hook event,
 - every script pins PowerShell 7,
 - no deprecated names appear in hook scripts.
 
-The same checks run inside `bash scripts/validate-consistency.sh` (the full check battery) and in CI, so an unregistered or orphaned hook fails the build. Run the full battery too if you touched anything beyond `hooks/` and the template.
+The same checks run inside `bash scripts/validate-consistency.sh` (the full check battery) and in CI, so an unregistered or orphaned hook fails the build. Run the full battery too if you touched anything beyond `hooks/` and `hooks/hooks.json`.
 
-## Step 5: Install
+## Step 5: Deploy
 
-Update the live configuration: `pwsh -NoProfile -File scripts/install.ps1 -Force`. This copies `hooks/*.ps1` to `~/.claude/hooks/` and replaces the `hooks` block in `~/.claude/settings.json` with the template version (`-Force` is required when a hooks block already exists). Restart any running Claude Code session to pick up the new hook.
+The hook is automatically deployed when the agentic-framework plugin is updated or reinstalled. Restart any running Claude Code session to pick up the new hook, or:
+
+```bash
+/plugin uninstall agentic-framework
+/plugin install agentic-framework@claude-agentic-framework
+# then restart Claude Code
+```
 
 ## Worked Example: Advisory Agent-Edit Reminder
 
@@ -119,7 +127,7 @@ try {
 }
 ```
 
-Registration — append to the existing `PostToolUse` array in `settings.template.json`:
+Registration — append to the existing `PostToolUse` array in `hooks/hooks.json`:
 
 ```json
 {
@@ -127,7 +135,8 @@ Registration — append to the existing `PostToolUse` array in `settings.templat
   "hooks": [
     {
       "type": "command",
-      "command": "pwsh -NoProfile -File \"$HOME/.claude/hooks/posttooluse-agent-edit-hint.ps1\"",
+      "command": "pwsh",
+      "args": ["-NoProfile", "-File", "${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-agent-edit-hint.ps1"],
       "timeout": 10
     }
   ]
@@ -152,12 +161,12 @@ $r = Invoke-Hook 'posttooluse-agent-edit-hint.ps1' 'not json'
 Assert 'fail-open on malformed stdin' ($r.Code -eq 0)
 ```
 
-Then run `pwsh -NoProfile -File tests/hooks.test.ps1`, `bash scripts/validate-hooks.sh`, and `pwsh -NoProfile -File scripts/install.ps1 -Force`.
+Then run `pwsh -NoProfile -File tests/hooks.test.ps1` and `bash scripts/validate-hooks.sh`. The hook is automatically deployed when the agentic-framework plugin is updated or reinstalled — restart Claude Code to load it.
 
 ## Completion Checklist
 
 - Script in `hooks/` pins PS7, reads stdin JSON, fails open, exits 0 on every path.
-- Registered in `settings.template.json` under a valid event with matcher and timeout.
+- Registered in `hooks/hooks.json` under a valid event with matcher and timeout (using `${CLAUDE_PLUGIN_ROOT}`).
 - Test cases added to `tests/hooks.test.ps1`; harness passes.
 - `bash scripts/validate-hooks.sh` passes (parity, events, PS7 pin, no deprecated names).
-- `pwsh scripts/install.ps1 -Force` run; live session restarted to load the hook.
+- Plugin reinstalled or updated; live session restarted to load the hook.

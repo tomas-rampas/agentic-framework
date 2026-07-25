@@ -5,7 +5,7 @@ description: Generate a framework quality assessment based on actual configurati
 
 Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
 
-# Quality Report Command
+# /agentic-framework:quality-report — Framework Quality Assessment
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Generate a quality assessment of the framework by inspecting actual configuratio
 ## Usage
 
 ```
-/quality-report [--detailed]
+/agentic-framework:quality-report [--detailed]
 ```
 
 ## Command-line execution
@@ -119,6 +119,6 @@ When `--detailed` is specified, additionally:
 ## Integration
 
 Works with:
-- `/agent-status` — Individual agent health
-- `/validate-hooks` — Deep hook validation
-- `/analyze-framework` — Comprehensive framework analysis
+- `/agentic-framework:agent-status` — Individual agent health
+- `/agentic-framework:validate-hooks` — Deep hook validation
+- `/agentic-framework:analyze-framework` — Comprehensive framework analysis

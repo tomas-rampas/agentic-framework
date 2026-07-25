@@ -9,24 +9,25 @@ Verify that every external tool this framework actually depends on is installed,
 
 ## When to Use
 
-- First-time setup, before running `scripts/install.ps1` (or `scripts/install.sh`)
+- First-time setup of the Claude Code environment (before installing the agentic-framework plugin)
 - After OS or package-manager updates
 - When a hook, validator script, or MCP server fails with "command not found" or a spawn error
 - When onboarding a new machine to the framework
+- When `/agentic-framework:validate-hooks` or `/agentic-framework:analyze-framework` report tool-related failures
 
 ## What Needs What
 
 | Tool | Required by |
 |------|-------------|
-| git | Install scripts (hard requirement); the Stop-gate hook's branch-vs-base checks; all repo workflows |
+| git | Hard requirement; the Stop-gate hook's branch-vs-base checks; all repo workflows |
 | bash (Git Bash on Windows) | `scripts/validate-consistency.sh`, `scripts/validate-hooks.sh`, `scripts/validate-framework.sh`, `scripts/generate-docs.sh`, `tests/consistency.test.sh` |
-| jq | The bash validators (`validate-consistency.sh` aborts without it); parsing the registry (`claude.json`) and `settings.template.json` |
+| jq | The bash validators (`validate-consistency.sh` aborts without it); parsing the registry (`claude.json`) and config files |
 | gh (GitHub CLI) | The command-line executor agents (bash-expert, powershell-expert): PR/issue/run queries, log grinding, `gh api` reads; must be authenticated |
 | yq (mikefarah v4) | The executor agents: YAML processing and agent-frontmatter extraction (`yq --front-matter=extract`) |
-| PowerShell 7+ (`pwsh`) | Every hook script in `hooks/` carries `#Requires -Version 7.0`; `scripts/install.ps1`; `tests/hooks.test.ps1` |
-| Node.js + npx | The `filesystem`, `context7`, and `sequential-thinking` MCP servers in `.mcp.json` (launched via `npx -y`) |
-| uv (`uvx`) | The `serena` and `fetch` MCP servers in `.mcp.json` (launched via `uvx`) |
-| Claude Code CLI | Host runtime that executes the hooks registered in `settings.json` and reads the registry (`claude.json`) |
+| PowerShell 7+ (`pwsh`) | Every hook script carries `#Requires -Version 7.0`; `tests/hooks.test.ps1` runs hook tests |
+| Node.js + npx | The `filesystem`, `context7`, and `sequential-thinking` MCP servers (launched via `npx -y`) — only needed if the optional agentic-framework-mcp plugin is installed |
+| uv (`uvx`) | The `serena` and `fetch` MCP servers — only needed if the optional agentic-framework-mcp plugin is installed |
+| Claude Code CLI | Host runtime that loads the agentic-framework plugin and executes hooks |
 | shellcheck (optional) | Linting `scripts/*.sh`; nice-to-have, nothing hard-fails without it |
 
 ## Probes
@@ -67,7 +68,7 @@ Run each probe and classify the result as OK (with version), MISSING, or WRONG V
 
 ### Claude Code CLI
 - Probe: `claude --version`
-- Pass: any current release. If checking MCP wiring, `claude mcp list` from the repo root should show filesystem, context7, and serena.
+- Pass: any current release. If the optional agentic-framework-mcp plugin is installed, `claude mcp list` should show filesystem, context7, serena, sequential-thinking, and fetch.
 
 ### shellcheck (optional)
 - Probe: `shellcheck --version`
@@ -78,10 +79,10 @@ Run each probe and classify the result as OK (with version), MISSING, or WRONG V
 Version probes prove installation, not integration. When the user is troubleshooting (not just installing), also run:
 
 - `pwsh -NoProfile -File tests/hooks.test.ps1` — exercises the hook scripts end to end (needs pwsh 7+ and git).
-- `bash scripts/validate-consistency.sh` — runs the full consistency battery (needs bash and jq); it validates the registry (`claude.json`), agent frontmatter parity, and hook registration parity against `settings.template.json`.
+- `bash scripts/validate-consistency.sh` — runs the full consistency battery (needs bash and jq); it validates the registry (`claude.json`), agent frontmatter parity, and hook registration parity against `hooks/hooks.json`.
 - `bash scripts/validate-hooks.sh` — focused hook-parity check.
 
-If a smoke check fails while all version probes pass, the problem is configuration (PATH visible to Claude Code's hook shell, settings.json hook paths), not a missing tool — point the user at re-running `scripts/install.ps1`, which rewrites hook command paths to absolute ones.
+If a smoke check fails while all version probes pass, the problem is configuration (PATH visible to Claude Code's hook shell, plugin installation state), not a missing tool — verify the agentic-framework plugin is installed and active: `/plugin list` should show it, and the session may need restarting for hooks to load.
 
 ## Remediation by Platform
 
@@ -113,9 +114,9 @@ If a smoke check fails while all version probes pass, the problem is configurati
 
 Present results as a single table: Tool | Status | Version found | Needed by | Fix (only for failures). Then a one-line verdict:
 
-- All required tools OK → framework is fully operational; suggest `scripts/install.ps1` if hooks are not yet installed to `~/.claude`.
+- All required tools OK → framework is fully operational; install the agentic-framework plugin if not already done.
 - Any of git / bash / jq / pwsh missing → validators or hooks WILL fail; list the exact install command for the user's platform.
-- node/npx or uvx missing → core framework works, but the corresponding MCP servers in `.mcp.json` will not start; say which ones.
+- node/npx or uvx missing → core framework works, but the optional agentic-framework-mcp plugin's MCP servers will not start; this is non-blocking if the user doesn't need those servers.
 - gh or yq missing (or gh unauthenticated, or yq is the Python wrapper) → the command-line executor agents degrade: GitHub queries and YAML processing fail; give the platform install command.
 - Only shellcheck missing → note it as optional and move on.
 

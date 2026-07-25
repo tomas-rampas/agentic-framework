@@ -3,7 +3,7 @@ description: Migrate legacy framework installs to the plugin pipeline
 argument-hint: <optional: any arguments to pass to the migration script>
 ---
 
-# /migrate-legacy — Migrate Legacy Framework Installs
+# /agentic-framework:migrate-legacy — Migrate Legacy Framework Installs
 
 This command helps you transition from manual script installs (`scripts/install.ps1`) to the modern plugin pipeline.
 
@@ -24,7 +24,7 @@ The migration script:
 Review what will be changed without making any changes:
 
 ```
-/migrate-legacy
+/agentic-framework:migrate-legacy
 ```
 
 The output shows:
@@ -37,7 +37,7 @@ The output shows:
 Once you're satisfied with the dry-run report, apply the changes:
 
 ```
-/migrate-legacy -Apply
+/agentic-framework:migrate-legacy -Apply
 ```
 
 This:
@@ -88,15 +88,15 @@ projects, todos, memory, statsig, ide, shell-snapshots, plugins, backup
 
 Dry-run (report only, no changes):
 ```
-/migrate-legacy
+/agentic-framework:migrate-legacy
 ```
 
 Apply all changes, remove framework-shaped MCP servers:
 ```
-/migrate-legacy -Apply -RemoveMcp
+/agentic-framework:migrate-legacy -Apply -RemoveMcp
 ```
 
 Test against a different Claude home directory (e.g., for validation):
 ```
-/migrate-legacy -Apply -ClaudeHome C:\test\.claude
+/agentic-framework:migrate-legacy -Apply -ClaudeHome C:\test\.claude
 ```

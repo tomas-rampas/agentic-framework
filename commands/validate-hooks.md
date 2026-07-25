@@ -5,7 +5,7 @@ description: Validate hook registration, consistency, and configuration
 
 Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
 
-# Validate Hooks Command
+# /agentic-framework:validate-hooks — Validate Hook Architecture
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Validate the framework's hook architecture: registration parity between `hooks/h
 ## Usage
 
 ```
-/validate-hooks [--behavior]
+/agentic-framework:validate-hooks [--behavior]
 ```
 
 **Options:**

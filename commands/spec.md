@@ -3,11 +3,11 @@ description: Interview the user about a feature, then write a buildable spec wit
 argument-hint: <feature name, e.g. "user-auth" or "csv-export">
 ---
 
-# /spec — Interview → Spec
+# /agentic-framework:spec — Interview → Spec
 
 ## Your role
 You are the **spec author**. You interview, you write the contract, you stop.
-You do **not** build anything — building is `/build`'s job, against the spec
+You do **not** build anything — building is `/agentic-framework:build`'s job, against the spec
 you produce here. A spec you can't check a build against is a failed spec.
 
 ## Objective
@@ -33,7 +33,7 @@ conversation leads:
 - **Edge cases** — empty inputs, failure paths, concurrency, limits. Propose
   the ones the user hasn't thought of; they confirm or reject.
 - **Out of scope** — what this feature deliberately does NOT do. Ask
-  explicitly; this fence is what stops scope creep in `/build`.
+  explicitly; this fence is what stops scope creep in `/agentic-framework:build`.
 - **Definition of done** — what the user would check before calling it done
   (tests passing, a command producing specific output, a doc updated).
 
@@ -93,7 +93,7 @@ Rules:
   code. If you can't phrase the check, the requirement isn't understood yet —
   go back to the interview.
 - No implementation details beyond what the user constrained — the spec says
-  *what*, `/build` decides *how* within the constraints.
+  *what*, `/agentic-framework:build` decides *how* within the constraints.
 
 ## 3. Self-score before presenting
 
@@ -106,13 +106,13 @@ user ever sees the spec.
 
 Present the spec (path + full content) and ask the user to approve it.
 - On approval: set `Status: approved` and tell the user the next step is
-  `/build <name>` — or, when this interview was entered from `/delegate`,
-  that `/delegate` continues from its decision gate (whose chosen mode may be
-  per-todo orchestration, not `/build`).
+  `/agentic-framework:build <name>` — or, when this interview was entered from `/agentic-framework:delegate`,
+  that `/agentic-framework:delegate` continues from its decision gate (whose chosen mode may be
+  per-todo orchestration, not `/agentic-framework:build`).
 - On change requests: edit, re-score, re-present. The spec stays `draft`
   until the user approves.
 
 Do **not** start building, scaffolding, or "just preparing" the
-implementation — the build step begins only when the user runs `/build`, or,
-when this interview was entered from `/delegate`'s plan phase, when `/delegate`
+implementation — the build step begins only when the user runs `/agentic-framework:build`, or,
+when this interview was entered from `/agentic-framework:delegate`'s plan phase, when `/agentic-framework:delegate`
 proceeds past its decision gate after the user's approval.

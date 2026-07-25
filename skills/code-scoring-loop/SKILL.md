@@ -27,7 +27,7 @@ things change when the deliverable is a diff:
   iterations when the obvious weaknesses are already fixed.
 - The user asks to "polish", "clean up", or "tighten" code without concrete
   criteria.
-- After the refactor step of a `/delegate` todo, or the first time a `/build`
+- After the refactor step of a `/agentic-framework:delegate` todo, or the first time a `/agentic-framework:build`
   run goes green before its spec-compliance review (once per run — fix
   iterations of the review loop don't re-enter the polish pass), when the
   change is large enough that a structured polish pass beats ad-hoc tidying.
@@ -37,8 +37,8 @@ things change when the deliverable is a diff:
 Before iteration 1, the mechanical checks of `commands/delegate.md` §4's
 quality bar must be clean: build 0 errors / 0 warnings, linter clean,
 formatter no diffs, full unit-test suite green. (§4's docs bullet is not part
-of gate zero — in the `/delegate` flow it lands in the per-todo doc step that
-follows the refactor.) Inside `/delegate`'s BDD loop this means running the
+of gate zero — in the `/agentic-framework:delegate` flow it lands in the per-todo doc step that
+follows the refactor.) Inside `/agentic-framework:delegate`'s BDD loop this means running the
 full suite at the start of the refactor step rather than waiting for §3
 step 5. Correctness is binary and comes first; scoring a red build is
 meaningless. If the bar fails, fix that — this loop is not for broken code.
