@@ -28,7 +28,7 @@ Committed work on a feature branch is not "done" until it has been peer reviewed
 
 ### The Stop gate
 
-The agentic-framework plugin's `hooks/stop-peer-review-gate.ps1` (registered in `hooks/hooks.json` with exec-form PowerShell and `${CLAUDE_PLUGIN_ROOT}`) blocks ending a session when all of these hold:
+The agentic-framework plugin's `stop-peer-review-gate` hook (.ps1/.sh pair, registered in `hooks/hooks.json` as a shell-form chain) blocks ending a session when all of these hold. On Linux/macOS the .sh runs; on Windows the .ps1 runs (either via dispatch if Git Bash is present, or directly).
 
 - The current branch is a feature branch (not main/master, not detached HEAD).
 - It has commits ahead of its base (first of `origin/main`, `origin/master`, `main`, `master` that resolves).

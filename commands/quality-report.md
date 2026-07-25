@@ -46,9 +46,9 @@ Check agent ecosystem completeness:
 ### 3. Hook Architecture
 
 Assess the real hook system:
-- Registration parity: every script in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` exists in `${CLAUDE_PLUGIN_ROOT}/hooks/`, and vice versa (no dead scripts)
-- All event names are valid Claude Code hook events; all scripts pin PowerShell 7
-- Hook behavior tests pass (`${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1`)
+- Pair parity: every hook name in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` has both .ps1 and .sh implementations; dispatch.sh is present and referenced in every registered chain; no orphans on either side (the dispatch.sh name allowlist itself is not validator-checked)
+- All event names are valid Claude Code hook events; all .ps1 scripts pin PowerShell 7; all .sh scripts have proper shebang and `set -u`
+- Hook behavior tests pass (`${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1` and `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.sh`)
 - No references to deprecated agent names
 
 ### 4. Structural Integrity
@@ -97,9 +97,10 @@ Agent Coverage:          all registered agents have definition files
                          all agent frontmatter valid (model parity OK)
                          0 orphaned files
 
-Hook Architecture:       registration parity OK (no missing, no orphans)
-                         all events valid; all scripts pin PS7
-                         hooks.test.ps1: all assertions pass
+Hook Architecture:       pair parity OK (no missing .ps1, no missing .sh, no orphans)
+                         dispatch.sh present and referenced in every chain
+                         all events valid; all .ps1 pin PS7; all .sh have shebang+set -u
+                         hooks.test.ps1 + hooks.test.sh: all assertions pass
                          0 deprecated agent references
 
 Structural Integrity:    ✓ All required directories present

@@ -166,9 +166,9 @@ mindmap
 
 ### 3.3 Hooks — the enforcement layer (4)
 
-The only component that can **say no**: PowerShell 7 scripts registered on Claude Code lifecycle events, receiving event JSON on stdin.
+The only component that can **say no**: hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. POSIX systems run .sh; Windows runs .ps1.
 
-| Hook | Event | Guards |
+| Hook (.ps1/.sh pair) | Event | Guards |
 |---|---|---|
 | `stop-peer-review-gate` | `Stop` | **The one hard gate** — no session ends with committed, unreviewed work |
 | `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic runs and parses the review's `VERDICT:` line — `APPROVED` is what unlocks the gate |
@@ -322,7 +322,7 @@ Optional: install the MCP servers plugin:
 /agentic-framework-mcp:setup
 ```
 
-**Prerequisites:** Claude Code CLI, git, PowerShell 7+, bash + jq; Node/npx and uv for the optional MCP servers.
+**Prerequisites:** Claude Code CLI, git, bash + jq; PowerShell 7 (Windows only; Linux/macOS optional); Node/npx and uv for the optional MCP servers.
 
 **Legacy installation (pre-4.0, historical reference):**
 See [README.md Migration section](README.md#migration-existing-local-clones) if you have an existing local clone to migrate.

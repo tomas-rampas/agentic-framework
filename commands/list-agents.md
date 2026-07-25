@@ -62,7 +62,7 @@ Display comprehensive information about all 21 specialized agents in the framewo
 
 Total: 21 agents (21 ready, 0 unavailable)
 Quality enforcement is framework-wide: every agent's committed work passes the
-peer-review Stop gate (${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1) before a session ends.
+peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN_ROOT}/hooks/`) before a session ends.
 ```
 
 ### 2. Category View (--language)
@@ -110,7 +110,7 @@ peer-review Stop gate (${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1) be
 
 🔧 QUALITY ENFORCEMENT
   • Framework-wide: committed work passes the peer-review Stop gate
-    (${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1) before a session can end
+    (the `stop-peer-review-gate` hook pair: .ps1 on Windows, .sh on Linux/macOS) before a session can end
   • Review chain: code-review-gatekeeper → peer-review-critic
 
 🔗 RELATED AGENTS

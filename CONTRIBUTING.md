@@ -60,7 +60,7 @@ Also add the agent to exactly one group in `.agent_categories`.
 
 ### 3. Quality enforcement is framework-wide
 
-There is no per-agent hook to create: every agent's committed work passes through the peer-review Stop gate (`hooks/stop-peer-review-gate.ps1`, shipped in the plugin). If you are adding a **hook** rather than an agent, see `skills/hook-config-generator/SKILL.md` ("Adding a New Hook") — implementation in `hooks/*.ps1`, registration in `hooks/hooks.json`, behavior cases in `tests/hooks.test.ps1`.
+There is no per-agent hook to create: every agent's committed work passes through the peer-review Stop gate (the `stop-peer-review-gate` hook pair, shipped in the plugin — `.sh` on POSIX, `.ps1` on Windows). If you are adding a **hook** rather than an agent, see `skills/hook-config-generator/SKILL.md` ("Adding a New Hook") — implementation as a `hooks/<name>.ps1` + `hooks/<name>.sh` pair plus a `hooks/dispatch.sh` allowlist entry, registration as a shell-form chain in `hooks/hooks.json`, behavior cases in `tests/hooks.test.ps1` and `tests/hooks.test.sh`.
 
 ### 4. Refresh generated documentation
 
@@ -149,7 +149,7 @@ bash scripts/generate-docs.sh --check      # fails if generated blocks are stale
 bash tests/consistency.test.sh             # consistency test harness
 ```
 
-To reproduce a CI failure locally, run these three commands from the repo root. All must exit 0. Hook behavior is tested separately with `pwsh -NoProfile -File tests/hooks.test.ps1`.
+To reproduce a CI failure locally, run these three commands from the repo root. All must exit 0. Hook behavior is tested separately with `pwsh -NoProfile -File tests/hooks.test.ps1` (`.ps1` implementations) and `bash tests/hooks.test.sh` (`.sh` implementations).
 
 ## Quick Reference
 
@@ -157,7 +157,7 @@ To reproduce a CI failure locally, run these three commands from the repo root. 
 |------|---------|
 | Add/update an agent | Follow the 6-step process above |
 | Add a hook | See `commands/validate-hooks.md` ("Adding a New Hook") |
-| Test hook behavior | `pwsh -NoProfile -File tests/hooks.test.ps1` |
+| Test hook behavior | `pwsh -NoProfile -File tests/hooks.test.ps1` + `bash tests/hooks.test.sh` |
 | Regenerate docs | `bash scripts/generate-docs.sh --write` |
 | Validate everything | `bash scripts/validate-consistency.sh && echo exit=$?` |
 | Check freshness (CI mode) | `bash scripts/generate-docs.sh --check && echo exit=$?` |
