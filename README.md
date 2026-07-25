@@ -209,7 +209,7 @@ How the commands, self-scoring loop, review chain, and Stop gate fit together:
 ├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch)
 ├── settings.template.json   # Tracked settings template: permissions + hook registration
 ├── agents/                  # 21 agent definitions (.md with YAML frontmatter)
-├── commands/                # 9 commands (delegate, spec, build, review-spec, etc.)
+├── commands/                # 10 commands (delegate, spec, build, review-spec, migrate-legacy, etc.)
 ├── hooks/                   # Real hook scripts (peer-review Stop gate, recorder, session context, delegation hint)
 ├── skills/                  # Operational skills
 ├── scripts/                 # Install, validation, anti-drift consistency, and doc-generation scripts
@@ -325,5 +325,5 @@ To add or modify agents, manage framework consistency, or understand the anti-dr
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 9 Commands • v3.1.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 10 Commands • v3.1.0**
 <!-- END GENERATED: framework-stats -->
