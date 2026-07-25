@@ -1,7 +1,7 @@
 {
   "name": "agentic-framework-mcp",
   "displayName": "Claude Agentic Framework — MCP Servers",
-  "version": "3.1.0",
+  "version": "4.0.0",
   "description": "Optional MCP server bundle for the Claude Agentic Framework: context7 (library docs; reads CONTEXT7_API_KEY env var at launch), filesystem (MCP_FS_ROOT, defaults to the project directory), serena, sequential-thinking, fetch. Run /agentic-framework-mcp:setup after install to configure environment variables.",
   "author": { "name": "Tomas Rampas" },
   "homepage": "https://github.com/tomas-rampas/claude-agentic-framework",
