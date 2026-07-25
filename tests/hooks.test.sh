@@ -1716,18 +1716,6 @@ SPACEPS
         else
           _fail "sh -c full chain" "expected CHAIN_DISPATCH_OK, got: $RUN_OUT"
         fi
-
-        # Test pwsh -Command on Linux if pwsh installed (coverage for pwsh on non-MSYS)
-        if command -v pwsh >/dev/null 2>&1; then
-          chain_ps="& '$root_with_spaces/hooks/dispatch.sh' session-start-context"
-          RUN_OUT="$(printf '%s' "$test_payload" | pwsh -NoProfile -Command "$chain_ps" 2>&1)"
-          RUN_RC=$?
-          if [ $RUN_RC -eq 0 ] && printf '%s' "$RUN_OUT" | grep -q 'CHAIN_DISPATCH_OK'; then
-            _pass "pwsh -Command works on Linux (with spaced dispatch path)"
-          else
-            _pass "pwsh -Command skipped (Linux CI typically uses sh arm only)"
-          fi
-        fi
         ;;
     esac
   else

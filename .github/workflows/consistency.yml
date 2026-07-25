@@ -50,6 +50,9 @@ jobs:
       - name: Run hooks test harness
         run: bash tests/hooks.test.sh
 
+      - name: Cross-impl equivalence (pwsh + sh) — self-skips on CI if no pwsh
+        run: bash tests/hooks-equivalence.test.sh
+
       - name: Install Claude Code CLI
         # Required for `claude plugin validate`; ubuntu-latest ships Node.js
         # and npm preinstalled, same "no apt-get" posture as the jq check
@@ -126,3 +129,9 @@ jobs:
         # separate from the pwsh-native hook suite tested above.
         shell: bash
         run: bash tests/hooks.test.sh
+
+      - name: Cross-impl equivalence (pwsh + Git Bash)
+        # Runs the same fixtures through both PowerShell and Bash implementations,
+        # asserting marker/sidecar/JSON output equivalence.
+        shell: bash
+        run: bash tests/hooks-equivalence.test.sh

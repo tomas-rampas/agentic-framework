@@ -183,13 +183,23 @@ section "[3] Hook registration parity (hooks/hooks.json <-> hooks/*.ps1)"
       [[ -z "$ptype" ]] && continue
       case "$ptype" in
         no-hooks-block)       fail "hooks/hooks.json has no usable hooks block: $subject" ;;
-        missing-hook-script)  fail "registered hook script missing on disk: hooks/$subject"
+        missing-hook-script)  fail "registered .ps1 hook script missing on disk: hooks/$subject"
                               detail "missing-hook-script: $subject" ;;
-        orphan-hook-script)   fail "hook script not registered in hooks/hooks.json: hooks/$subject"
+        orphan-hook-script)   fail ".ps1 hook script not registered in hooks/hooks.json: hooks/$subject"
                               detail "orphan-hook-script: $subject" ;;
+        missing-sh-impl)      fail "registered hook missing .sh implementation: hooks/$subject"
+                              detail "missing-sh-impl: $subject" ;;
+        orphan-sh-script)     fail ".sh hook script not registered in hooks/hooks.json: hooks/$subject"
+                              detail "orphan-sh-script: $subject" ;;
+        missing-dispatch-sh)  fail "dispatch.sh missing from hooks/: $subject"
+                              detail "missing-dispatch-sh: $subject" ;;
+        missing-sh-shebang)   fail ".sh hook script lacks '#!/bin/sh' header: hooks/$subject"
+                              detail "missing-sh-shebang: $subject" ;;
+        missing-set-u)        fail ".sh hook script lacks 'set -u' line: hooks/$subject"
+                              detail "missing-set-u: $subject" ;;
         invalid-hook-event)   fail "unknown Claude Code hook event in hooks/hooks.json: $subject"
                               detail "invalid-hook-event: $subject" ;;
-        missing-requires-ps7) fail "hook script lacks '#Requires -Version 7.0' header: hooks/$subject"
+        missing-requires-ps7) fail ".ps1 hook script lacks '#Requires -Version 7.0' header: hooks/$subject"
                               detail "missing-requires-ps7: $subject" ;;
         *)                    fail "hookcheck: $ptype $subject" ;;
       esac
@@ -197,7 +207,7 @@ section "[3] Hook registration parity (hooks/hooks.json <-> hooks/*.ps1)"
   else
     n_scripts="$(fact_hook_script_files | grep -c . || true)"
     n_events="$(fact_hook_events | grep -c . || true)"
-    pass "$n_scripts hook script(s) registered across $n_events event(s); no orphans, all events valid, all pin PS7"
+    pass "$n_scripts hook script(s) registered across $n_events event(s); parity OK (both .ps1 and .sh), all events valid, all pin PS7"
   fi
 }
 

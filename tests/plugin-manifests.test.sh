@@ -117,6 +117,17 @@ assert_json_field_matches() {
 
 section() { printf '\n%s%s%s\n' "$C_CYN" "$1" "$C_NC"; }
 
+# --- validator helper -------------------------------------------------------
+# run_validate <copy-root> -> runs the COPIED validator against the copy.
+#   Captures combined stdout+stderr into $RUN_OUT and the exit code into $RUN_RC.
+RUN_OUT=""
+RUN_RC=0
+run_validate() {
+  local root="$1"
+  RUN_OUT="$(FRAMEWORK_ROOT="$root" "$BASH_BIN" "$root/scripts/validate-consistency.sh" 2>&1)"
+  RUN_RC=$?
+}
+
 # ===========================================================================
 printf '%s================================================%s\n' "$C_CYN" "$C_NC"
 printf '%s  Plugin Manifest Test Harness%s\n' "$C_CYN" "$C_NC"
@@ -269,7 +280,19 @@ export FRAMEWORK_ROOT
   fi
 }
 
-# --- Assertion 8: hooks.json registered scripts exist on disk ---
+# --- Assertion 8a: hooks.json scan-based .ps1 extraction works ---
+{
+  # Test that the scan-based extraction correctly identifies .ps1 files from command strings
+  ps1_list="$(jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("[a-zA-Z0-9._-]+[.]ps1") | sub("^.*/"; "")' "$copy/hooks/hooks.json" | sort -u)"
+  ps1_count="$(printf '%s' "$ps1_list" | grep -c . || true)"
+  if [[ "$ps1_count" -eq 4 ]]; then
+    _pass "scan-based .ps1 extraction finds all 4 registered hook scripts"
+  else
+    _fail "scan-based .ps1 extraction" "expected 4 scripts, found $ps1_count"
+  fi
+}
+
+# --- Assertion 8: hooks.json registered .ps1 scripts exist on disk ---
 {
   rc=0
   while IFS= read -r script; do
@@ -279,10 +302,10 @@ export FRAMEWORK_ROOT
     if [[ -f "$copy/hooks/$script" ]]; then
       : # OK
     else
-      _fail "hooks.json registered script exists" "script '$script' not found in hooks/"
+      _fail "hooks.json registered .ps1 script exists" "script '$script' not found in hooks/"
       rc=1
     fi
-  done < <(jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | (.command, (.args[]?))] | .[] | strings | select(endswith(".ps1")) | sub("^.*/"; "")' "$copy/hooks/hooks.json" | sort -u)
+  done < <(jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("[a-zA-Z0-9._-]+[.]ps1") | sub("^.*/"; "")' "$copy/hooks/hooks.json" | sort -u)
 
   if [[ "$rc" -eq 0 ]]; then
     _pass "hooks.json all registered .ps1 scripts exist in hooks/ directory"
@@ -292,7 +315,7 @@ export FRAMEWORK_ROOT
 # --- Assertion 9: All hooks/*.ps1 files are registered (parity) ---
 {
   rc=0
-  registered_scripts="$(jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | (.command, (.args[]?))] | .[] | strings | select(endswith(".ps1")) | sub("^.*/"; "")' "$copy/hooks/hooks.json" | tr -d '\r' | sort -u)"
+  registered_scripts="$(jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("[a-zA-Z0-9._-]+[.]ps1") | sub("^.*/"; "")' "$copy/hooks/hooks.json" | tr -d '\r' | sort -u)"
 
   shopt -s nullglob
   for f in "$copy/hooks"/*.ps1; do
@@ -300,7 +323,7 @@ export FRAMEWORK_ROOT
     if printf '%s' "$registered_scripts" | grep -qxF "$script"; then
       : # OK
     else
-      _fail "all hook scripts are registered" "script '$script' is not registered in hooks.json"
+      _fail "all hook .ps1 scripts are registered" "script '$script' is not registered in hooks.json"
       rc=1
     fi
   done
@@ -308,6 +331,47 @@ export FRAMEWORK_ROOT
 
   if [[ "$rc" -eq 0 ]]; then
     _pass "all hooks/*.ps1 files are registered in hooks.json (parity)"
+  fi
+}
+
+# --- Assertion 9a: dispatch.sh exists and is referenced in all chains ---
+{
+  if [[ -f "$copy/hooks/dispatch.sh" ]]; then
+    _pass "dispatch.sh exists in hooks/ directory"
+  else
+    _fail "dispatch.sh exists" "dispatch.sh not found in hooks/"
+  fi
+
+  # Check that dispatch.sh is referenced in all hook command chains
+  dispatch_refs="$(jq '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | map(select(contains("dispatch.sh"))) | length' "$copy/hooks/hooks.json")"
+  total_hooks="$(jq '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | length' "$copy/hooks/hooks.json")"
+
+  if [[ "$dispatch_refs" -eq "$total_hooks" ]]; then
+    _pass "dispatch.sh is referenced in all registered hook chains"
+  else
+    _fail "dispatch.sh referenced in all chains" "found $dispatch_refs references, expected $total_hooks"
+  fi
+}
+
+# --- Assertion 9b: Hook implementation parity (.ps1 and .sh pairs) ---
+{
+  rc=0
+  registered_ps1="$(jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("[a-zA-Z0-9._-]+[.]ps1") | sub("^.*/"; "") | sub("[.]ps1$"; "")' "$copy/hooks/hooks.json" | tr -d '\r' | sort -u)"
+  # Extract hook names from dispatch.sh arguments and add .sh extension (names already with .sh)
+  registered_sh="$(jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("dispatch[.]sh[\" ] +([a-zA-Z0-9._-]+)") | .[0] + ".sh"' "$copy/hooks/hooks.json" | tr -d '\r' | sort -u)"
+
+  # Every .ps1 hook (name without extension) must have a corresponding .sh (name with extension)
+  while IFS= read -r hook_name; do
+    [[ -z "$hook_name" ]] && continue
+    # Append .sh to the hook name to match against registered_sh
+    if ! printf '%s' "$registered_sh" | grep -qxF "$hook_name.sh"; then
+      _fail "hook implementation parity" ".sh implementation missing for '$hook_name.ps1'"
+      rc=1
+    fi
+  done <<< "$registered_ps1"
+
+  if [[ "$rc" -eq 0 ]]; then
+    _pass "all registered hooks have both .ps1 and .sh implementations"
   fi
 }
 
@@ -397,8 +461,8 @@ section "[RED-7] Add orphan hook script (should fail parity check)"
   copy="$(make_copy)"
   printf '#Requires -Version 7.0\nexit 0\n' > "$copy/hooks/zzz-orphan-unregistered.ps1"
 
-  # Check if the new file is NOT registered
-  if jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | (.command, (.args[]?))] | .[] | strings | select(endswith(".ps1")) | sub("^.*/"; "")' "$copy/hooks/hooks.json" 2>/dev/null | grep -qxF "zzz-orphan-unregistered.ps1"; then
+  # Check if the new file is NOT registered (using scan-based extraction)
+  if jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("[a-zA-Z0-9._-]+[.]ps1") | sub("^.*/"; "")' "$copy/hooks/hooks.json" 2>/dev/null | grep -qxF "zzz-orphan-unregistered.ps1"; then
     _fail "RED-7: orphan hook should not be registered" "but it is"
   else
     _pass "RED-7: orphan hook script is not registered (parity broken)"
@@ -415,8 +479,8 @@ section "[RED-8] Remove a registered hook script (should fail parity check)"
   copy="$(make_copy)"
   rm -f "$copy/hooks/stop-peer-review-gate.ps1"
 
-  # Check if the removed file is still referenced
-  if jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | (.command, (.args[]?))] | .[] | strings | select(endswith(".ps1")) | sub("^.*/"; "")' "$copy/hooks/hooks.json" 2>/dev/null | grep -qxF "stop-peer-review-gate.ps1"; then
+  # Check if the removed file is still referenced (using scan-based extraction)
+  if jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("[a-zA-Z0-9._-]+[.]ps1") | sub("^.*/"; "")' "$copy/hooks/hooks.json" 2>/dev/null | grep -qxF "stop-peer-review-gate.ps1"; then
     _pass "RED-8: missing script is still registered in hooks.json (parity broken)"
   else
     _fail "RED-8: missing script should still be registered" "but it's not in hooks.json"
@@ -522,6 +586,66 @@ section "[RED-13] Marketplace plugin source does not exist (should fail source-e
     _fail "RED-13: nonexistent source should not exist" "but directory was found at $src_path"
   else
     _pass "RED-13: source '$source' correctly fails to resolve to directory"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 14: Remove a .sh hook implementation (missing-sh-impl)
+# ===========================================================================
+section "[RED-14] Remove a .sh hook implementation (should fail parity check)"
+{
+  copy="$(make_copy)"
+  rm -f "$copy/hooks/session-start-context.sh"
+
+  # Run the validator against the mutated copy
+  run_validate "$copy"
+
+  if [[ "$RUN_RC" -ne 0 ]] && printf '%s\n' "$RUN_OUT" | grep -q "missing-sh-impl: session-start-context.sh"; then
+    _pass "RED-14: validator fails with missing-sh-impl when .sh hook is deleted"
+  else
+    _fail "RED-14: validator should fail with missing-sh-impl" "exit=$RUN_RC, output: $(printf '%s\n' "$RUN_OUT" | grep -E 'missing-sh-impl|check' || echo '(no matches)')"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 15: Add orphan .sh hook script (not matching a registered hook)
+# ===========================================================================
+section "[RED-15] Add orphan .sh hook script (should fail parity check)"
+{
+  copy="$(make_copy)"
+  printf '#!/bin/sh\nset -u\nexit 0\n' > "$copy/hooks/zzz-extra-unregistered.sh"
+
+  # Run the validator against the mutated copy
+  run_validate "$copy"
+
+  if [[ "$RUN_RC" -ne 0 ]] && printf '%s\n' "$RUN_OUT" | grep -q "orphan-sh-script: zzz-extra-unregistered.sh"; then
+    _pass "RED-15: validator fails with orphan-sh-script when unregistered .sh is added"
+  else
+    _fail "RED-15: validator should fail with orphan-sh-script" "exit=$RUN_RC, output: $(printf '%s\n' "$RUN_OUT" | grep -E 'orphan-sh-script|check' || echo '(no matches)')"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 16: Remove dispatch.sh (should fail dispatch presence check)
+# ===========================================================================
+section "[RED-16] Remove dispatch.sh (should fail dispatch presence check)"
+{
+  copy="$(make_copy)"
+  rm -f "$copy/hooks/dispatch.sh"
+
+  # Run the validator against the mutated copy
+  run_validate "$copy"
+
+  if [[ "$RUN_RC" -ne 0 ]] && printf '%s\n' "$RUN_OUT" | grep -q "missing-dispatch-sh: dispatch.sh"; then
+    _pass "RED-16: validator fails with missing-dispatch-sh when dispatch.sh is deleted"
+  else
+    _fail "RED-16: validator should fail with missing-dispatch-sh" "exit=$RUN_RC, output: $(printf '%s\n' "$RUN_OUT" | grep -E 'missing-dispatch-sh|check' || echo '(no matches)')"
   fi
 
   rm -rf "$copy"

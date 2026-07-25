@@ -211,7 +211,11 @@ try {
             $headStr = if ($currentHead) { $currentHead } else { '-' }
             $guardName = if ($null -ne $instanceId) { 'instance-dedupe' } else { 'same-head-approve' }
             $auditLine = "$timestamp guard=$guardName old=$oldStr new=$verdict head=$headStr"
-            Add-Content -Path $suppressedFile -Value $auditLine -ErrorAction SilentlyContinue
+            try {
+                [IO.File]::AppendAllText($suppressedFile, $auditLine + "`n", [System.Text.UTF8Encoding]($false))
+            } catch {
+                # best-effort append; fail-open
+            }
             exit 0
         }
     }
@@ -235,7 +239,11 @@ try {
 
     # Only after successful marker write, append id to sources file (if non-null and verdict was parsed)
     if ($verdict -and $null -ne $instanceId) {
-        Add-Content -Path $sourcesFile -Value $instanceId -ErrorAction SilentlyContinue
+        try {
+            [IO.File]::AppendAllText($sourcesFile, $instanceId + "`n", [System.Text.UTF8Encoding]($false))
+        } catch {
+            # best-effort append; fail-open
+        }
     }
 
     # Prune markers older than 7 days (single pass covers marker + verdict-sources + verdict-suppressed files)

@@ -1,20 +1,20 @@
 {
-  "description": "Agentic-framework enforcement hooks: peer-review Stop gate, verdict recorder, session context, delegation hints.",
+  "description": "Agentic-framework enforcement hooks: peer-review Stop gate, verdict recorder, session context, delegation hints. Each hook runs a shell-form fallback chain: sh dispatch.sh routes to the native implementation (POSIX .sh on Unix; on Windows pwsh runs .ps1 — dispatched under Git Bash, or via the || arm when sh is absent). Chain safety relies on CLAUDE_PLUGIN_ROOT never containing double-quotes, backticks, or $( — guaranteed today by this repo's CI-enforced kebab-case plugin/marketplace names, not by a platform contract.",
   "hooks": {
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "pwsh", "args": ["-NoProfile", "-File", "${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1"], "timeout": 15 } ] }
+      { "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" stop-peer-review-gate || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1\"", "timeout": 15 } ] }
     ],
     "PostToolUse": [
-      { "matcher": "Task|Agent", "hooks": [ { "type": "command", "command": "pwsh", "args": ["-NoProfile", "-File", "${CLAUDE_PLUGIN_ROOT}/hooks/record-subagent-run.ps1"], "timeout": 10 } ] }
+      { "matcher": "Task|Agent", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" record-subagent-run || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/record-subagent-run.ps1\"", "timeout": 10 } ] }
     ],
     "SubagentStop": [
-      { "hooks": [ { "type": "command", "command": "pwsh", "args": ["-NoProfile", "-File", "${CLAUDE_PLUGIN_ROOT}/hooks/record-subagent-run.ps1"], "timeout": 10 } ] }
+      { "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" record-subagent-run || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/record-subagent-run.ps1\"", "timeout": 10 } ] }
     ],
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "pwsh", "args": ["-NoProfile", "-File", "${CLAUDE_PLUGIN_ROOT}/hooks/session-start-context.ps1"], "timeout": 10 } ] }
+      { "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" session-start-context || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start-context.ps1\"", "timeout": 10 } ] }
     ],
     "PreToolUse": [
-      { "matcher": "Write|Edit", "hooks": [ { "type": "command", "command": "pwsh", "args": ["-NoProfile", "-File", "${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-delegation-hint.ps1"], "timeout": 10 } ] }
+      { "matcher": "Write|Edit", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" pretooluse-delegation-hint || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-delegation-hint.ps1\"", "timeout": 10 } ] }
     ]
   }
 }

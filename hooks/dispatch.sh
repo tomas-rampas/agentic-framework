@@ -10,6 +10,7 @@
 # Windows Git Bash (MSYS/MINGW/CYGWIN) -> runs hooks/<hook>.ps1 via pwsh.
 # Windows without Git Bash -> sh not found -> the "|| pwsh" arm is reached instead.
 # ALWAYS exits 0 so the "|| pwsh" arm is reached only when sh cannot spawn.
+# SECURITY: Chain safety relies on CLAUDE_PLUGIN_ROOT never containing double-quotes, backticks, or $( — guaranteed by CI-enforced kebab-case names, not platform contract.
 set -u
 
 hook=${1:-}
