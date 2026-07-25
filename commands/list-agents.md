@@ -3,6 +3,8 @@ name: list-agents
 description: Display all available agents with capabilities and status
 ---
 
+Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
+
 # List Agents Command
 
 ## Purpose
@@ -60,7 +62,7 @@ Display comprehensive information about all 21 specialized agents in the framewo
 
 Total: 21 agents (21 ready, 0 unavailable)
 Quality enforcement is framework-wide: every agent's committed work passes the
-peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
+peer-review Stop gate (${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1) before a session ends.
 ```
 
 ### 2. Category View (--language)
@@ -94,8 +96,8 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
   • Category: Language Expert
   • Model: sonnet (resolves to claude-sonnet-4-6)
   • Specialization: rust_development_systems_programming
-  • File: agents/rust-expert.md
-  • Configuration: claude.json ✓
+  • File: ${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md
+  • Configuration: ${CLAUDE_PLUGIN_ROOT}/claude.json ✓
 
 🎯 CAPABILITIES
   • Rust systems programming
@@ -108,7 +110,7 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
 
 🔧 QUALITY ENFORCEMENT
   • Framework-wide: committed work passes the peer-review Stop gate
-    (hooks/stop-peer-review-gate.ps1) before a session can end
+    (${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1) before a session can end
   • Review chain: code-review-gatekeeper → peer-review-critic
 
 🔗 RELATED AGENTS
@@ -117,7 +119,7 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
   • Delegates to: comprehensive-analyst for debugging
 
 📚 DOCUMENTATION
-  • Agent Guide: agents/rust-expert.md
+  • Agent Guide: ${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md
   • Examples: See delegate.md for routing examples
 ```
 
@@ -131,7 +133,7 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
       "category": "language_expert",
       "model": "sonnet",
       "specialization": "rust_development_systems_programming",
-      "file_path": "agents/rust-expert.md",
+      "file_path": "${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md",
       "status": "ready",
       "capabilities": [
         "Rust systems programming",
@@ -271,9 +273,9 @@ Works well with:
 ## Implementation Notes
 
 Agent information sourced from:
-1. **agents/*.md** - Agent definitions and capabilities
-2. **claude.json** - Agent configuration and models
-3. **CLAUDE.md** - Agent execution rules and routing
+1. **${CLAUDE_PLUGIN_ROOT}/agents/*.md** - Agent definitions and capabilities
+2. **${CLAUDE_PLUGIN_ROOT}/claude.json** - Agent configuration and models
+3. **${CLAUDE_PLUGIN_ROOT}/CLAUDE.md** - Agent execution rules and routing
 
 ## Quick Filters
 
@@ -295,7 +297,7 @@ Agent information sourced from:
 
 ## Notes
 
-- Agent list is derived from `claude.json` and `agents/*.md` (no hardcoded roster)
+- Agent list is derived from `${CLAUDE_PLUGIN_ROOT}/claude.json` and `${CLAUDE_PLUGIN_ROOT}/agents/*.md` (no hardcoded roster)
 - Status reflects configuration state (file presence, registry parity, model parity)
 - Use `/agent-status` for per-agent configuration detail
 - Combine with `/analyze-framework` for comprehensive view

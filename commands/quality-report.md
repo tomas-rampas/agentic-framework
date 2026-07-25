@@ -3,6 +3,8 @@ name: quality-report
 description: Generate a framework quality assessment based on actual configuration state
 ---
 
+Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
+
 # Quality Report Command
 
 ## Purpose
@@ -28,35 +30,36 @@ never via shell.
 ### 1. Configuration Integrity
 
 Validate core configuration files:
-- `claude.json` — Parse JSON, verify the registry matches `agents/`, check required fields
-- `settings.template.json` — Parse JSON, verify permissions structure and the hooks block
-- `.mcp.json` — Parse JSON, verify MCP server definitions
+- `${CLAUDE_PLUGIN_ROOT}/claude.json` — Parse JSON, verify the registry matches `${CLAUDE_PLUGIN_ROOT}/agents/`, check required fields
+- `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` — Parse JSON, verify the hook registration block
+- `${CLAUDE_PLUGIN_ROOT}/settings.template.json` — Parse JSON, verify the recommended user settings (permissions block, `alwaysThinkingEnabled`)
+- `${CLAUDE_PLUGIN_ROOT}/mcp-plugin/.mcp.json` — Parse JSON, verify MCP server definitions (ships in the optional agentic-framework-mcp plugin)
 
 ### 2. Agent Coverage
 
 Check agent ecosystem completeness:
-- All 21 agents have definition files in `agents/`
+- All 21 agents have definition files in `${CLAUDE_PLUGIN_ROOT}/agents/`
 - All agent files have valid YAML frontmatter (name, description, model, color)
-- Agent model fields match claude.json assignments
-- No orphaned agent files (files without claude.json entries)
+- Agent model fields match `${CLAUDE_PLUGIN_ROOT}/claude.json` assignments
+- No orphaned agent files (files without `${CLAUDE_PLUGIN_ROOT}/claude.json` entries)
 
 ### 3. Hook Architecture
 
 Assess the real hook system:
-- Registration parity: every script in the settings template's `hooks` block exists in `hooks/`, and vice versa (no dead scripts)
+- Registration parity: every script in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` exists in `${CLAUDE_PLUGIN_ROOT}/hooks/`, and vice versa (no dead scripts)
 - All event names are valid Claude Code hook events; all scripts pin PowerShell 7
-- Hook behavior tests pass (`tests/hooks.test.ps1`)
+- Hook behavior tests pass (`${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1`)
 - No references to deprecated agent names
 
 ### 4. Structural Integrity
 
 Verify directory structure:
-- `agents/` — one definition file per registered agent
-- `commands/` — Slash command definitions
-- `hooks/` — Registered hook scripts
-- `skills/` — Skill definitions
-- `scripts/` — Install + validation scripts
-- `tests/` — Consistency + hook harnesses
+- `${CLAUDE_PLUGIN_ROOT}/agents/` — one definition file per registered agent
+- `${CLAUDE_PLUGIN_ROOT}/commands/` — Slash command definitions
+- `${CLAUDE_PLUGIN_ROOT}/hooks/` — Registered hook scripts
+- `${CLAUDE_PLUGIN_ROOT}/skills/` — Skill definitions
+- `${CLAUDE_PLUGIN_ROOT}/scripts/` — Install + validation scripts
+- `${CLAUDE_PLUGIN_ROOT}/tests/` — Consistency + hook harnesses
 
 ### 5. Quality Score
 
@@ -87,8 +90,8 @@ FRAMEWORK QUALITY REPORT
 ========================
 
 Configuration Integrity:  ✓ claude.json valid (registry == filesystem)
-                         ✓ settings.template.json valid (hooks registered)
-                         ✓ .mcp.json valid
+                         ✓ hooks/hooks.json valid (registration parity OK)
+                         ✓ mcp-plugin/.mcp.json valid
 
 Agent Coverage:          all registered agents have definition files
                          all agent frontmatter valid (model parity OK)
