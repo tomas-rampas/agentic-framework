@@ -109,6 +109,10 @@ Assert 'SubagentStop path records verdict from last_assistant_message' ($r.Code 
 $r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'v4'; hook_event_name = 'SubagentStop'; agent_type = 'rust-expert'; last_assistant_message = 'VERDICT: APPROVED' })
 Assert 'SubagentStop ignores other agent types' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $stateDir 'peer-review' 'v4')))
 
+# Boundary: plugin-scoped agent type 'otherplugin:peer-review-critic' should NOT match
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'v4b'; hook_event_name = 'SubagentStop'; agent_type = 'otherplugin:peer-review-critic'; last_assistant_message = "Review done.`nVERDICT: APPROVED" })
+Assert 'SubagentStop ignores otherplugin:peer-review-critic (only agentic-framework:peer-review-critic allowed)' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $stateDir 'peer-review' 'v4b')))
+
 $r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'v5'; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'review-v5-1'; last_assistant_message = "The format is `"VERDICT: APPROVED`" normally, but here:`nVERDICT: CHANGES_REQUIRED" })
 $m = Get-Content (Join-Path $stateDir 'peer-review' 'v5') -Raw
 Assert 'last VERDICT occurrence wins over earlier quoted one' ($r.Code -eq 0 -and $m -match 'verdict=CHANGES_REQUIRED')
@@ -319,6 +323,24 @@ $m = Get-Content (Join-Path $stateDir 'peer-review' 'r8') -Raw
 $suppressed = Get-Content (Join-Path $stateDir 'peer-review' 'r8.verdict-suppressed') -Raw -ErrorAction SilentlyContinue
 Assert 'R8.b: same id=W at same HEAD suppressed (stays APPROVED)' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED' -and $m -notmatch 'CHANGES_REQUIRED')
 Assert 'R8.b: suppression audit line created with guard=instance-dedupe' ($r.Code -eq 0 -and $suppressed -match 'guard=instance-dedupe')
+
+Write-Host "record-subagent-run.ps1 (plugin-scoped agent names)"
+
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'plugin-sub1'; hook_event_name = 'SubagentStop'; agent_type = 'agentic-framework:peer-review-critic'; last_assistant_message = "Review done.`nVERDICT: APPROVED" })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'plugin-sub1') -Raw -ErrorAction SilentlyContinue
+Assert 'SubagentStop with plugin-scoped agent_type records verdict' ($r.Code -eq 0 -and (Test-Path (Join-Path $stateDir 'peer-review' 'plugin-sub1')))
+Assert 'plugin-scoped SubagentStop marker contains APPROVED verdict' ($r.Code -eq 0 -and $m -match 'verdict=APPROVED')
+
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'plugin-post1'; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_input = @{ subagent_type = 'agentic-framework:peer-review-critic' }; tool_response = @{ status = 'completed'; content = @(@{ type = 'text'; text = "Review done.`nVERDICT: CHANGES_REQUIRED" }) } })
+$m = Get-Content (Join-Path $stateDir 'peer-review' 'plugin-post1') -Raw -ErrorAction SilentlyContinue
+Assert 'PostToolUse with plugin-scoped subagent_type records verdict' ($r.Code -eq 0 -and (Test-Path (Join-Path $stateDir 'peer-review' 'plugin-post1')))
+Assert 'plugin-scoped PostToolUse marker contains CHANGES_REQUIRED verdict' ($r.Code -eq 0 -and $m -match 'verdict=CHANGES_REQUIRED')
+
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'plugin-neg-impostor'; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_input = @{ subagent_type = 'agentic-framework:impostor-agent' }; tool_response = "VERDICT: APPROVED" })
+Assert 'PostToolUse with wrong plugin-scoped agent does not record' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $stateDir 'peer-review' 'plugin-neg-impostor')))
+
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'plugin-neg-other'; hook_event_name = 'SubagentStop'; agent_type = 'otherplugin:some-agent'; last_assistant_message = "VERDICT: APPROVED" })
+Assert 'SubagentStop with different plugin agent does not record' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $stateDir 'peer-review' 'plugin-neg-other')))
 
 Write-Host "session-start-context.ps1"
 

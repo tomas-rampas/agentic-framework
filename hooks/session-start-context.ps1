@@ -6,7 +6,7 @@
 # peer-review final gate (Stop hook) is armed, plus a one-line routing reminder.
 # Fail-open: any error => exit 0 with no output.
 #
-# Registered in settings.json under hooks.SessionStart.
+# Registered in hooks/hooks.json via the agentic-framework plugin (SessionStart).
 
 try {
     $payload = [Console]::In.ReadToEnd() | ConvertFrom-Json -ErrorAction Stop
@@ -34,7 +34,7 @@ try {
     if ($base) {
         $ahead = git -C $cwd rev-list --count "$base..HEAD" 2>$null
         if ($LASTEXITCODE -eq 0 -and [int]$ahead -gt 0) {
-            Write-Output "[session-context] Branch '$branch' is $ahead commit(s) ahead of $base. The peer-review final gate (Stop hook) blocks ending a session with committed, unreviewed work — run the peer-review-critic subagent before finishing. Route specialist work to the matching subagent (see CLAUDE.md routing table)."
+            Write-Output "[session-context] Branch '$branch' is $ahead commit(s) ahead of $base. The peer-review final gate (Stop hook) blocks ending a session with committed, unreviewed work — run the peer-review-critic subagent before finishing. Route specialist work to the matching subagent (run /agentic-framework:list-agents for routing guidance)."
             exit 0
         }
     }
