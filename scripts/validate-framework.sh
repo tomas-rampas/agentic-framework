@@ -40,7 +40,7 @@ N_AGENTS="$(fact_agents | grep -c . || true)"
 echo "📋 Step 1: Validating Core Files"
 echo "--------------------------------"
 
-for core in CLAUDE.md claude.json settings.template.json .mcp.json; do
+for core in CLAUDE.md claude.json settings.template.json hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json mcp-plugin/.claude-plugin/plugin.json mcp-plugin/.mcp.json; do
   if [[ -f "$ROOT/$core" ]]; then
     echo -e "${GREEN}✅${NC} $core found"
   else

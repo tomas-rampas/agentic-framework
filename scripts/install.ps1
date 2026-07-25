@@ -17,9 +17,12 @@
     Claude Code uses to invoke hooks on this platform.
   - Merges the framework's MCP servers (.mcp.json) into the user-scope
     ~/.claude.json "mcpServers" block: missing servers are ADDED, existing
-    definitions are NEVER overwritten (yours always wins, even with -Force);
-    ${VAR:-default} placeholders are expanded from the environment at install
-    time. A timestamped backup is written before any change. -SkipMcp skips
+    definitions are NEVER overwritten (yours always wins, even with -Force).
+    For each server: env entries containing ${...} placeholders are NOT baked
+    (the server inherits from your OS environment at launch); ${VAR:-default}
+    placeholders in args are expanded from the environment at install time
+    (servers with empty args after expansion are skipped with a warning).
+    A timestamped backup is written before any change. -SkipMcp skips
     this step entirely.
   - Reports whether ~/.claude is a git clone of this framework and, if so,
     whether its checkout (commands/, agents/, skills/) is behind this repo —
@@ -47,6 +50,24 @@ $claudeHome = $ClaudeHome
 # User-scope Claude Code config (where `claude mcp add --scope user` writes):
 # the .claude.json sibling of the .claude directory.
 $claudeJsonPath = Join-Path (Split-Path $claudeHome -Parent) '.claude.json'
+
+# ── Deprecation Banner ─────────────────────────────────────────────────────────
+Write-Host ''
+Write-Host '╔════════════════════════════════════════════════════════════════════════╗'
+Write-Host '║                      DEPRECATION NOTICE                                ║'
+Write-Host '║                                                                        ║'
+Write-Host '║ This installer is DEPRECATED and will be removed in the next release. ║'
+Write-Host '║                                                                        ║'
+Write-Host '║ The supported path is the plugin pipeline:                             ║'
+Write-Host '║   /plugin marketplace add tomas-rampas/claude-agentic-framework       ║'
+Write-Host '║   /plugin install agentic-framework@claude-agentic-framework          ║'
+Write-Host '║   (optionally) /plugin install agentic-framework-mcp@...              ║'
+Write-Host '║   (then) /agentic-framework-mcp:setup                                 ║'
+Write-Host '║                                                                        ║'
+Write-Host '║ For migration of existing installs, see the migration section in      ║'
+Write-Host '║ README.md                                                              ║'
+Write-Host '╚════════════════════════════════════════════════════════════════════════╝'
+Write-Host ''
 
 Write-Host "Framework repo : $repoRoot"
 Write-Host "Claude home    : $claudeHome"
@@ -81,14 +102,70 @@ function Get-CanonJson($node) {
 }
 
 # Expand ${VAR} / ${VAR:-default} from the current environment (the syntax the
-# repo's .mcp.json uses). Applied at install time so the merged user-scope
-# definition is self-contained.
+# repo's .mcp.json uses), supporting nested defaults like ${VAR1:-${VAR2}}.
+# Expands innermost-first via repeated passes until no placeholders remain (max 10 iterations).
+# Applied at install time so the merged user-scope definition is self-contained.
 function Expand-EnvPlaceholder([string]$s) {
-    return [regex]::Replace($s, '\$\{(\w+)(?::-([^}]*))?\}', {
-        param($m)
-        $v = [Environment]::GetEnvironmentVariable($m.Groups[1].Value)
-        if ($null -ne $v -and $v -ne '') { $v } else { $m.Groups[2].Value }
-    })
+    $maxIterations = 10
+    for ($i = 0; $i -lt $maxIterations; $i++) {
+        $result = [regex]::Replace($s, '\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^${}]*))?\}', {
+            param($m)
+            $v = [Environment]::GetEnvironmentVariable($m.Groups[1].Value)
+            if ($null -ne $v -and $v -ne '') { $v } else { $m.Groups[2].Value ?? '' }
+        })
+        if ($result -eq $s) { break }  # No more replacements - done
+        $s = $result
+    }
+    return $s
+}
+
+# Remove env entries that contain ${...} placeholders (never expand secrets/env vars).
+# If the env dict becomes empty after removal, drop the entire env key.
+function Remove-EnvPlaceholders($node) {
+    if ($node -is [System.Collections.IDictionary]) {
+        $out = [ordered]@{}
+        foreach ($k in $node.Keys) {
+            if ($k -eq 'env' -and $node[$k] -is [System.Collections.IDictionary]) {
+                $filteredEnv = [ordered]@{}
+                foreach ($ek in $node[$k].Keys) {
+                    $ev = [string]$node[$k][$ek]
+                    if ($ev -notmatch '\$\{') {
+                        $filteredEnv[$ek] = $ev
+                    }
+                }
+                if ($filteredEnv.Count -gt 0) {
+                    $out[$k] = $filteredEnv
+                }
+            } else {
+                $out[$k] = Remove-EnvPlaceholders $node[$k]
+            }
+        }
+        return $out
+    }
+    if ($node -is [System.Management.Automation.PSCustomObject]) {
+        $out = [ordered]@{}
+        foreach ($p in $node.PSObject.Properties) {
+            if ($p.Name -eq 'env' -and $p.Value -is [System.Collections.IDictionary]) {
+                $filteredEnv = [ordered]@{}
+                foreach ($ek in $p.Value.Keys) {
+                    $ev = [string]$p.Value[$ek]
+                    if ($ev -notmatch '\$\{') {
+                        $filteredEnv[$ek] = $ev
+                    }
+                }
+                if ($filteredEnv.Count -gt 0) {
+                    $out[$p.Name] = $filteredEnv
+                }
+            } else {
+                $out[$p.Name] = Remove-EnvPlaceholders $p.Value
+            }
+        }
+        return [pscustomobject]$out
+    }
+    if ($node -is [System.Collections.IEnumerable] -and $node -isnot [string]) {
+        return @(@($node) | ForEach-Object { Remove-EnvPlaceholders $_ })
+    }
+    return $node
 }
 
 function Expand-ServerDef($node) {
@@ -172,7 +249,12 @@ if (-not (Test-Path $settingsPath)) {
 } else {
     $current = Get-Content $settingsPath -Raw | ConvertFrom-Json
     $tpl     = $template | ConvertFrom-Json
-    if ($current.PSObject.Properties['hooks'] -and -not $Force) {
+
+    # Plugin-era: if template has no "hooks" key, skip all hooks merging
+    if (-not $tpl.PSObject.Properties['hooks']) {
+        Write-Host '  hook registration now ships with the agentic-framework plugin (hooks/hooks.json); settings.json hooks merge skipped'
+        $summary['settings'] = 'skipped (plugin-era)'
+    } elseif ($current.PSObject.Properties['hooks'] -and -not $Force) {
         Write-Warning "A 'hooks' block already exists in $settingsPath - settings NOT modified."
         Write-Warning 'Re-run with -Force to replace the hooks block with the framework version.'
         $summary['settings'] = 'left untouched (hooks block exists; use -Force)'
@@ -199,7 +281,7 @@ if ($SkipMcp) {
     Write-Host '  skipped (-SkipMcp).'
     $summary['mcp'] = 'skipped'
 } else {
-    $mcpSourcePath = Join-Path $repoRoot '.mcp.json'
+    $mcpSourcePath = Join-Path $repoRoot 'mcp-plugin/.mcp.json'
     $frameworkMcp  = (Get-Content $mcpSourcePath -Raw | ConvertFrom-Json -AsHashtable).mcpServers
 
     # -AsHashtable everywhere in this section: real-world ~/.claude.json files
@@ -231,10 +313,40 @@ if ($SkipMcp) {
         if (-not ($userConfig['mcpServers'] -is [System.Collections.IDictionary])) {
             $userConfig['mcpServers'] = [ordered]@{}
         }
-        $added = 0; $identical = 0; $kept = 0
+        $added = 0; $identical = 0; $kept = 0; $skipped = 0
+        $envPlaceholderServers = @()
         foreach ($entry in $frameworkMcp.GetEnumerator()) {
             $name     = [string]$entry.Key
-            $resolved = Expand-ServerDef $entry.Value
+            # Remove env entries containing placeholders BEFORE expansion
+            $filtered = Remove-EnvPlaceholders $entry.Value
+            $resolved = Expand-ServerDef $filtered
+
+            # Track servers where env placeholders were removed
+            if ((Get-CanonJson $filtered) -ne (Get-CanonJson $entry.Value)) {
+                $envPlaceholderServers += $name
+            }
+
+            # Check for empty args after expansion
+            $hasEmptyArg = $false
+            $emptyArgName = ''
+            if ($null -ne $resolved.args) {
+                if ($resolved.args -is [string]) {
+                    if ([string]$resolved.args -eq '') {
+                        $hasEmptyArg = $true
+                    }
+                } elseif ($resolved.args -is [System.Collections.IEnumerable]) {
+                    $resolved.args | ForEach-Object {
+                        if ([string]$_ -eq '') { $hasEmptyArg = $true }
+                    }
+                }
+            }
+
+            if ($hasEmptyArg) {
+                Write-Host ("  {0,-22} skipped (unresolved env var - see warning below)" -f $name)
+                $skipped++
+                continue
+            }
+
             # Case-INSENSITIVE name match: a user's "Fetch" counts as the
             # framework's "fetch" - never add a case-variant duplicate server.
             $userKey = @($userConfig['mcpServers'].Keys) | Where-Object { [string]$_ -ieq $name } | Select-Object -First 1
@@ -247,7 +359,108 @@ if ($SkipMcp) {
                 Write-Host ("  {0,-22} kept yours (differs from framework definition - never overwritten)" -f $name); $kept++
             }
         }
-        if ($added -gt 0) {
+
+        # Report env placeholder removals once per affected server
+        foreach ($srvName in $envPlaceholderServers) {
+            Write-Host ("  $srvName`: env placeholders not baked — the server inherits from OS environment at launch")
+        }
+        if ($skipped -gt 0 -and $added -eq 0) {
+            # Skipped servers without any additions - print warning but don't modify config
+            Write-Host ""
+            Write-Host "  WARNING: $skipped server(s) skipped due to unresolved env variables:"
+            foreach ($entry in $frameworkMcp.GetEnumerator()) {
+                $name     = [string]$entry.Key
+                $filtered = Remove-EnvPlaceholders $entry.Value
+                $resolved = Expand-ServerDef $filtered
+                $hasEmptyArg = $false
+
+                # Check for empty args (same logic as in main loop)
+                if ($null -ne $resolved.args) {
+                    if ($resolved.args -is [string]) {
+                        if ([string]$resolved.args -eq '') {
+                            $hasEmptyArg = $true
+                        }
+                    } elseif ($resolved.args -is [System.Collections.IEnumerable]) {
+                        foreach ($arg in $resolved.args) {
+                            if ([string]$arg -eq '') {
+                                $hasEmptyArg = $true
+                                break
+                            }
+                        }
+                    }
+                }
+
+                if ($hasEmptyArg) {
+                    # Try to find the original placeholder variable name
+                    $origArgs = $entry.Value.args
+                    $emptyArgVar = ''
+                    if ($origArgs -is [string]) {
+                        if ($origArgs -match '\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}') {
+                            $emptyArgVar = $Matches[1]
+                        }
+                    } elseif ($origArgs -is [System.Collections.IEnumerable]) {
+                        foreach ($origArg in $origArgs) {
+                            if ([string]$origArg -match '\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}') {
+                                $emptyArgVar = $Matches[1]
+                                break
+                            }
+                        }
+                    }
+                    $varToSet = if ($emptyArgVar) { $emptyArgVar } else { 'MISSING_VAR' }
+                    Write-Host "    $name skipped: $varToSet is not set (its default is a session-runtime variable, unavailable at install time) — set $varToSet and re-run, or use the plugin pipeline"
+                }
+            }
+            Write-Host ""
+            Write-Host '  nothing to add - file untouched.'
+        } elseif ($added -gt 0) {
+            if ($skipped -gt 0) {
+                Write-Host ""
+                Write-Host "  WARNING: $skipped server(s) skipped due to unresolved env variables:"
+                foreach ($entry in $frameworkMcp.GetEnumerator()) {
+                    $name     = [string]$entry.Key
+                    $filtered = Remove-EnvPlaceholders $entry.Value
+                    $resolved = Expand-ServerDef $filtered
+                    $hasEmptyArg = $false
+                    $emptyArgVar = ''
+
+                    # Check for empty args (same logic as in main loop)
+                    if ($null -ne $resolved.args) {
+                        if ($resolved.args -is [string]) {
+                            if ([string]$resolved.args -eq '') {
+                                $hasEmptyArg = $true
+                            }
+                        } elseif ($resolved.args -is [System.Collections.IEnumerable]) {
+                            foreach ($arg in $resolved.args) {
+                                if ([string]$arg -eq '') {
+                                    $hasEmptyArg = $true
+                                    break
+                                }
+                            }
+                        }
+                    }
+
+                    if ($hasEmptyArg) {
+                        # Try to find the original placeholder variable name
+                        $origArgs = $entry.Value.args
+                        if ($origArgs -is [string]) {
+                            if ($origArgs -match '\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}') {
+                                $emptyArgVar = $Matches[1]
+                            }
+                        } elseif ($origArgs -is [System.Collections.IEnumerable]) {
+                            foreach ($origArg in $origArgs) {
+                                if ([string]$origArg -match '\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-[^}]*)?\}') {
+                                    $emptyArgVar = $Matches[1]
+                                    break
+                                }
+                            }
+                        }
+                        $varToSet = if ($emptyArgVar) { $emptyArgVar } else { 'MISSING_VAR' }
+                        Write-Host "    $name skipped: $varToSet is not set (its default is a session-runtime variable, unavailable at install time) — set $varToSet and re-run, or use the plugin pipeline"
+                    }
+                }
+                Write-Host ""
+            }
+
             if (Test-Path $claudeJsonPath) {
                 $backup = "$claudeJsonPath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
                 Copy-Item $claudeJsonPath $backup -Force
@@ -274,7 +487,9 @@ if ($SkipMcp) {
         } else {
             Write-Host '  nothing to add - file untouched.'
         }
-        $summary['mcp'] = "$added added, $identical identical, $kept kept yours"
+        $summaryText = "$added added, $identical identical, $kept kept yours"
+        if ($skipped -gt 0) { $summaryText += ", $skipped skipped (unresolved)" }
+        $summary['mcp'] = $summaryText
     }
 }
 
@@ -328,7 +543,10 @@ Write-Host 'Reminders:'
 Write-Host '  - Best run with no Claude Code session active: ~/.claude.json is Claude Code''s'
 Write-Host '    live config, and a session writing it concurrently could lose the merge.'
 Write-Host '  - MCP servers merged into the user scope apply everywhere; the project-level'
-Write-Host '    .mcp.json still applies to sessions started in the repo directory. Set'
-Write-Host '    CONTEXT7_API_KEY / MCP_FS_ROOT per .env.example (placeholders were expanded'
-Write-Host '    from the environment at install time).'
+Write-Host '    .mcp.json still applies to sessions started in the repo directory.'
+Write-Host '  - Servers that have unresolved env variables in their args (defaults are'
+Write-Host '    session-runtime variables like ${CLAUDE_PROJECT_DIR}) are skipped; set the'
+Write-Host '    missing variables and re-run, or use the plugin pipeline for automated setup.'
+Write-Host '  - Env entries containing placeholders are never baked into mcpServers; servers'
+Write-Host '    inherit CONTEXT7_API_KEY, MCP_FS_ROOT, etc. from your OS environment at launch.'
 Write-Host '  - Restart any running Claude Code session to pick up new hooks and commands.'

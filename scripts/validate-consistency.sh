@@ -170,24 +170,24 @@ section "[2] Category partition (.agent_categories partitions all agents)"
 # ===========================================================================
 # CHECK 3 - Hook registration parity (real hook architecture)
 # ===========================================================================
-# Hooks only execute when registered in the settings "hooks" block, so the
-# tracked settings.template.json and hooks/*.ps1 must agree exactly: every
+# Hooks only execute when registered in hooks/hooks.json, so the
+# tracked hooks.json and hooks/*.ps1 must agree exactly: every
 # registered script exists, every script is registered (no dead code), every
 # event name is a real Claude Code event, and every script pins PowerShell 7.
 # Shared logic lives in scripts/lib/hookcheck.sh (also used by validate-hooks.sh).
-section "[3] Hook registration parity (settings.template.json hooks <-> hooks/*.ps1)"
+section "[3] Hook registration parity (hooks/hooks.json <-> hooks/*.ps1)"
 {
   problems="$(hookcheck_problems)"
   if [[ -n "$problems" ]]; then
     while IFS=$'\t' read -r ptype subject; do
       [[ -z "$ptype" ]] && continue
       case "$ptype" in
-        no-hooks-block)       fail "settings template has no usable hooks block: $subject" ;;
+        no-hooks-block)       fail "hooks/hooks.json has no usable hooks block: $subject" ;;
         missing-hook-script)  fail "registered hook script missing on disk: hooks/$subject"
                               detail "missing-hook-script: $subject" ;;
-        orphan-hook-script)   fail "hook script not registered in settings.template.json: hooks/$subject"
+        orphan-hook-script)   fail "hook script not registered in hooks/hooks.json: hooks/$subject"
                               detail "orphan-hook-script: $subject" ;;
-        invalid-hook-event)   fail "unknown Claude Code hook event in settings.template.json: $subject"
+        invalid-hook-event)   fail "unknown Claude Code hook event in hooks/hooks.json: $subject"
                               detail "invalid-hook-event: $subject" ;;
         missing-requires-ps7) fail "hook script lacks '#Requires -Version 7.0' header: hooks/$subject"
                               detail "missing-requires-ps7: $subject" ;;
@@ -204,16 +204,23 @@ section "[3] Hook registration parity (settings.template.json hooks <-> hooks/*.
 # ===========================================================================
 # CHECK 4 - JSON validity (+ best-effort YAML validity)
 # ===========================================================================
-section "[4] JSON validity (claude.json, settings.template.json, .mcp.json, hooks/*.json) + YAML best-effort"
+section "[4] JSON validity (claude.json, settings.template.json, plugin manifests, hooks/hooks.json) + YAML best-effort"
 {
   json_bad=0 json_total=0
   # Collect target json files.
   json_files=()
   [[ -f "$ROOT/claude.json" ]] && json_files+=("$ROOT/claude.json")
   [[ -f "$ROOT/settings.template.json" ]] && json_files+=("$ROOT/settings.template.json")
-  [[ -f "$ROOT/.mcp.json" ]] && json_files+=("$ROOT/.mcp.json")
+  [[ -f "$ROOT/.claude-plugin/plugin.json" ]] && json_files+=("$ROOT/.claude-plugin/plugin.json")
+  [[ -f "$ROOT/.claude-plugin/marketplace.json" ]] && json_files+=("$ROOT/.claude-plugin/marketplace.json")
+  [[ -f "$ROOT/mcp-plugin/.claude-plugin/plugin.json" ]] && json_files+=("$ROOT/mcp-plugin/.claude-plugin/plugin.json")
+  [[ -f "$ROOT/mcp-plugin/.mcp.json" ]] && json_files+=("$ROOT/mcp-plugin/.mcp.json")
+  [[ -f "$ROOT/hooks/hooks.json" ]] && json_files+=("$ROOT/hooks/hooks.json")
   shopt -s nullglob
-  for f in "$FACTS_HOOKS_DIR"/*.json; do json_files+=("$f"); done
+  for f in "$FACTS_HOOKS_DIR"/*.json; do
+    # Skip hooks.json if already added above
+    [[ "$(basename "$f")" != "hooks.json" ]] && json_files+=("$f")
+  done
   shopt -u nullglob
 
   for f in "${json_files[@]}"; do
@@ -858,6 +865,54 @@ section "[12] Skills layout (skills/<name>/SKILL.md only; frontmatter name == di
     fi
   else
     info "no skills/ directory present"
+  fi
+}
+
+# ===========================================================================
+# CHECK 13 - Version sync (BLOCKING)
+# ===========================================================================
+# The version must be identical across three authoritative locations:
+#   - claude.json .version
+#   - .claude-plugin/plugin.json .version
+#   - mcp-plugin/.claude-plugin/plugin.json .version
+# All three must be identical non-empty strings; any drift is a defect.
+section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/.claude-plugin/plugin.json)"
+{
+  ok=1
+  versions=()
+  files=("$ROOT/claude.json" "$ROOT/.claude-plugin/plugin.json" "$ROOT/mcp-plugin/.claude-plugin/plugin.json")
+
+  for f in "${files[@]}"; do
+    if [[ ! -f "$f" ]]; then
+      ok=0
+      fail "version check: required file missing: ${f#"$ROOT"/}"
+      versions+=("")
+      continue
+    fi
+    v="$(_facts_jq -r '.version // empty' "$f" 2>/dev/null || echo "")"
+    if [[ -z "$v" ]]; then
+      ok=0
+      fail "version check: ${f#"$ROOT"/} has no (or empty) .version field"
+      versions+=("")
+    else
+      versions+=("$v")
+    fi
+  done
+
+  # All versions must be identical and non-empty
+  if [[ "$ok" -eq 1 ]]; then
+    first="${versions[0]}"
+    mismatch=0
+    for i in "${!versions[@]}"; do
+      if [[ "${versions[$i]}" != "$first" ]]; then
+        mismatch=1
+        fail "version mismatch: ${files[$i]#"$ROOT"/} has version '${versions[$i]}' != '$first'"
+        ok=0
+      fi
+    done
+    if [[ "$ok" -eq 1 ]]; then
+      pass "all three version fields are identical: $first"
+    fi
   fi
 }
 

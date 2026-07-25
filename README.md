@@ -264,7 +264,7 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 
 ## Enforcement Hooks
 
-The framework registers real Claude Code hooks via `settings.template.json` (installed into `~/.claude/settings.json` by `scripts/install.ps1`):
+The framework registers real Claude Code hooks via the **agentic-framework plugin** (`hooks/hooks.json`). The deprecated legacy installer (`scripts/install.ps1`) no longer registers hooks — it skips that step with a notice — and `settings.template.json` now carries only the recommended user settings (permissions, `alwaysThinkingEnabled`):
 
 | Hook | Event | Behavior |
 |------|-------|----------|
