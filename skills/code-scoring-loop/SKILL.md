@@ -34,13 +34,11 @@ things change when the deliverable is a diff:
 
 ## Gate zero — the quality bar
 
-Before iteration 1, the mechanical checks of `commands/delegate.md` §4's
+Before iteration 1, the mechanical checks of the `/agentic-framework:delegate` command (§4)'s
 quality bar must be clean: build 0 errors / 0 warnings, linter clean,
-formatter no diffs, full unit-test suite green. (§4's docs bullet is not part
+formatter no diffs, full unit-test suite green. (The docs bullet is not part
 of gate zero — in the `/agentic-framework:delegate` flow it lands in the per-todo doc step that
-follows the refactor.) Inside `/agentic-framework:delegate`'s BDD loop this means running the
-full suite at the start of the refactor step rather than waiting for §3
-step 5. Correctness is binary and comes first; scoring a red build is
+follows the refactor.) Correctness is binary and comes first; scoring a red build is
 meaningless. If the bar fails, fix that — this loop is not for broken code.
 
 ## The Loop

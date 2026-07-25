@@ -91,7 +91,24 @@ This runs the full check battery, including:
 - README focus-text parity (README Focus cells match claude.json .focus fields)
 - Generated blocks are fresh (list-agents summary, README framework-stats footer)
 
+Additional validation and testing:
+
+- `bash tests/plugin-manifests.test.sh` — plugin manifest validation
+- `claude plugin validate .` — validate agentic-framework plugin
+- `claude plugin validate ./mcp-plugin` — validate agentic-framework-mcp plugin (if present)
+- `pwsh -NoProfile -File tests/migrate.test.ps1` — legacy migration dry-run validation
+
 All blocking checks must pass (exit 0).
+
+### 5b. Plugin manifest consistency
+
+Releases must maintain version consistency across three manifest files:
+
+- `claude.json` → `.version` field
+- `.claude-plugin/plugin.json` → `version` field
+- `mcp-plugin/.claude-plugin/plugin.json` → `version` field (if agentic-framework-mcp is shipped)
+
+The validator enforces this parity with a blocking check (check 13).
 
 ### 6. Update prose tables
 

@@ -62,7 +62,7 @@ Analyzes every registered agent using the canonical categories from `${CLAUDE_PL
 - **domain_specialists** — database-specialist, frontend-specialist, security-specialist, uiux-specialist
 - **infrastructure_operations** — devops-orchestrator
 - **architecture_planning** — system-architect, product-owner
-- **quality_analysis** — comprehensive-analyst, code-review-gatekeeper, peer-review-critic
+- **quality_analysis** — comprehensive-analyst, code-review-gatekeeper, peer-review-critic, spec-compliance-reviewer
 - **documentation** — technical-docs-writer
 
 **For each agent:**

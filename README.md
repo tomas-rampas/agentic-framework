@@ -47,7 +47,7 @@ claude --version
 
 The optional `agentic-framework-mcp` plugin ships five MCP servers. They are provided by the plugin and become visible via `claude mcp list` after the plugin is installed (even if setup is skipped). Running `/agentic-framework-mcp:setup` configures their runtime environment variables.
 
-Set these runtime environment variables (globally or in `.env`; copy `.env.example` for placeholders):
+Set these runtime environment variables (globally via shell profile or system settings; copy `.env.example` for placeholders):
 
 | Env Var | Purpose |
 |---------|---------|
@@ -281,7 +281,7 @@ The framework distributes as two plugins:
 
 **agentic-framework** (main):
 ```
-~/.claude/plugins/agentic-framework/
+<plugin root>*                      # ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/<version>/
 ├── CLAUDE.md                # Agent execution rules and task routing
 ├── claude.json              # Agent registry (single source of truth for the tooling)
 ├── settings.template.json   # Recommended permissions + alwaysThinkingEnabled
@@ -295,15 +295,17 @@ The framework distributes as two plugins:
 ├── .github/workflows/       # CI (anti-drift consistency gate)
 └── security-check.sh        # Security validation
 ```
+*<plugin root> is the plugin cache path: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/<version>/`
 
 **agentic-framework-mcp** (optional):
 ```
-~/.claude/plugins/agentic-framework-mcp/
-├── mcp-plugin/
-│   └── .mcp.json            # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch)
-└── commands/
-    └── setup.md             # Registration command for MCP servers
+<plugin root>*                      # ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework-mcp/<version>/
+├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch)
+├── commands/
+│   └── setup.md             # Registration command for MCP servers
+└── [other plugin files]
 ```
+*<plugin root> is the plugin cache path: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework-mcp/<version>/`
 
 ---
 

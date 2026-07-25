@@ -3,9 +3,19 @@ description: Migrate legacy framework installs to the plugin pipeline
 argument-hint: <optional: any arguments to pass to the migration script>
 ---
 
+Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
+
 # /agentic-framework:migrate-legacy — Migrate Legacy Framework Installs
 
 This command helps you transition from manual script installs (`scripts/install.ps1`) to the modern plugin pipeline.
+
+## Invocation
+
+```
+pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT:-.}/scripts/migrate-legacy.ps1"
+```
+
+(Dry-run by default; add `-Apply` to perform the migration.)
 
 ## What it does
 
@@ -37,7 +47,7 @@ The output shows:
 Once you're satisfied with the dry-run report, apply the changes:
 
 ```
-/agentic-framework:migrate-legacy -Apply
+pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT:-.}/scripts/migrate-legacy.ps1" -Apply
 ```
 
 This:

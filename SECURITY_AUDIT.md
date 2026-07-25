@@ -27,7 +27,7 @@ Searched for common patterns:
 
 ### Security Practices In Place
 
-1. **Environment variable parameterization** — secrets are consumed via `${VAR}` expansion at runtime, never committed. Example: The optional agentic-framework-mcp plugin wires `"CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}"` from the environment / `.env`.
+1. **Environment variable parameterization** — secrets are consumed via `${VAR}` expansion at runtime, never committed. Example: The optional agentic-framework-mcp plugin wires `"CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}"` from the environment at server launch.
 2. **`.env` management** — only `.env.example` (placeholders) is committed; `.env` is gitignored.
 3. **`.gitignore` exclusions** — `/settings.json`, `/settings.local.json`, `/.credentials.json`, `/.env`, and local state directories are excluded from tracking.
 4. **Secret scanning script** — `security-check.sh` scans the tree for credential patterns (AWS keys `AKIA[0-9A-Z]{16}`, GitHub tokens `ghp_…`, private key blocks, generic API-key assignments).

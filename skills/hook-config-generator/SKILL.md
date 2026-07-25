@@ -1,6 +1,6 @@
 ---
 name: hook-config-generator
-description: Guide for adding a new real Claude Code hook to this framework (PowerShell 7 script in hooks/, registration in settings.template.json, tests, validation, install) — use when asked to create, generate, or extend a hook or quality gate.
+description: Guide for adding a new real Claude Code hook to this framework (PowerShell 7 script in hooks/, registration in hooks/hooks.json (exec-form, ${CLAUDE_PLUGIN_ROOT}), tests, validation) — use when asked to create, generate, or extend a hook or quality gate.
 ---
 
 # Adding a New Hook

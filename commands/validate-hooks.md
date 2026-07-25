@@ -111,7 +111,7 @@ Remediation: use a real Claude Code event (e.g. Stop)
 2. Register it in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` under the appropriate event, with a `timeout`.
 3. Add behavior cases to `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1`.
 4. Run `FRAMEWORK_ROOT="${CLAUDE_PLUGIN_ROOT:-.}" bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts/validate-hooks.sh"` and `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT:-.}/tests/hooks.test.ps1"`.
-5. The plugin pipeline handles hook installation into your live `~/.claude/settings.json`.
+5. Hooks ship with the plugin via hooks/hooks.json — nothing is written to settings.json; restart the session to load them.
 
 ## Integration
 
