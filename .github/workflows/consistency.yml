@@ -44,6 +44,26 @@ jobs:
       - name: Run consistency test harness
         run: bash tests/consistency.test.sh
 
+      - name: Run plugin manifest test harness
+        run: bash tests/plugin-manifests.test.sh
+
+      - name: Install Claude Code CLI
+        # Required for `claude plugin validate`; ubuntu-latest ships Node.js
+        # and npm preinstalled, same "no apt-get" posture as the jq check
+        # above, so no actions/setup-node step is needed.
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validate plugin manifest (root)
+        # A live spike confirmed `claude plugin validate` runs headless and
+        # unauthenticated in CI, exiting 0 in non-strict mode. --strict
+        # promotes warnings to errors and this repo currently carries known
+        # benign warnings, so the gate intentionally checks errors only
+        # rather than skipping manifest validation altogether.
+        run: claude plugin validate .
+
+      - name: Validate plugin manifest (mcp-plugin)
+        run: claude plugin validate ./mcp-plugin
+
   lint:
     name: shellcheck + PSScriptAnalyzer
     runs-on: ubuntu-latest
@@ -83,6 +103,10 @@ jobs:
       - name: Installer behavior tests (pwsh)
         shell: pwsh
         run: pwsh -NoProfile -File tests/install.test.ps1
+
+      - name: Migration behavior tests (pwsh)
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/migrate.test.ps1
 
       - name: Validate consistency under Git Bash
         # Exercises the Windows-specific code paths (CRLF-stripping jq wrapper,
