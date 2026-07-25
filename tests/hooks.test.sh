@@ -28,26 +28,32 @@ TESTS_RUN=0
 TESTS_PASS=0
 TESTS_FAIL=0
 
-# Track temp dirs for cleanup.
-# Scoped to THIS run's PID: concurrent harness instances must never delete
-# each other's live fixture dirs (a global __test_dirs__* glob here caused
-# cross-instance wipes mid-run).
+# Create a single mktemp-based harness root for all test fixtures.
+# All temp dirs are created under this single root; cleanup_all removes
+# it wholesale. This eliminates PID-based naming collision issues and
+# ensures predictable cleanup across concurrent runs.
+HARNESS_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/hooks-test.XXXXXXXX") || exit 1
+
+# Defensive precondition: ensure harness root is NOT inside a git worktree.
+# This belt-and-suspenders check prevents test dirs from mutating the repo
+# if mktemp accidentally creates a dir inside an existing worktree.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+if git -C "$HARNESS_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  printf 'FATAL: harness root %s is inside a git worktree\n' "$HARNESS_ROOT" >&2
+  exit 2
+fi
+
 cleanup_all() {
-  local d
   cd / 2>/dev/null || true
-  for d in "$SRC_REPO"/__test_dirs__$$.*; do
-    [ -d "$d" ] && rm -rf "$d"
-  done
+  [ -n "${HARNESS_ROOT:-}" ] && rm -rf "$HARNESS_ROOT"
 }
 trap cleanup_all EXIT INT TERM
 
 # --- temp dir and repo helpers ─────────────────────────────────────────────
 make_work_dir() {
-  # Create a throwaway temp directory for test fixtures.
-  # mktemp guarantees per-call uniqueness (PID.epoch alone collides when two
-  # sections run within the same second).
-  d=$(mktemp -d "$SRC_REPO/__test_dirs__$$.XXXXXX") || return 1
-  printf '%s\n' "$d"
+  # Create a throwaway temp directory under HARNESS_ROOT for test fixtures.
+  # All test subdirectories are created here, ensuring proper isolation.
+  mktemp -d "$HARNESS_ROOT/wd.XXXXXX"
 }
 
 make_test_repo() {
@@ -365,9 +371,8 @@ section "[SESSION-START-CONTEXT] base-branch state on main"
 
 section "[SESSION-START-CONTEXT] silent outside a git worktree"
 {
-  # Create temp dir OUTSIDE the repo (not under $SRC_REPO)
-  workdir="/tmp/hooks_test_outside_git_$$"
-  mkdir -p "$workdir"
+  # Create temp dir OUTSIDE the repo (under HARNESS_ROOT, safe from repo mutations)
+  workdir="$(make_work_dir)"
 
   # Test outside git worktree
   test_payload="{\"session_id\":\"s3\",\"cwd\":\"$workdir\"}"
@@ -1601,8 +1606,10 @@ section "[RECORD-SUBAGENT-RUN] plugin-scoped agentic-framework:peer-review-criti
 
 section "[EDGE-D1] dispatch handles paths with spaces in root"
 {
-  # Create temp dir WITH spaces in path
-  root_with_spaces="$SRC_REPO/__test_dirs__$$.space test root"
+  # Create temp dir WITH spaces in path (under HARNESS_ROOT, preserving space property)
+  # mktemp creates the base, then we add the space-containing subdirectory
+  base="$(make_work_dir)"
+  root_with_spaces="$base/space test root"
   mkdir -p "$root_with_spaces/hooks"
   cp "$SRC_REPO/hooks/dispatch.sh" "$root_with_spaces/hooks/" 2>/dev/null || true
 
@@ -1657,7 +1664,8 @@ section "[EDGE-D1-CHAIN] dispatch chain-quoting: spaces in path correctly tokeni
 {
   # Test that spaced root path is correctly handled in shell chain context
   # This validates the ${0%[\\/]*} separator-strip logic on a spaced absolute path
-  root_with_spaces="$SRC_REPO/__test_dirs__$$.space test chain"
+  base="$(make_work_dir)"
+  root_with_spaces="$base/space test chain"
   mkdir -p "$root_with_spaces/hooks"
   cp "$SRC_REPO/hooks/dispatch.sh" "$root_with_spaces/hooks/" 2>/dev/null || true
 
