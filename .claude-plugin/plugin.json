@@ -1,0 +1,10 @@
+{
+  "name": "agentic-framework",
+  "displayName": "Claude Agentic Framework",
+  "version": "3.1.0",
+  "description": "21-agent execution framework for Claude Code: specialist routing, spec-driven build loops, and an enforced peer-review quality gate (hooks included).",
+  "author": { "name": "Tomas Rampas" },
+  "homepage": "https://github.com/tomas-rampas/claude-agentic-framework",
+  "repository": "https://github.com/tomas-rampas/claude-agentic-framework",
+  "keywords": ["agents", "orchestration", "code-review", "quality-gate", "workflow"]
+}
