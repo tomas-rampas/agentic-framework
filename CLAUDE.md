@@ -99,7 +99,10 @@
   routing shell work to them preserves the weekly quota of Opus/Sonnet/Fable-tier callers.
 - Never shell out to read or search files — use the Read/Grep/Glob tools directly.
 - **bash-expert** and **powershell-expert** are terminal executors: they run everything
-  themselves and never delegate onward, to any agent or to themselves.
+  themselves and never delegate onward, to any agent or to themselves. This is enforced
+  structurally — their frontmatter carries `disallowedTools: Agent` (a denylist, unlike the
+  reviewers' curated `tools:` allowlists below: executors keep every tool except Agent,
+  while reviewers enumerate exactly what they may use).
 - **peer-review-critic** and **spec-compliance-reviewer** are exempt by design: their
   tools allowlist omits the Agent tool, so they gather their own evidence directly.
 - Executors return a distilled report: working directory and branch, the exact command,
