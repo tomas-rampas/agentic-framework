@@ -197,6 +197,8 @@ section "[3] Hook registration parity (hooks/hooks.json <-> hooks/*.ps1)"
                               detail "missing-sh-shebang: $subject" ;;
         missing-set-u)        fail ".sh hook script lacks 'set -u' line: hooks/$subject"
                               detail "missing-set-u: $subject" ;;
+        missing-dispatch-allowlist) fail "dispatch.sh allowlist missing hook name: hooks/$subject"
+                              detail "missing-dispatch-allowlist: $subject" ;;
         invalid-hook-event)   fail "unknown Claude Code hook event in hooks/hooks.json: $subject"
                               detail "invalid-hook-event: $subject" ;;
         missing-requires-ps7) fail ".ps1 hook script lacks '#Requires -Version 7.0' header: hooks/$subject"

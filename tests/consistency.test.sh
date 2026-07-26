@@ -250,6 +250,22 @@ section "[6] Orphan hook script: add unregistered hooks/zzz-orphan.ps1 -> non-ze
 }
 
 # ===========================================================================
+# CASE 6b - dispatch.sh allowlist missing: drop a registered hook name from
+#           dispatch.sh case statement -> check 3 must fail.
+# ===========================================================================
+section "[6b] dispatch.sh allowlist incomplete: drop 'record-subagent-run' from case -> non-zero (check 3)"
+{
+  copy="$(make_copy)"
+  # Remove 'record-subagent-run|' from the dispatch.sh case statement, leaving
+  # stop-peer-review-gate|session-start-context|pretooluse-delegation-hint
+  sed -i 's/stop-peer-review-gate|record-subagent-run|/stop-peer-review-gate|/' "$copy/hooks/dispatch.sh"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails when dispatch.sh allowlist is incomplete"
+  assert_out_contains "reports missing-dispatch-allowlist for record-subagent-run" "missing-dispatch-allowlist: record-subagent-run"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # CASE 7 - Stale claude.json description ("18-agent") -> check 6a must fail.
 # ===========================================================================
 section "[7] Stale architecture description: claude.json set to '18-agent' -> non-zero"

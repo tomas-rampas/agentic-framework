@@ -56,7 +56,7 @@ DEP_FOUND=0
 while IFS= read -r name; do
   [[ -z "$name" ]] && continue
   shopt -s nullglob
-  for f in "$FACTS_HOOKS_DIR"/*.ps1; do
+  for f in "$FACTS_HOOKS_DIR"/*.ps1 "$FACTS_HOOKS_DIR"/*.sh; do
     # -w: word-boundary match so a deprecated token that happens to be a
     # substring of an unrelated identifier cannot false-positive.
     hits="$(grep -nwF "$name" "$f" 2>/dev/null)"

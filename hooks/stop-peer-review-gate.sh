@@ -42,14 +42,18 @@ review_dir="$state_root/peer-review"
 marker="$review_dir/$session_id"
 fired="$review_dir/${session_id}.fired"
 
-# Parse verdict from marker (last-wins, anchored regex, CR-tolerant)
+# Parse verdict from marker (fail-closed precedence: CHANGES_REQUIRED > APPROVED, anchored regex, CR-tolerant).
+# Note: record-subagent-run.sh writes exactly one verdict line per marker (atomic rewrite via temp file),
+# so the dual-token case is unreachable in practice. Precedence is ordered for defense-in-depth: check
+# CHANGES_REQUIRED first (fail-closed) before APPROVED (fail-open). If somehow a marker had both tokens
+# (impossible with current recorder contract), CHANGES_REQUIRED wins.
 verdict=""
 if [ -f "$marker" ]; then
   content=$(cat "$marker" 2>/dev/null | tr -d '\r')
-  if printf '%s' "$content" | grep -q '^verdict=APPROVED$'; then
-    verdict="APPROVED"
-  elif printf '%s' "$content" | grep -q '^verdict=CHANGES_REQUIRED$'; then
+  if printf '%s' "$content" | grep -q '^verdict=CHANGES_REQUIRED$'; then
     verdict="CHANGES_REQUIRED"
+  elif printf '%s' "$content" | grep -q '^verdict=APPROVED$'; then
+    verdict="APPROVED"
   else
     verdict=""  # legacy marker without verdict line - allow
   fi
@@ -145,5 +149,5 @@ else
 fi
 
 # Output JSON (compact, with jq for proper escaping)
-printf '%s' "$reason" | jq -cRn --arg r "$(cat)" '{"decision":"block","reason":$r}'
+jq -cn --arg r "$reason" '{"decision":"block","reason":$r}'
 exit 0

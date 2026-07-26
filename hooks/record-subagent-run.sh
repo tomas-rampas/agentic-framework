@@ -211,18 +211,6 @@ payload=$(cat)
     # Always write at least the timestamp (records that reviewer ran); add verdict/head only if verdict was parsed
     timestamp=$(date -u +%Y-%m-%dT%H:%M:%S%z 2>/dev/null || printf '%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
 
-    # Set up review directory if not already set (for verdict-less marker writes)
-    if [ -z "$review_dir" ]; then
-        stateRoot="${CLAUDE_STATE_DIR:-}"
-        if [ -z "$stateRoot" ]; then
-            stateRoot="$HOME/.claude/.state"
-        fi
-        review_dir="$stateRoot/peer-review"
-        marker="$review_dir/$session_id"
-        sources_file="$review_dir/$session_id.verdict-sources"
-        mkdir -p "$review_dir" 2>/dev/null || true
-    fi
-
     # Write marker atomically with temp file — build via printf for reliability
     tmp="$marker.tmp.$$"
     {

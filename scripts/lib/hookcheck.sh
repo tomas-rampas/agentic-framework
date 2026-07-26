@@ -144,4 +144,30 @@ hookcheck_problems() {
       printf 'missing-set-u\t%s\n' "$f"
     fi
   done <<< "$sh_files"
+
+  # (j) dispatch.sh: allowlist must include all registered hook names
+  if [[ -f "$FACTS_HOOKS_DIR/dispatch.sh" ]]; then
+    # Extract the case statement pattern from dispatch.sh
+    # Look for lines like: "  hook1|hook2|hook3) ;;" between "case "$hook" in" and "esac"
+    # Extract the first pattern line (before the *) catch-all), then extract just the pattern part
+    dispatch_line=$(sed -n '/^[[:space:]]*case "\$hook" in$/,/^[[:space:]]*esac$/p' "$FACTS_HOOKS_DIR/dispatch.sh" 2>/dev/null | \
+                    grep -v '^\*' | grep -v '^[[:space:]]*case' | grep -v '^[[:space:]]*esac' | head -1)
+    # Extract pattern: everything before the closing paren
+    dispatch_pattern=$(printf '%s' "$dispatch_line" | sed 's/^[[:space:]]*//; s/[[:space:]]*)[[:space:]]*;;.*//')
+
+    # Convert pipe-separated pattern to a sorted list of hook names (without .sh extension)
+    allowlist_names=$(printf '%s' "$dispatch_pattern" | tr '|' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | sort -u)
+
+    # Compare: every registered hook name (except dispatch.sh itself) must appear in allowlist
+    # Note: $registered_sh contains names WITH .sh extension (e.g., stop-peer-review-gate.sh),
+    # but allowlist_names has them WITHOUT the extension. Strip .sh for comparison.
+    while IFS= read -r hook_name; do
+      [[ -z "$hook_name" || "$hook_name" == "dispatch.sh" ]] && continue
+      # Remove .sh extension for comparison
+      hook_base="${hook_name%.sh}"
+      if ! printf '%s\n' "$allowlist_names" | grep -qxF "$hook_base"; then
+        printf 'missing-dispatch-allowlist\t%s\n' "$hook_name"
+      fi
+    done <<< "$registered_sh"
+  fi
 }
