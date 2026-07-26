@@ -113,6 +113,17 @@ jobs:
       - name: Run hooks test harness (macOS/POSIX)
         run: bash tests/hooks.test.sh
 
+      - name: Cross-impl equivalence (sh only; pwsh unavailable on macOS)
+        # tests/hooks-equivalence.test.sh self-skips if pwsh is unavailable;
+        # running it here documents .sh-only equivalence and validates the self-skip
+        run: bash tests/hooks-equivalence.test.sh
+
+      - name: Plugin manifest tests (pure bash/jq)
+        run: bash tests/plugin-manifests.test.sh
+
+      - name: Check generated docs are fresh (pure bash/jq)
+        run: bash scripts/generate-docs.sh --check
+
   hooks-windows:
     name: hook behavior + validators (windows)
     runs-on: windows-latest

@@ -209,9 +209,10 @@ section "[3] Hook registration parity (hooks/hooks.json <-> hooks/*.ps1)"
       esac
     done <<< "$problems"
   else
-    n_scripts="$(fact_hook_script_files | grep -c . || true)"
+    n_ps1="$(fact_hook_script_files | grep -c . || true)"
+    n_sh="$(fact_hook_sh_impl_files | grep -c . || true)"
     n_events="$(fact_hook_events | grep -c . || true)"
-    pass "$n_scripts hook script(s) registered across $n_events event(s); parity OK (both .ps1 and .sh), all events valid, all pin PS7"
+    pass "$n_ps1 .ps1 + $n_sh .sh hook script(s) registered across $n_events event(s); dispatch chains coherent; all events valid"
   fi
 }
 
