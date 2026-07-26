@@ -92,7 +92,7 @@ try {
 
 ```bash
 # EXAMPLE: Copy and paste this into YOUR OWN terminal:
-# EXAMPLE: Secure token capture and persistence (works on bash, zsh, and ksh; read -s is a shell extension, not POSIX — dash/ash don't support it)
+# EXAMPLE: Secure token capture and persistence (works on bash and zsh; read -s is a shell extension, not POSIX — dash/ash don't support it; note ksh's -s means "save to history", not silence — so this snippet is NOT safe under ksh)
 printf 'Paste your Context7 API key: '
 read -r -s C7KEY
 printf '\n'
@@ -195,7 +195,7 @@ Detect the user's login shell and append to its profile (with guard to prevent d
 
 ```bash
 # EXAMPLE: Option C - Validate and persist token (user provides in chat)
-# EXAMPLE: Secure token capture and persistence (works on bash, zsh, and ksh; read -s is a shell extension, not POSIX — dash/ash don't support it)
+# EXAMPLE: Secure token capture and persistence (works on bash and zsh; read -s is a shell extension, not POSIX — dash/ash don't support it; note ksh's -s means "save to history", not silence — so this snippet is NOT safe under ksh)
 printf 'Paste your Context7 API key: '
 read -r -s C7KEY
 printf '\n'
