@@ -321,8 +321,8 @@ $sandboxDir = Join-Path $workRoot 'home'
 $claudeHome = Join-Path $sandboxDir '.claude'
 New-Item -ItemType Directory -Force -Path $claudeHome | Out-Null
 
-# Create a minimal config for the test
-$settings = @{ hooks = @{} }
+# Create a minimal config for the test (no hooks block, so nothing gets modified during migration)
+$settings = @{}
 $settings | ConvertTo-Json -Depth 16 | Set-Content (Join-Path $claudeHome 'settings.json') -NoNewline
 '{"test":"data"}' | Set-Content (Join-Path $claudeHome 'claude.json') -NoNewline
 
@@ -351,6 +351,11 @@ New-Item -ItemType Directory -Force -Path (Join-Path $claudeHome 'todos') | Out-
 git -C $claudeHome add -A 2>$null
 git -C $claudeHome commit -m "protected" 2>$null | Out-Null
 
+# Add .gitignore to exclude backup files (so they don't dirty the tree when migrator creates them)
+'*.bak-*' | Set-Content (Join-Path $claudeHome '.gitignore') -NoNewline
+git -C $claudeHome add .gitignore 2>$null
+git -C $claudeHome commit -m "add .gitignore" 2>$null | Out-Null
+
 # Create a bare remote repo and push commits (so they're not "unpushed")
 $remoteDir = Join-Path $workRoot 'remote.git'
 git init --bare $remoteDir 2>$null | Out-Null
@@ -359,13 +364,12 @@ git -C $claudeHome remote add origin $remoteDir 2>$null
 $branch = git -C $claudeHome rev-parse --abbrev-ref HEAD 2>$null
 git -C $claudeHome push -u origin $branch 2>$null | Out-Null
 
-# Run in dry-run mode first to verify summary is generated correctly
-$r = Invoke-Migrator $claudeHome
+# Run with -Apply to exercise the actual deletion logic and protected-path filtering
+$r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply')
 
 Assert 'checkout cleanup runs' ($r.Code -eq 0)
 Assert 'checkout cleanup detects repo' ($r.Out -imatch 'Checkout Cleanup|detected|git clone')
-# This assertion only covers the dry-run path; the apply+success path (where the regression originally occurred) is not exercised by this fixture because -Apply aborts before reaching that code (backup step dirties tree before Section 5 check).
-Assert 'checkout summary row present (dry-run path)' ($r.Out -match 'checkout:\s+\d+\s+tracked file\(s\),\s+\.git')
+Assert 'checkout summary row present (apply path)' ($r.Out -match 'checkout:\s+\d+\s+tracked file\(s\),\s+\.git')
 Assert '.state preserved' ((Test-Path (Join-Path $claudeHome '.state' 'marker.txt')))
 Assert 'settings.local.json preserved' ((Test-Path (Join-Path $claudeHome 'settings.local.json')))
 Assert 'projects dir preserved' ((Test-Path (Join-Path $claudeHome 'projects' 'myp' 'file.txt')))

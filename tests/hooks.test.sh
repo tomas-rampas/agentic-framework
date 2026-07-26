@@ -1901,6 +1901,14 @@ section "[INTEGRATION-ABSENT-PLUGIN] otherplugin:some-agent absent from registry
   rm -rf "$workdir"
 }
 
+# NOTE: [GATE-PRECEDENCE] tests the .sh-specific implementation detail that when a
+# marker file contains both verdict tokens (unreachable via the recorder's real
+# write path), the .sh version implements fail-closed (CHANGES_REQUIRED is tested
+# first, regardless of which verdict line appears earlier in the file). The .ps1
+# twin uses first-match-wins parsing and does resolve the same dual-token marker
+# differently (measured: .sh blocks, .ps1 allows) — this property is NOT asserted
+# across implementations. This test documents .sh behavior only and is not mirrored
+# in hooks-equivalence.
 section "[GATE-PRECEDENCE] dual verdict in marker: CHANGES_REQUIRED wins over APPROVED (fail-closed)"
 {
   workdir="$(make_work_dir)" || exit 2

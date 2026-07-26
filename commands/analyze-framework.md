@@ -76,7 +76,7 @@ Analyzes every registered agent using the canonical categories from `${CLAUDE_PL
 
 Hooks are real Claude Code hooks: .ps1/.sh script pairs in `${CLAUDE_PLUGIN_ROOT}/hooks/`, routed by `${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh`, registered in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` as shell-form dispatch chains.
 
-- Pair parity: every registered hook name has both .ps1 and .sh implementations; dispatch.sh is present and referenced in every registered chain; no orphans on either side (check 3). The name allowlist inside dispatch.sh is not validator-checked.
+- Pair parity: every registered hook name has both .ps1 and .sh implementations; dispatch.sh is present and referenced in every registered chain; no orphans on either side (check 3). The name allowlist inside dispatch.sh is validator-checked: every registered hook name must appear in the case statement pattern.
 - Behavior: `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1` (PowerShell suite) and `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.sh` (POSIX suite) exercise block/allow paths of the peer-review Stop gate, the run recorder, session context, and the delegation hint on both implementations
 - Design rationale: `${CLAUDE_PLUGIN_ROOT}/docs/design/`
 

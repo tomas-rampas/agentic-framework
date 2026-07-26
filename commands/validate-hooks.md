@@ -51,11 +51,12 @@ FRAMEWORK_ROOT="${CLAUDE_PLUGIN_ROOT:-.}" bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts
 It asserts:
 
 1. **Pair parity** — every hook name registered in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` has both `.ps1` and `.sh` implementations on disk; every `.ps1` and `.sh` on disk is registered (no orphans on either side).
-2. **Dispatch presence** — `${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh` exists and is referenced in every registered hook chain. (The name allowlist inside dispatch.sh itself is NOT validator-checked — keep it in sync by hand when adding a hook.)
+2. **Dispatch presence** — `${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh` exists and is referenced in every registered hook chain. The name allowlist inside dispatch.sh is validator-checked: every registered hook name must appear in the case statement pattern.
 3. **Event validity** — every event key is a real Claude Code hook event (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Notification`, `Stop`, `SubagentStop`, `SessionStart`, `SessionEnd`, `PreCompact`).
 4. **PowerShell pin** — every `.ps1` script starts with `#Requires -Version 7.0`.
 5. **Shell pins** — every `.sh` script starts with `#!/bin/sh` (shebang) and has `set -u` (second line).
-6. **No deprecated agent names** referenced by any hook script.
+6. **Dispatch chain coherence** — in each hook chain, the dispatch-shell argument matches the `.ps1` filename stem.
+7. **No deprecated agent names** referenced by any hook script.
 
 ## Behavior Validation (--behavior)
 
@@ -78,11 +79,11 @@ Hook Architecture Validation
 
 Checking hook registration parity (hooks/hooks.json <-> hooks/*.ps1)...
 
-OK: 4 hook script(s) registered across 5 event(s); no orphans; all events valid; all pin PS7
+OK: 4 .ps1 + 5 .sh hook script(s) registered across 5 event(s); dispatch chains coherent; all events valid
 
 Checking for deprecated agent references in hooks/...
 
-OK: no deprecated agent references found
+OK: no deprecated agent references found (checked 7 names)
 
 ================================
 Hook validation passed

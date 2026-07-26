@@ -182,6 +182,9 @@ hookcheck_problems() {
     # Extract dispatch-arg: the word after dispatch.sh (may be quoted or bare)
     dispatch_arg=$(printf '%s' "$cmd" | sed -n 's/.*dispatch\.sh[[:space:]]*["'"'"']\{0,1\}[[:space:]]*\([^"'"'"' ][^ ]*\).*/\1/p')
     # Extract .ps1 filename: the basename after -File argument (look for -File context, not greedy from start)
+    # NOTE: This regex requires the .ps1 path to be double-quoted (e.g., -File "...name.ps1").
+    # Unquoted or single-quoted forms will not match and the check silently no-ops (acceptable
+    # since hooks.json is generated/controlled).
     ps1_path=$(printf '%s' "$cmd" | sed -n 's/.*-File[[:space:]]*"\([^"]*\.ps1\)".*/\1/p')
     ps1_file=$(basename "$ps1_path" 2>/dev/null)
     ps1_stem="${ps1_file%.ps1}"
@@ -190,4 +193,5 @@ hookcheck_problems() {
       printf 'chain-name-mismatch\t%s (dispatch: %s vs .ps1: %s)\n' "$cmd" "$dispatch_arg" "$ps1_stem"
     fi
   done
+  return 0
 }

@@ -46,7 +46,7 @@ Check agent ecosystem completeness:
 ### 3. Hook Architecture
 
 Assess the real hook system:
-- Pair parity: every hook name in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` has both .ps1 and .sh implementations; dispatch.sh is present and referenced in every registered chain; no orphans on either side (the dispatch.sh name allowlist itself is not validator-checked)
+- Pair parity: every hook name in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` has both .ps1 and .sh implementations; dispatch.sh is present and referenced in every registered chain; no orphans on either side. The name allowlist inside dispatch.sh is validator-checked: every registered hook name must appear in the case statement pattern
 - All event names are valid Claude Code hook events; all .ps1 scripts pin PowerShell 7; all .sh scripts have proper shebang and `set -u`
 - Hook behavior tests pass (`${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1` and `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.sh`)
 - No references to deprecated agent names
