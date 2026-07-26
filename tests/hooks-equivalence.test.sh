@@ -36,8 +36,16 @@ TESTS_FAIL=0
 # Create a single mktemp-based harness root for all test fixtures.
 # All temp dirs are created under this single root; cleanup_all removes
 # it wholesale. This eliminates PID-based naming collision issues and
-# ensures predictable cleanup across concurrent runs.
+# ensures predictable cleanup across concurrent runs (a prior incident:
+# a shared/global glob pattern caused one test-harness instance to delete
+# another CONCURRENT instance's live fixture directories mid-run).
 HARNESS_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/hooks-equiv-test.XXXXXXXX") || exit 1
+
+cleanup_all() {
+  cd / 2>/dev/null || true
+  [ -n "${HARNESS_ROOT:-}" ] && rm -rf "$HARNESS_ROOT"
+}
+trap cleanup_all EXIT INT TERM
 
 # Defensive precondition: ensure harness root is NOT inside a git worktree.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
@@ -46,14 +54,13 @@ if git -C "$HARNESS_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 2
 fi
 
-cleanup_all() {
-  cd / 2>/dev/null || true
-  [ -n "${HARNESS_ROOT:-}" ] && rm -rf "$HARNESS_ROOT"
-}
-trap cleanup_all EXIT INT TERM
-
 make_work_dir() {
-  mktemp -d "$HARNESS_ROOT/wd.XXXXXX"
+  local wd
+  wd=$(mktemp -d "$HARNESS_ROOT/wd.XXXXXX") || {
+    printf 'FATAL: mktemp failed\n' >&2
+    exit 2
+  }
+  printf '%s\n' "$wd"
 }
 
 make_test_repo() {

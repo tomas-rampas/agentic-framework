@@ -31,8 +31,16 @@ TESTS_FAIL=0
 # Create a single mktemp-based harness root for all test fixtures.
 # All temp dirs are created under this single root; cleanup_all removes
 # it wholesale. This eliminates PID-based naming collision issues and
-# ensures predictable cleanup across concurrent runs.
+# ensures predictable cleanup across concurrent runs (a prior incident:
+# a shared/global glob pattern caused one test-harness instance to delete
+# another CONCURRENT instance's live fixture directories mid-run).
 HARNESS_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/hooks-test.XXXXXXXX") || exit 1
+
+cleanup_all() {
+  cd / 2>/dev/null || true
+  [ -n "${HARNESS_ROOT:-}" ] && rm -rf "$HARNESS_ROOT"
+}
+trap cleanup_all EXIT INT TERM
 
 # Defensive precondition: ensure harness root is NOT inside a git worktree.
 # This belt-and-suspenders check prevents test dirs from mutating the repo
@@ -43,17 +51,16 @@ if git -C "$HARNESS_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 2
 fi
 
-cleanup_all() {
-  cd / 2>/dev/null || true
-  [ -n "${HARNESS_ROOT:-}" ] && rm -rf "$HARNESS_ROOT"
-}
-trap cleanup_all EXIT INT TERM
-
 # --- temp dir and repo helpers ─────────────────────────────────────────────
 make_work_dir() {
   # Create a throwaway temp directory under HARNESS_ROOT for test fixtures.
   # All test subdirectories are created here, ensuring proper isolation.
-  mktemp -d "$HARNESS_ROOT/wd.XXXXXX"
+  local wd
+  wd=$(mktemp -d "$HARNESS_ROOT/wd.XXXXXX") || {
+    printf 'FATAL: mktemp failed\n' >&2
+    exit 2
+  }
+  printf '%s\n' "$wd"
 }
 
 make_test_repo() {
@@ -1886,6 +1893,53 @@ section "[INTEGRATION-ABSENT-PLUGIN] otherplugin:some-agent absent from registry
     _pass "INTEGRATION-ABSENT-PLUGIN: no marker created (agent not in registry)"
   else
     _fail "INTEGRATION-ABSENT-PLUGIN: should ignore" "unexpected marker created"
+  fi
+
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[GATE-PRECEDENCE] dual verdict in marker: CHANGES_REQUIRED wins over APPROVED (fail-closed)"
+{
+  workdir="$(make_work_dir)"
+  mkdir -p "$workdir/test_repo" "$workdir/state/peer-review"
+  testgit="$workdir/test_repo"
+  export CLAUDE_STATE_DIR="$workdir/state"
+
+  # Build test repo
+  git -C "$testgit" init -q -b main
+  git -C "$testgit" config user.email 'test@test.local'
+  git -C "$testgit" config user.name 'hooks-test'
+  printf 'one\n' > "$testgit/a.txt"
+  git -C "$testgit" add -A
+  git -C "$testgit" commit -q -m 'init'
+  git -C "$testgit" checkout -q -b feature/x
+  printf 'two\n' > "$testgit/b.txt"
+  git -C "$testgit" add -A
+  git -C "$testgit" commit -q -m 'feature work'
+
+  # Create marker with BOTH lines (APPROVED first, to prove CHANGES_REQUIRED still wins)
+  marker_file="$CLAUDE_STATE_DIR/peer-review/precedence-test"
+  {
+    printf 'verdict=APPROVED\n'
+    printf 'verdict=CHANGES_REQUIRED\n'
+  } > "$marker_file"
+
+  # Run gate hook with ahead-of-base scenario
+  test_payload="{\"session_id\":\"precedence-test\",\"cwd\":\"$testgit\",\"stop_hook_active\":false}"
+  RUN_OUT="$(printf '%s' "$test_payload" | sh "$SRC_REPO/hooks/stop-peer-review-gate.sh" 2>&1)"
+  RUN_RC=$?
+
+  assert_rc_zero "GATE-PRECEDENCE: hook exits 0 (always returns decision JSON)"
+  if printf '%s' "$RUN_OUT" | grep -q '"decision":"block"'; then
+    _pass "GATE-PRECEDENCE: correctly blocks (CHANGES_REQUIRED precedence)"
+  else
+    _fail "GATE-PRECEDENCE: should block" "expected decision:block, got: $RUN_OUT"
+  fi
+  if printf '%s' "$RUN_OUT" | grep -q 'CHANGES_REQUIRED'; then
+    _pass "GATE-PRECEDENCE: reason mentions CHANGES_REQUIRED (not APPROVED)"
+  else
+    _fail "GATE-PRECEDENCE: reason string" "expected CHANGES_REQUIRED mention, got: $RUN_OUT"
   fi
 
   unset CLAUDE_STATE_DIR

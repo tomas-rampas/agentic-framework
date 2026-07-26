@@ -29,6 +29,9 @@ SessionStart
 SessionEnd
 PreCompact'
 
+# Problem types (continued from header):
+#   chain-name-mismatch    dispatch-arg name differs from .ps1 filename stem in same chain
+
 # hookcheck_problems - print one "<type>TAB<subject>" line per problem found.
 # Empty output (and exit 0) means the hook architecture is consistent.
 # Parity checks assert filename presence/parity only; they do not inspect command strings for appended shell content (dev/CI lint, not a runtime boundary).
@@ -151,7 +154,7 @@ hookcheck_problems() {
     # Look for lines like: "  hook1|hook2|hook3) ;;" between "case "$hook" in" and "esac"
     # Extract the first pattern line (before the *) catch-all), then extract just the pattern part
     dispatch_line=$(sed -n '/^[[:space:]]*case "\$hook" in$/,/^[[:space:]]*esac$/p' "$FACTS_HOOKS_DIR/dispatch.sh" 2>/dev/null | \
-                    grep -v '^\*' | grep -v '^[[:space:]]*case' | grep -v '^[[:space:]]*esac' | head -1)
+                    grep -v '^[[:space:]]*\*' | grep -v '^[[:space:]]*case' | grep -v '^[[:space:]]*esac' | head -1)
     # Extract pattern: everything before the closing paren
     dispatch_pattern=$(printf '%s' "$dispatch_line" | sed 's/^[[:space:]]*//; s/[[:space:]]*)[[:space:]]*;;.*//')
 
@@ -170,4 +173,19 @@ hookcheck_problems() {
       fi
     done <<< "$registered_sh"
   fi
+
+  # (k) chain command strings: dispatch.sh argument must match .ps1 filename stem
+  # Each chain has format: sh "...dispatch.sh" <name> || pwsh -File ".../name.ps1"
+  _facts_jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty]' "$FACTS_HOOKS_JSON" | while IFS= read -r cmd; do
+    [[ -z "$cmd" || ! "$cmd" =~ dispatch\.sh ]] && continue
+    # Extract dispatch-arg: the word after dispatch.sh (may be quoted)
+    dispatch_arg=$(printf '%s' "$cmd" | sed -n 's/.*dispatch\.sh[[:space:]]*["'"'"']\?[[:space:]]*\([^"'"'"' ][^ ]*\).*/\1/p')
+    # Extract .ps1 filename: the basename after .ps1 argument
+    ps1_file=$(printf '%s' "$cmd" | sed -n 's/.*\.ps1[[:space:]]*"\?\([^"]*\.ps1\).*/\1/p' | xargs basename 2>/dev/null)
+    ps1_stem="${ps1_file%.ps1}"
+
+    if [[ -n "$dispatch_arg" && -n "$ps1_stem" && "$dispatch_arg" != "$ps1_stem" ]]; then
+      printf 'chain-name-mismatch\t%s (dispatch: %s vs .ps1: %s)\n' "$cmd" "$dispatch_arg" "$ps1_stem"
+    fi
+  done
 }
