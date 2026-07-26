@@ -113,6 +113,9 @@ jobs:
       - name: Run hooks test harness (macOS/POSIX)
         run: bash tests/hooks.test.sh
 
+      # tests/consistency.test.sh is deliberately NOT run here: it uses a GNU-only
+      # `sed -i` (no backup suffix) at line ~261, which BSD sed rejects; the
+      # portable form is already used elsewhere in that file (see ~line 454).
       - name: Cross-impl equivalence (sh only; pwsh unavailable on macOS)
         # tests/hooks-equivalence.test.sh self-skips if pwsh is unavailable;
         # running it here documents .sh-only equivalence and validates the self-skip
