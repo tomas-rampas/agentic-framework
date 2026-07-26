@@ -406,10 +406,22 @@ When Git Bash is not installed, the hook chain's `sh` command fails with a "not 
 ```
 
 **Marketplace name suffix vs. GitHub path:**
-When installing a plugin using the full `<name>@<marketplace>` syntax, `<marketplace>` must be the marketplace's **registered name** (the `"name"` field in `.claude-plugin/marketplace.json` — for this repo, that's `claude-agentic-framework`), **not** the GitHub `owner/repo` path used with `/plugin marketplace add`. Verify the registered name with `/plugin marketplace list` or `claude plugin marketplace list`. **Simpler alternative:** once the marketplace is added, use the bare plugin name without the suffix: `/plugin install agentic-framework` — this resolves unambiguously and avoids the suffix confusion entirely.
+When installing a plugin, use the full `<name>@<marketplace>` form where `<marketplace>` is the marketplace's **registered name** (the `"name"` field in `.claude-plugin/marketplace.json` — for this repo, `claude-agentic-framework`).
+```
+/plugin install agentic-framework@claude-agentic-framework
+```
+Alternatively, once the marketplace is added, the bare plugin name also works: `/plugin install agentic-framework` (in this rehearsal, the bare form resolved and installed successfully, though Claude Code's own reference docs only demonstrate the explicit `@marketplace` form — treat the bare form as an observed convenience rather than a guaranteed contract).
 
 **Windows MAX_PATH limit during marketplace clone:**
-On Windows, if your Claude Code config directory resides under a deeply nested path (common with corporate-managed profiles, nested OneDrive-synced directories, or domain user AppData), the marketplace git clone can fail with a "Filename too long" error once combined with `.git/hooks/*.sample` internal paths, hitting the classic 260-character MAX_PATH limit. This is an environment constraint, not a defect in this repo (all repo paths are well under the limit). **Remediation:** enable the Windows 10+ long path support policy: run `regedit` or Group Policy Editor and set `HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled` to `1` (requires administrator access), then restart Claude Code. Alternatively, if your IT policy permits, configure a shorter path for your Claude Code config directory (e.g., `C:\claude`).
+On deeply nested Windows paths, marketplace clone fails with "Filename too long" at the 260-character limit. **Remediation:** enable Windows 10+ long paths in two steps (both required). First, run this PowerShell command as Administrator:
+```powershell
+Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' LongPathsEnabled 1 -Type DWord
+```
+Then configure Git for long paths:
+```bash
+git config --global core.longpaths true
+```
+Restart Claude Code. Without both steps, the "Filename too long" error will recur.
 
 **Running the shell test suites or validators manually on Windows:**
 If you are running the test suites manually on Windows, use the Git Bash bash.exe directly (not WSL's bash, which may be on PATH by default): `C:\Program Files\Git\bin\bash.exe -c 'bash tests/hooks.test.sh'`. Bare `bash` without a full path may resolve to WSL bash, which will fail or behave incorrectly.
