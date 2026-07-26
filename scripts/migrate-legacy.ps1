@@ -644,10 +644,10 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
             if ($filesToDelete.Count -gt 20) {
                 Write-Host "    ... and $($filesToDelete.Count - 20) more"
             }
-            # Only update summary if checkout didn't abort (preserve abort message)
-            if ($checkoutCanProceed) {
-                $summary['checkout'] = "$fileCount tracked file(s), .git"
-            }
+        }
+        # Only update summary if checkout didn't abort (preserve abort message)
+        if ($checkoutCanProceed) {
+            $summary['checkout'] = "$fileCount tracked file(s), .git"
         }
         # If Apply but not checkoutCanProceed: abort message already printed, don't print anything else
     }

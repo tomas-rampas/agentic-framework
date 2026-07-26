@@ -663,7 +663,8 @@ section "[STOP-PEER-REVIEW-GATE-7] allows outside a git worktree"
 
 section "[STOP-PEER-REVIEW-GATE-8] fail-open on malformed stdin"
 {
-  CLAUDE_STATE_DIR="$(make_work_dir)/state"
+  _wd="$(make_work_dir)" || exit 2
+  CLAUDE_STATE_DIR="$_wd/state"
   export CLAUDE_STATE_DIR
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -965,7 +966,8 @@ section "[RECORD-SUBAGENT-RUN] ignores other subagents"
 
 section "[RECORD-SUBAGENT-RUN] fail-open on malformed stdin"
 {
-  CLAUDE_STATE_DIR="$(make_work_dir)/state"
+  _wd="$(make_work_dir)" || exit 2
+  CLAUDE_STATE_DIR="$_wd/state"
   export CLAUDE_STATE_DIR
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1617,7 +1619,7 @@ section "[EDGE-D1] dispatch handles paths with spaces in root"
 {
   # Create temp dir WITH spaces in path (under HARNESS_ROOT, preserving space property)
   # mktemp creates the base, then we add the space-containing subdirectory
-  base="$(make_work_dir)"
+  base="$(make_work_dir)" || exit 2
   root_with_spaces="$base/space test root"
   mkdir -p "$root_with_spaces/hooks"
   cp "$SRC_REPO/hooks/dispatch.sh" "$root_with_spaces/hooks/" 2>/dev/null || true
@@ -1673,7 +1675,7 @@ section "[EDGE-D1-CHAIN] dispatch chain-quoting: spaces in path correctly tokeni
 {
   # Test that spaced root path is correctly handled in shell chain context
   # This validates the ${0%[\\/]*} separator-strip logic on a spaced absolute path
-  base="$(make_work_dir)"
+  base="$(make_work_dir)" || exit 2
   root_with_spaces="$base/space test chain"
   mkdir -p "$root_with_spaces/hooks"
   cp "$SRC_REPO/hooks/dispatch.sh" "$root_with_spaces/hooks/" 2>/dev/null || true
