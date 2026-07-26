@@ -364,7 +364,8 @@ $r = Invoke-Migrator $claudeHome
 
 Assert 'checkout cleanup runs' ($r.Code -eq 0)
 Assert 'checkout cleanup detects repo' ($r.Out -imatch 'Checkout Cleanup|detected|git clone')
-Assert 'checkout summary row present' ($r.Out -match 'checkout:\s+\d+\s+tracked file\(s\),\s+\.git')
+# This assertion only covers the dry-run path; the apply+success path (where the regression originally occurred) is not exercised by this fixture because -Apply aborts before reaching that code (backup step dirties tree before Section 5 check).
+Assert 'checkout summary row present (dry-run path)' ($r.Out -match 'checkout:\s+\d+\s+tracked file\(s\),\s+\.git')
 Assert '.state preserved' ((Test-Path (Join-Path $claudeHome '.state' 'marker.txt')))
 Assert 'settings.local.json preserved' ((Test-Path (Join-Path $claudeHome 'settings.local.json')))
 Assert 'projects dir preserved' ((Test-Path (Join-Path $claudeHome 'projects' 'myp' 'file.txt')))
