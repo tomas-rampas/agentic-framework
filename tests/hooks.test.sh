@@ -656,7 +656,8 @@ section "[STOP-PEER-REVIEW-GATE-7] allows outside a git worktree"
 
 section "[STOP-PEER-REVIEW-GATE-8] fail-open on malformed stdin"
 {
-  export CLAUDE_STATE_DIR="$(make_work_dir)/state"
+  CLAUDE_STATE_DIR="$(make_work_dir)/state"
+  export CLAUDE_STATE_DIR
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
   RUN_OUT="$(printf 'this is not json' | sh "$SRC_REPO/hooks/stop-peer-review-gate.sh" 2>&1)"
@@ -823,7 +824,7 @@ section "[STOP-PEER-REVIEW-GATE-g2-approved] later APPROVED marker allows"
   printf '2026-07-18T00:00:00.0000000+02:00\nverdict=CHANGES_REQUIRED' > "$CLAUDE_STATE_DIR/peer-review/g2"
 
   # Make some blocks
-  for i in 1 2 3; do
+  for _i in 1 2 3; do
     test_payload="{\"session_id\":\"g2\",\"stop_hook_active\":false,\"cwd\":\"$testgit\"}"
     RUN_OUT="$(printf '%s' "$test_payload" | sh "$SRC_REPO/hooks/stop-peer-review-gate.sh" 2>&1)"
   done
@@ -957,7 +958,8 @@ section "[RECORD-SUBAGENT-RUN] ignores other subagents"
 
 section "[RECORD-SUBAGENT-RUN] fail-open on malformed stdin"
 {
-  export CLAUDE_STATE_DIR="$(make_work_dir)/state"
+  CLAUDE_STATE_DIR="$(make_work_dir)/state"
+  export CLAUDE_STATE_DIR
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
   RUN_OUT="$(printf 'not json either' | sh "$SRC_REPO/hooks/record-subagent-run.sh" 2>&1)"

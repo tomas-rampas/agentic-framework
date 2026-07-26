@@ -411,4 +411,4 @@ printf '\n%s================================================%s\n' "$C_CYN" "$C_N
 printf 'RESULT: %d run, %d pass, %d fail\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"
 printf '%s================================================%s\n' "$C_CYN" "$C_NC"
 
-exit $([  "$TESTS_FAIL" -eq 0 ] && echo 0 || echo 1)
+exit "$([  "$TESTS_FAIL" -eq 0 ] && echo 0 || echo 1)"
