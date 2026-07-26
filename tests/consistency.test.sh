@@ -428,6 +428,50 @@ section "[14] Broken skill dir: no SKILL.md, and name != dirname -> non-zero (ch
 }
 
 # ===========================================================================
+# CASE 15 - Plugin version mismatch (core): .claude-plugin/plugin.json has
+#           different version than what validate-consistency.sh expects.
+# ===========================================================================
+section "[15] Plugin version mismatch (core): set .claude-plugin/plugin.json .version to 9.9.9 -> non-zero"
+{
+  copy="$(make_copy)"
+  jq '.version = "9.9.9"' "$copy/.claude-plugin/plugin.json" > "$copy/.claude-plugin/plugin.json.tmp" \
+    && mv "$copy/.claude-plugin/plugin.json.tmp" "$copy/.claude-plugin/plugin.json"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails on core plugin version mismatch"
+  assert_out_contains "reports version mismatch for core plugin" "version mismatch"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 16 - Plugin version mismatch (mcp): mcp-plugin/.claude-plugin/plugin.json
+#           has different version than expected.
+# ===========================================================================
+section "[16] Plugin version mismatch (mcp): set mcp-plugin/.claude-plugin/plugin.json .version to 9.9.9 -> non-zero"
+{
+  copy="$(make_copy)"
+  jq '.version = "9.9.9"' "$copy/mcp-plugin/.claude-plugin/plugin.json" > "$copy/mcp-plugin/.claude-plugin/plugin.json.tmp" \
+    && mv "$copy/mcp-plugin/.claude-plugin/plugin.json.tmp" "$copy/mcp-plugin/.claude-plugin/plugin.json"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails on mcp plugin version mismatch"
+  assert_out_contains "reports version mismatch for mcp plugin" "version mismatch"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 17 - Orphan hook script: add unregistered hooks/zzz-unregistered.ps1 ->
+#           check 3 must fail with orphan-hook-script.
+# ===========================================================================
+section "[17] Orphan hook (unregistered in hooks.json): add hooks/zzz-unregistered.ps1 -> non-zero (check 3)"
+{
+  copy="$(make_copy)"
+  printf '#Requires -Version 7.0\nexit 0\n' > "$copy/hooks/zzz-unregistered.ps1"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails on an unregistered hook script"
+  assert_out_contains "reports orphan-hook-script for zzz-unregistered.ps1" "orphan-hook-script: zzz-unregistered.ps1"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"

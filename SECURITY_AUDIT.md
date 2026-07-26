@@ -6,7 +6,8 @@ This repository has been audited for sensitive information exposure. **No hardco
 
 ## Audit Scope
 
-- **Configuration files**: `claude.json`, `settings.template.json`, `.mcp.json`, `.env.example`
+- **Configuration files**: `claude.json`, `settings.template.json`, `hooks/hooks.json`, `.env.example`
+- **MCP plugin configuration** (optional): `mcp-plugin/.mcp.json` (in agentic-framework-mcp plugin)
 - **Scripts**: `scripts/*.sh`, `scripts/*.ps1`, `hooks/*.ps1`, `security-check.sh`
 - **Documentation**: README, CLAUDE.md, CONTRIBUTING.md, agents, commands, skills
 - **Version control**: `.gitignore` coverage of local/secret files
@@ -26,11 +27,12 @@ Searched for common patterns:
 
 ### Security Practices In Place
 
-1. **Environment variable parameterization** — secrets are consumed via `${VAR}` expansion, never committed. Example: `.mcp.json` wires `"CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}"` from the environment / `.env`.
+1. **Environment variable parameterization** — secrets are consumed via `${VAR}` expansion at runtime, never committed. Example: The optional agentic-framework-mcp plugin wires `"CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}"` from the environment at server launch.
 2. **`.env` management** — only `.env.example` (placeholders) is committed; `.env` is gitignored.
 3. **`.gitignore` exclusions** — `/settings.json`, `/settings.local.json`, `/.credentials.json`, `/.env`, and local state directories are excluded from tracking.
 4. **Secret scanning script** — `security-check.sh` scans the tree for credential patterns (AWS keys `AKIA[0-9A-Z]{16}`, GitHub tokens `ghp_…`, private key blocks, generic API-key assignments).
 5. **Constrained permissions template** — `settings.template.json` defines the allowed tool surface for Claude Code sessions. The GitHub CLI is tiered: read-only `gh` subcommands (repo/pr/issue/run view, list, diff, checks) are auto-allowed; state-changing ones (`gh api`, pr create/merge, issue edit, workflow run) and `gh auth status` (its `--show-token` flag prints the live credential) require confirmation; credential-exposing, persistence-capable, or destructive ones are denied outright (`gh auth token`, `gh repo delete`, `gh release delete`, `gh secret set`, `gh extension install/upgrade`, `gh alias set/delete/import`, `gh config set`, `gh auth refresh/logout`). Known residual: allow-tier patterns are prefix matches, so an approved read can be pointed at another repository via `--repo` — closing this requires a scoped PAT or an argument-validating PreToolUse hook.
+6. **MCP server secrets** — runtime references (e.g., `${CONTEXT7_API_KEY}` in plugin-installed `.mcp.json`) are never expanded by the installer; placeholders resolve at server launch time from the live environment.
 
 ## Recommendations
 

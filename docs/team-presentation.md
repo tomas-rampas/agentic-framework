@@ -149,16 +149,20 @@ mindmap
 - **peer-review-critic has a deliberately read-only toolset** — the final reviewer *cannot* modify the code it reviews. Independence enforced by tool access, not by asking nicely.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
-### 3.2 Commands — the operations console (9)
+### 3.2 Commands — the operations console (10)
 
 | Command | Role |
 |---|---|
-| `/delegate` | Route an objective end-to-end through specialists |
-| `/list-agents` | Roster with categories, model tiers, status |
-| `/agent-status` | Per-agent configuration health |
-| `/analyze-framework` | Full health check (runs the real validators) |
-| `/quality-report` | Quality assessment from actual config state |
-| `/validate-hooks` | Hook registration parity check |
+| `/agentic-framework:delegate` | End-to-end orchestration: auto-runs the spec interview when no source of truth exists, then hands off to build |
+| `/agentic-framework:spec` | Interview the user one question at a time, then write `specs/<name>.md` with checkable acceptance criteria |
+| `/agentic-framework:build` | Build exactly what the spec says, then loop build ↔ spec-compliance-reviewer until `VERDICT: APPROVED` |
+| `/agentic-framework:review-spec` | Manual conformance check: per-requirement PASS/FAIL of the current build against the spec |
+| `/agentic-framework:list-agents` | Roster with categories, model tiers, status |
+| `/agentic-framework:agent-status` | Per-agent configuration health |
+| `/agentic-framework:analyze-framework` | Full health check (runs the real validators) |
+| `/agentic-framework:quality-report` | Quality assessment from actual config state |
+| `/agentic-framework:validate-hooks` | Hook registration parity check |
+| `/agentic-framework:migrate-legacy` | Migrate a local ~/.claude clone to the plugin distribution |
 
 ### 3.3 Hooks — the enforcement layer (4)
 
@@ -225,7 +229,7 @@ flowchart TD
     class ERR neutral
 ```
 
-Design philosophy: **one hard gate at the single choke point** (all work becomes committed code) · everything else advisory · fail-open everywhere · bounded blocking — once when no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`: a gate, not a nag. Behavior pinned by 44 test assertions; CI fails if a script and its registration ever drift apart.
+Design philosophy: **one hard gate at the single choke point** (all work becomes committed code) · everything else advisory · fail-open everywhere · bounded blocking — once when no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`: a gate, not a nag. Behavior pinned by 40+ test assertions; CI fails if a script and its registration ever drift apart.
 
 *Field note: minutes after installation, the gate blocked its own author's session — for having unreviewed commits. It was reviewing the commits that created it.*
 
@@ -284,7 +288,7 @@ sequenceDiagram
     PR->>CI: commit lands
     CI->>V: run the 12-check battery
     V->>SOT: derive all truth at runtime (no hardcoded lists)
-    SOT-->>V: registry · rosters · hooks · skills · counts
+    SOT-->>V: registry · rosters · hooks · skills · counts (13 checks)
     V->>V: compare docs & generated blocks against derived truth
     alt any drift found
         V-->>CI: FAIL (names the exact file & line)
@@ -303,13 +307,25 @@ sequenceDiagram
 
 ## 4. Getting started
 
-```bash
-git clone <repo> ~/.claude
-pwsh -NoProfile -File ~/.claude/scripts/install.ps1   # settings + hooks + state dir
-bash ~/.claude/scripts/validate-consistency.sh        # expect: RESULT: PASS
+**Modern plugin-based installation (4.0+):**
+
+```
+/plugin marketplace add tomas-rampas/claude-agentic-framework
+/plugin install agentic-framework@claude-agentic-framework
+/agentic-framework:validate-hooks
+/agentic-framework:analyze-framework
 ```
 
-Prereqs: Claude Code CLI, git, PowerShell 7+, bash + jq; Node/npx and uv for the MCP servers.
+Optional: install the MCP servers plugin:
+```
+/plugin install agentic-framework-mcp@claude-agentic-framework
+/agentic-framework-mcp:setup
+```
+
+**Prerequisites:** Claude Code CLI, git, PowerShell 7+, bash + jq; Node/npx and uv for the optional MCP servers.
+
+**Legacy installation (pre-4.0, historical reference):**
+See [README.md Migration section](README.md#migration-existing-local-clones) if you have an existing local clone to migrate.
 
 ---
 
@@ -320,10 +336,10 @@ Prereqs: Claude Code CLI, git, PowerShell 7+, bash + jq; Node/npx and uv for the
 | Specialized agents | 21 (7 categories, 3 model tiers) |
 | Hooks | 4 registered — 1 blocking gate, 3 advisory |
 | Skills | 9 loadable knowledge modules |
-| Commands | 9 management commands |
+| Commands | 10 management commands |
 | MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
-| Validator checks | 12, all derived at runtime |
-| Test assertions | 34 (consistency) + 44 (hook behavior) |
+| Validator checks | 13, all derived at runtime |
+| Test assertions | 40+ (consistency) + 44 (hook behavior) |
 | CI jobs | 3, including a Windows leg |
 
 **Takeaway:** agents write the code · hooks make quality non-negotiable · the consistency system keeps the whole thing honest.

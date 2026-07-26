@@ -3,16 +3,18 @@ name: validate-hooks
 description: Validate hook registration, consistency, and configuration
 ---
 
-# Validate Hooks Command
+Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
+
+# /agentic-framework:validate-hooks — Validate Hook Architecture
 
 ## Purpose
 
-Validate the framework's hook architecture: registration parity between `settings.template.json` and the hook scripts in `hooks/`, event-name validity, PowerShell 7 pinning, deprecated-name references, and (optionally) hook behavior.
+Validate the framework's hook architecture: registration parity between `hooks/hooks.json` and the hook scripts in `hooks/`, event-name validity, PowerShell 7 pinning, deprecated-name references, and (optionally) hook behavior.
 
 ## Usage
 
 ```
-/validate-hooks [--behavior]
+/agentic-framework:validate-hooks [--behavior]
 ```
 
 **Options:**
@@ -21,14 +23,14 @@ Validate the framework's hook architecture: registration parity between `setting
 
 ## How Hooks Work in This Framework
 
-Claude Code executes only hooks registered in a settings file's `hooks` block. This framework tracks that registration in `settings.template.json` (installed into `~/.claude/settings.json` by `scripts/install.ps1`) and implements each hook as a PowerShell 7 script in `hooks/`:
+Claude Code executes only hooks registered in a settings file's `hooks` block. This framework tracks that registration in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` (the registration source of truth; `settings.template.json` remains the recommended-user-settings artifact) and implements each hook as a PowerShell 7 script in `${CLAUDE_PLUGIN_ROOT}/hooks/`:
 
 | Script | Event | Matcher | Role |
 |--------|-------|---------|------|
-| `stop-peer-review-gate.ps1` | `Stop` | — | Blocking peer-review final gate |
-| `record-subagent-run.ps1` | `PostToolUse` + `SubagentStop` | `Task\|Agent` / — | Records peer-review-critic runs and parses the report's `VERDICT:` line into the session marker (`APPROVED` unlocks the gate) |
-| `session-start-context.ps1` | `SessionStart` | — | Injects branch/review status into context |
-| `pretooluse-delegation-hint.ps1` | `PreToolUse` | `Write\|Edit` | Advisory specialist-agent hint |
+| `${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1` | `Stop` | — | Blocking peer-review final gate |
+| `${CLAUDE_PLUGIN_ROOT}/hooks/record-subagent-run.ps1` | `PostToolUse` + `SubagentStop` | `Task\|Agent` / — | Records peer-review-critic runs and parses the report's `VERDICT:` line into the session marker (`APPROVED` unlocks the gate) |
+| `${CLAUDE_PLUGIN_ROOT}/hooks/session-start-context.ps1` | `SessionStart` | — | Injects branch/review status into context |
+| `${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-delegation-hint.ps1` | `PreToolUse` | `Write\|Edit` | Advisory specialist-agent hint |
 
 ## Command-line execution
 Delegate every shell command this workflow needs — validators, git/gh calls, JSON/YAML
@@ -43,12 +45,12 @@ never via shell.
 Run the validator (shared logic with `validate-consistency.sh` check 3 — the two cannot drift):
 
 ```bash
-bash scripts/validate-hooks.sh
+FRAMEWORK_ROOT="${CLAUDE_PLUGIN_ROOT:-.}" bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts/validate-hooks.sh"
 ```
 
 It asserts:
 
-1. **Registration parity** — every script referenced in the settings template's `hooks` block exists in `hooks/`; every `hooks/*.ps1` on disk is registered (no dead scripts).
+1. **Registration parity** — every script referenced in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` exists in `${CLAUDE_PLUGIN_ROOT}/hooks/`; every `${CLAUDE_PLUGIN_ROOT}/hooks/*.ps1` on disk is registered (no dead scripts).
 2. **Event validity** — every event key is a real Claude Code hook event (`PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Notification`, `Stop`, `SubagentStop`, `SessionStart`, `SessionEnd`, `PreCompact`).
 3. **PowerShell pin** — every hook script starts with `#Requires -Version 7.0`.
 4. **No deprecated agent names** referenced by any hook script.
@@ -56,7 +58,7 @@ It asserts:
 ## Behavior Validation (--behavior)
 
 ```bash
-pwsh -NoProfile -File tests/hooks.test.ps1
+pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT:-.}/tests/hooks.test.ps1"
 ```
 
 Exercises the hook scripts against a throwaway git repo and isolated state directory:
@@ -70,7 +72,7 @@ Exercises the hook scripts against a throwaway git repo and isolated state direc
 Hook Architecture Validation
 ============================
 
-Checking hook registration parity (settings.template.json <-> hooks/*.ps1)...
+Checking hook registration parity (hooks/hooks.json <-> hooks/*.ps1)...
 
 OK: 4 hook script(s) registered across 5 event(s); no orphans; all events valid; all pin PS7
 
@@ -87,14 +89,14 @@ Hook validation passed
 **Registered script missing:**
 ```
 ERROR [missing-hook-script] stop-peer-review-gate.ps1
-Remediation: restore hooks/stop-peer-review-gate.ps1, or remove its registration
-             from settings.template.json (and re-run scripts/install.ps1)
+Remediation: restore ${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1, or remove its registration
+             from ${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json
 ```
 
 **Orphan script (dead code):**
 ```
 ERROR [orphan-hook-script] my-new-hook.ps1
-Remediation: register it in settings.template.json under the right event, or delete it
+Remediation: register it in ${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json under the right event, or delete it
 ```
 
 **Unknown event name:**
@@ -105,13 +107,13 @@ Remediation: use a real Claude Code event (e.g. Stop)
 
 ## Adding a New Hook
 
-1. Create `hooks/<name>.ps1` starting with `#Requires -Version 7.0`; read the event JSON from stdin; **fail open** (any error → `exit 0`).
-2. Register it in `settings.template.json` under the appropriate event, with a `timeout`.
-3. Add behavior cases to `tests/hooks.test.ps1`.
-4. Run `bash scripts/validate-hooks.sh` and `pwsh -NoProfile -File tests/hooks.test.ps1`.
-5. Re-run `pwsh scripts/install.ps1 -Force` to update your live `~/.claude/settings.json`.
+1. Create `${CLAUDE_PLUGIN_ROOT}/hooks/<name>.ps1` starting with `#Requires -Version 7.0`; read the event JSON from stdin; **fail open** (any error → `exit 0`).
+2. Register it in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` under the appropriate event, with a `timeout`.
+3. Add behavior cases to `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1`.
+4. Run `FRAMEWORK_ROOT="${CLAUDE_PLUGIN_ROOT:-.}" bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts/validate-hooks.sh"` and `pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT:-.}/tests/hooks.test.ps1"`.
+5. Hooks ship with the plugin via hooks/hooks.json — nothing is written to settings.json; restart the session to load them.
 
 ## Integration
 
-- `validate-consistency.sh` runs the same parity assertions as its check 3 — CI enforces them on every PR
-- See `docs/design/` for the design rationale behind each hook
+- `${CLAUDE_PLUGIN_ROOT}/scripts/validate-consistency.sh` runs the same parity assertions as its check 3 — CI enforces them on every PR
+- See `${CLAUDE_PLUGIN_ROOT}/docs/design/` for the design rationale behind each hook

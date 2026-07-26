@@ -58,12 +58,13 @@ FACTS_REPO_ROOT="${FACTS_REPO_ROOT:-$(_facts_resolve_root)}"
 FACTS_CLAUDE_JSON="${FACTS_CLAUDE_JSON:-$FACTS_REPO_ROOT/claude.json}"
 FACTS_AGENTS_DIR="${FACTS_AGENTS_DIR:-$FACTS_REPO_ROOT/agents}"
 FACTS_HOOKS_DIR="${FACTS_HOOKS_DIR:-$FACTS_REPO_ROOT/hooks}"
+FACTS_HOOKS_JSON="${FACTS_HOOKS_JSON:-$FACTS_REPO_ROOT/hooks/hooks.json}"
 FACTS_SKILLS_DIR="${FACTS_SKILLS_DIR:-$FACTS_REPO_ROOT/skills}"
 FACTS_COMMANDS_DIR="${FACTS_COMMANDS_DIR:-$FACTS_REPO_ROOT/commands}"
 FACTS_SETTINGS_TEMPLATE="${FACTS_SETTINGS_TEMPLATE:-$FACTS_REPO_ROOT/settings.template.json}"
 
 export FACTS_REPO_ROOT FACTS_CLAUDE_JSON FACTS_AGENTS_DIR FACTS_HOOKS_DIR
-export FACTS_SKILLS_DIR FACTS_COMMANDS_DIR FACTS_SETTINGS_TEMPLATE
+export FACTS_HOOKS_JSON FACTS_SKILLS_DIR FACTS_COMMANDS_DIR FACTS_SETTINGS_TEMPLATE
 
 # --- internal helpers -------------------------------------------------------
 _facts_require_jq() {
@@ -164,32 +165,30 @@ fact_model_shorthand() {
 
 # --- hook facts (real hook architecture) ------------------------------------
 # Hooks are PowerShell scripts in hooks/*.ps1, executed by Claude Code only when
-# registered in the settings "hooks" block. settings.template.json is the
-# tracked, canonical registration (per-user settings.json is derived from it by
-# scripts/install.ps1), so registration parity is asserted against the template.
+# registered in hooks/hooks.json (plugin format). hooks.json is the
+# tracked, canonical registration.
 
-_facts_require_settings_template() {
-  if [[ ! -f "$FACTS_SETTINGS_TEMPLATE" ]]; then
-    printf 'facts.sh: ERROR: settings.template.json not found at %s\n' "$FACTS_SETTINGS_TEMPLATE" >&2
+_facts_require_hooks_json() {
+  if [[ ! -f "$FACTS_HOOKS_JSON" ]]; then
+    printf 'facts.sh: ERROR: hooks.json not found at %s\n' "$FACTS_HOOKS_JSON" >&2
     return 1
   fi
 }
 
-# fact_hook_events - event names used in the settings template hooks block
+# fact_hook_events - event names used in hooks.json hooks block
 fact_hook_events() {
   _facts_require_jq || return $?
-  _facts_require_settings_template || return $?
-  _facts_jq -r '.hooks // {} | keys[]' "$FACTS_SETTINGS_TEMPLATE" | LC_ALL=C sort
+  _facts_require_hooks_json || return $?
+  _facts_jq -r '.hooks // {} | keys[]' "$FACTS_HOOKS_JSON" | LC_ALL=C sort
 }
 
 # fact_registered_hook_scripts - sorted basenames of every *.ps1 referenced by a
-# hook command in the settings template.
+# hook command in hooks.json. Extracts from BOTH .command field and .args[] array elements.
 fact_registered_hook_scripts() {
   _facts_require_jq || return $?
-  _facts_require_settings_template || return $?
-  _facts_jq -r '.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty' \
-      "$FACTS_SETTINGS_TEMPLATE" \
-    | grep -oE '[A-Za-z0-9._-]+\.ps1' | LC_ALL=C sort -u
+  _facts_require_hooks_json || return $?
+  _facts_jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | (.command, (.args[]?))] | .[] | strings | select(endswith(".ps1")) | sub("^.*/"; "")' \
+      "$FACTS_HOOKS_JSON" | LC_ALL=C sort -u
 }
 
 # fact_hook_script_files - sorted basenames of hooks/*.ps1 on disk
@@ -206,9 +205,9 @@ fact_hook_script_files() {
 # distinct scripts (the "Hook Scripts" docs headline unit) instead.
 _facts_count_hook_commands() {
   _facts_require_jq || return $?
-  if [[ ! -f "$FACTS_SETTINGS_TEMPLATE" ]]; then printf '0\n'; return 0; fi
+  if [[ ! -f "$FACTS_HOOKS_JSON" ]]; then printf '0\n'; return 0; fi
   _facts_jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]?] | length' \
-    "$FACTS_SETTINGS_TEMPLATE"
+    "$FACTS_HOOKS_JSON"
 }
 
 # --- skill / command facts ---------------------------------------------------
@@ -246,7 +245,7 @@ fact_commands() {
 
 # fact_counts - emit derived counts as key=value lines.
 #   agents   = number of registered sub_agents
-#   hooks    = number of DISTINCT hook scripts registered in settings.template.json
+#   hooks    = number of DISTINCT hook scripts registered in hooks/hooks.json
 #              (one script may be registered under several events; the docs
 #              headline says "Hook Scripts", so scripts is the truthful unit)
 #   skills   = number of skills (skills/<name>/SKILL.md dirs + legacy flat skills/*.md)

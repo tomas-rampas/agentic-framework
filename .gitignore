@@ -10,7 +10,6 @@
 !/.env.example
 !/SECURITY_AUDIT.md
 !/security-check.sh
-!/.mcp.json
 !/settings.template.json
 
 # And not these directories and their contents
@@ -22,12 +21,15 @@
 !/scripts/
 !/tests/
 !/.github/
+!/.claude-plugin/
+!/mcp-plugin/
 
 # Explicitly ignore files at the root that should not be tracked
 /settings.json
 /settings.local.json
 /.credentials.json
 /.env
+/mcp-plugin/.env
 
 # Explicitly ignore directories at the root that should not be tracked
 /plugins/

@@ -9,11 +9,19 @@ Systematic diagnosis of agent configuration problems in this framework. Every ch
 
 ## Ground Truth: Where Configuration Lives
 
+Configuration lives in the **agentic-framework plugin** (typically at `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/`) and is overridden by user-scope copies in `~/.claude/agents/`, `~/.claude/commands/`, and `~/.claude/skills/`:
+
 - `agents/<name>.md` — agent definition. YAML frontmatter carries `name` (must equal the filename), `description` (the routing trigger text Claude Code matches tasks against), `model` (tier shorthand, e.g. `sonnet`), and `color`. The body is the agent's system prompt.
+  - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/agents/<name>.md`
+  - **Override location** (if present): `~/.claude/agents/<name>.md` (takes priority)
 - `claude.json` — the registry. `.sub_agents` maps each agent to its config (including `model` shorthand and `focus`); `.agent_categories` partitions the roster into the canonical categories; `.consistency.model_shorthand_map` defines the only legal model values; `.consistency.deprecated_agent_names` lists dead names that must never be referenced.
-- `settings.template.json` — the tracked `hooks` block registering the PowerShell 7 scripts in `hooks/` (Stop → `stop-peer-review-gate.ps1`, PostToolUse `Task|Agent` + SubagentStop → `record-subagent-run.ps1`, SessionStart → `session-start-context.ps1`, PreToolUse `Write|Edit` → `pretooluse-delegation-hint.ps1`). `scripts/install.ps1` copies the scripts to `~/.claude/hooks/` and creates/merges `~/.claude/settings.json` from the template.
+  - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/claude.json`
+- `hooks/hooks.json` — hook registration in exec-form with `${CLAUDE_PLUGIN_ROOT}` variable substitution. Hooks are loaded automatically by Claude Code.
+  - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/hooks.json`
+- `settings.template.json` — recommended permissions and `alwaysThinkingEnabled` for merging into user settings.
+  - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/settings.template.json`
 - Validators: `scripts/validate-consistency.sh` (the full anti-drift battery), `scripts/validate-hooks.sh` (hook parity), `scripts/validate-framework.sh`, `scripts/generate-docs.sh --check`. Tests: `tests/hooks.test.ps1`, `tests/consistency.test.sh`.
-- Slash commands for quick inspection: `/list-agents`, `/agent-status`, `/analyze-framework`, `/validate-hooks`, `/quality-report`.
+- Namespaced slash commands for quick inspection: `/agentic-framework:list-agents`, `/agentic-framework:agent-status`, `/agentic-framework:analyze-framework`, `/agentic-framework:validate-hooks`, `/agentic-framework:quality-report`.
 
 ## Debug Workflow
 
@@ -28,10 +36,20 @@ Systematic diagnosis of agent configuration problems in this framework. Every ch
 ## Playbook: Agent Not Found or Not Loading
 
 ```bash
-ls agents/<name>.md                       # file exists, exactly matching name?
-jq '.sub_agents["<name>"]' claude.json    # registered?
-head -10 agents/<name>.md                 # frontmatter sane?
-jq -r '.consistency.deprecated_agent_names[]' claude.json   # is the name dead/legacy?
+# Check plugin location first (default)
+ls ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/agents/<name>.md        # file exists, exactly matching name?
+# Or check override location (if applicable)
+ls ~/.claude/agents/<name>.md                                  # override present?
+
+# Check registry
+jq '.sub_agents["<name>"]' ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/claude.json    # registered?
+
+# Check frontmatter (from plugin or override)
+head -10 ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/agents/<name>.md   # frontmatter sane?
+# or: head -10 ~/.claude/agents/<name>.md
+
+# Check for deprecated names
+jq -r '.consistency.deprecated_agent_names[]' ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/claude.json   # is the name dead/legacy?
 ```
 
 Check 1 of `validate-consistency.sh` reports both failure directions: `missing-md` (registered in `claude.json` but no `agents/<name>.md`) and `orphan-md` (file exists but not registered). Fix by adding the missing side, never by deleting the working side.
@@ -42,7 +60,7 @@ Also confirm the agent appears in exactly one `.agent_categories` category (chec
 
 ## Playbook: Task Routed to the Wrong Agent
 
-Routing is driven by the `description` frontmatter of each agent (Claude Code matches the task against it) plus the routing tables in `CLAUDE.md` and the `/delegate` command logic in `commands/delegate.md`.
+Routing is driven by the `description` frontmatter of each agent (Claude Code matches the task against it) plus the routing tables in `CLAUDE.md` and the `/agentic-framework:delegate` command logic in `commands/delegate.md`.
 
 1. Read the `description` of both the expected agent and the one that won. Overlapping trigger phrasing is the usual cause.
 2. Sharpen the losing agent's description with concrete technologies, file types, and example triggers; remove ambiguous claims from the winner.
@@ -65,23 +83,32 @@ Check 7 fails on: missing frontmatter `model:`, empty registry model, a value no
 
 ## Playbook: Hook Not Firing or Stop Gate Misbehaving
 
-Hooks are real Claude Code hooks — PowerShell 7 scripts executed only when registered in the live settings file.
+Hooks are real Claude Code hooks — PowerShell 7 scripts executed when registered in `hooks/hooks.json` of the agentic-framework plugin.
 
 ```bash
-jq '.hooks' settings.template.json        # tracked registration (event -> matcher -> command)
-jq '.hooks' ~/.claude/settings.json       # what actually runs; created by scripts/install.ps1
-ls hooks/*.ps1 && ls ~/.claude/hooks/     # scripts on disk, repo and installed copies
-bash scripts/validate-hooks.sh            # registration <-> script parity
-pwsh -NoProfile -Command '$PSVersionTable.PSVersion'   # pwsh 7 must be on PATH
+# Check plugin hook registration
+jq '.hooks.Stop' ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/hooks.json    # hook registration for Stop event
+
+# Verify plugin is installed
+/plugin list | grep agentic-framework
+
+# Check hook scripts exist
+ls ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/*.ps1
+
+# Validate hook registration parity
+/agentic-framework:validate-hooks
+
+# Verify pwsh 7+ is available
+pwsh -NoProfile -Command '$PSVersionTable.PSVersion'
 ```
 
 Common causes, in order of likelihood:
-- `install.ps1` never ran (or refused to overwrite an existing `hooks` block — re-run with `-Force`), so `~/.claude/settings.json` lacks the registration.
-- The session predates the install: hooks load at session start, so restart Claude Code after installing.
+- Plugin not installed or not enabled: run `/plugin install agentic-framework@claude-agentic-framework` and verify with `/plugin list`.
+- The session predates the plugin install: hooks load at session start, so restart Claude Code after installing.
 - Matcher mismatch: `record-subagent-run.ps1` fires on PostToolUse `Task|Agent` and on SubagentStop; `pretooluse-delegation-hint.ps1` on PreToolUse `Write|Edit`. An event without a matching tool never fires.
-- Script edited in repo but not re-copied to `~/.claude/hooks/`.
+- Plugin cache stale: try `/plugin uninstall agentic-framework` and then `/plugin install agentic-framework@claude-agentic-framework`.
 
-Check 3 of `validate-consistency.sh` asserts parity between scripts referenced in the template's `hooks` block and `hooks/*.ps1` on disk. Behavior is covered by `tests/hooks.test.ps1`.
+Check 3 of `validate-consistency.sh` asserts parity between scripts referenced in `hooks/hooks.json` and `hooks/*.ps1` on disk. Behavior is covered by `tests/hooks.test.ps1`.
 
 Stop-gate specifics: `stop-peer-review-gate.ps1` blocks session end only when a feature branch has committed work ahead of its base and the latest `peer-review-critic` run this session did not record `VERDICT: APPROVED` (verdicts are parsed into the session marker by `record-subagent-run.ps1`; blocks are bounded — once with no review, up to 3 on `CHANGES_REQUIRED`). It is loop-safe and fail-open — if it appears to "block forever", verify the recorder hook is registered and firing, since the gate clears based on its records. Design rationale lives in `docs/design/`.
 
@@ -109,5 +136,6 @@ Then confirm the original symptom is gone (e.g. re-issue the task and watch it r
 
 - Edit `agents/<name>.md` and `claude.json` together, in the same commit; the validators treat divergence as a blocking failure.
 - Never hardcode rosters, counts, or model IDs into docs — reference the registry (`claude.json`) and let `generate-docs.sh` produce derived content.
-- Run the validator battery before every commit touching `agents/`, `hooks/`, `claude.json`, or `settings.template.json`.
-- After changing hook scripts or registration, re-run `scripts/install.ps1` and restart the session.
+- Run the validator battery before every commit touching `agents/`, `hooks/`, `claude.json`, or `hooks/hooks.json`.
+- After changing hook scripts or registration in `hooks/hooks.json`, reinstall or update the plugin and restart Claude Code.
+- Beware leftover legacy clones in `~/.claude/` that shadow the plugin agents — run `/agentic-framework:migrate-legacy` to resolve.

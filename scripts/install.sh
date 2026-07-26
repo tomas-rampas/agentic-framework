@@ -27,6 +27,15 @@ case "$(uname -s)" in
     ;;
 esac
 
+echo ""
+echo "DEPRECATED: scripts/install.sh will be removed in the next release."
+echo "Plugin pipeline commands are now recommended:"
+echo "  /plugin marketplace add tomas-rampas/claude-agentic-framework"
+echo "  /plugin install agentic-framework@claude-agentic-framework"
+echo "  (optional) /agentic-framework-mcp:setup"
+echo "See README.md migration section for details."
+echo ""
+
 FORCE=0
 [[ "${1:-}" == "--force" ]] && FORCE=1
 
@@ -60,6 +69,9 @@ if [[ ! -f "$SETTINGS" ]]; then
   mkdir -p "$CLAUDE_HOME"
   cp "$TEMPLATE" "$SETTINGS"
   echo "Created $SETTINGS from template."
+elif ! jq -e '.hooks' "$TEMPLATE" >/dev/null 2>&1; then
+  echo "Hook registration now ships with the agentic-framework plugin (hooks/hooks.json);"
+  echo "settings.json hooks merge skipped."
 elif jq -e '.hooks' "$SETTINGS" >/dev/null 2>&1 && [[ "$FORCE" -ne 1 ]]; then
   echo "WARNING: a 'hooks' block already exists in $SETTINGS - settings NOT modified." >&2
   echo "         Re-run with --force to replace it with the framework version." >&2

@@ -3,7 +3,9 @@ name: agent-status
 description: Display configuration status and health information for framework agents
 ---
 
-# Agent Status Command
+Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
+
+# /agentic-framework:agent-status — Agent Configuration Status
 
 ## Purpose
 
@@ -12,7 +14,7 @@ Check the configuration status and health of all 21 specialized agents in the fr
 ## Usage
 
 ```
-/agent-status [agent-name]
+/agentic-framework:agent-status [agent-name]
 ```
 
 ## Command-line execution
@@ -27,16 +29,16 @@ never via shell.
 
 ### 1. Read Agent Configuration
 
-Read `claude.json` and extract all agent entries from the `sub_agents` section. For each agent, report:
+Read `${CLAUDE_PLUGIN_ROOT}/claude.json` and extract all agent entries from the `sub_agents` section. For each agent, report:
 - **Name** and **specialization**
 - **Model** assignment (opus/sonnet/haiku)
 - **Enabled** status
-- Whether the agent definition file exists in `agents/`
+- Whether the agent definition file exists in `${CLAUDE_PLUGIN_ROOT}/agents/`
 
 ### 2. Verify Agent Files
 
-For each agent in `claude.json`, check:
-- Agent markdown file exists: `agents/{agent-name}.md`
+For each agent in `${CLAUDE_PLUGIN_ROOT}/claude.json`, check:
+- Agent markdown file exists: `${CLAUDE_PLUGIN_ROOT}/agents/{agent-name}.md`
 - Agent frontmatter contains required fields: `name`, `description` (plus optional `model`, `color`)
 - Model in frontmatter matches the tier in `claude.json` (validator check 7)
 
@@ -65,11 +67,11 @@ When a specific agent name is provided, show detailed information:
 - **Limited** — Agent file exists but configuration mismatch (e.g. model divergence)
 - **Unavailable** — Agent in claude.json but file missing
 
-Quality enforcement is framework-wide, not per-agent: every agent's committed work passes through the peer-review Stop gate (`hooks/stop-peer-review-gate.ps1`), so there is no per-agent hook to check.
+Quality enforcement is framework-wide, not per-agent: every agent's committed work passes through the peer-review Stop gate (`${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1`), so there is no per-agent hook to check.
 
 ## Expected Agent Count
 
-The roster and its categories are defined in `claude.json` (`.sub_agents` + `.agent_categories`) — counts below reflect the current registry:
+The roster and its categories are defined in `${CLAUDE_PLUGIN_ROOT}/claude.json` (`.sub_agents` + `.agent_categories`) — counts below reflect the current registry:
 - **Language Experts** (7): rust, csharp, go, java, python, typescript, mql-trading-dev
 - **Automation Experts** (2): bash, powershell
 - **Domain Specialists** (4): database, frontend, security, uiux
@@ -81,6 +83,6 @@ The roster and its categories are defined in `claude.json` (`.sub_agents` + `.ag
 ## Integration
 
 Works with:
-- `/list-agents` — Agent catalog with capabilities
-- `/validate-hooks` — Hook coverage verification
-- `/analyze-framework` — Overall framework health
+- `/agentic-framework:list-agents` — Agent catalog with capabilities
+- `/agentic-framework:validate-hooks` — Hook coverage verification
+- `/agentic-framework:analyze-framework` — Overall framework health

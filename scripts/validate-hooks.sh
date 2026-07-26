@@ -3,7 +3,7 @@
 #
 # Thin wrapper over the shared hook checks in scripts/lib/hookcheck.sh (the same
 # logic validate-consistency.sh runs as check 3, so the two cannot drift):
-#   - every hook script registered in settings.template.json exists in hooks/
+#   - every hook script registered in hooks/hooks.json exists in hooks/
 #   - every hooks/*.ps1 is registered (no dead scripts)
 #   - every registered event is a real Claude Code hook event
 #   - every hook script pins PowerShell 7 ('#Requires -Version 7.0')
@@ -27,7 +27,7 @@ ERRORS=0
 # ---------------------------------------------------------------------------
 # 1. Registration parity + event validity + PS7 pin (shared with check 3)
 # ---------------------------------------------------------------------------
-echo "Checking hook registration parity (settings.template.json <-> hooks/*.ps1)..."
+echo "Checking hook registration parity (hooks/hooks.json <-> hooks/*.ps1)..."
 echo ""
 
 PROBLEMS="$(hookcheck_problems)"

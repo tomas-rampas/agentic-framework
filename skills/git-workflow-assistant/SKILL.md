@@ -28,7 +28,7 @@ Committed work on a feature branch is not "done" until it has been peer reviewed
 
 ### The Stop gate
 
-`hooks/stop-peer-review-gate.ps1` (registered under `hooks.Stop` in `settings.template.json`, installed to `~/.claude/settings.json` by `scripts/install.ps1`) blocks ending a session when all of these hold:
+The agentic-framework plugin's `hooks/stop-peer-review-gate.ps1` (registered in `hooks/hooks.json` with exec-form PowerShell and `${CLAUDE_PLUGIN_ROOT}`) blocks ending a session when all of these hold:
 
 - The current branch is a feature branch (not main/master, not detached HEAD).
 - It has commits ahead of its base (first of `origin/main`, `origin/master`, `main`, `master` that resolves).
@@ -41,6 +41,8 @@ What to expect and do:
 - When blocked, launch `peer-review-critic` to review the branch diff against its base, resolve every BLOCKER/MAJOR finding, and re-run it until the review ends with `VERDICT: APPROVED` — that is what unlocks the next Stop.
 - Uncommitted changes do not trigger the gate; committing feature-branch work is what arms it.
 - Do not work around the gate by leaving the tree dirty or committing to main — run the review, or ask the user to explicitly waive the gate.
+
+If the gate is not firing after installing the agentic-framework plugin, verify: (1) the plugin is installed with `/plugin list`, (2) Claude Code has been restarted (hooks load at session start), (3) you have committed work on a non-main branch with `/agentic-framework:validate-hooks` showing no errors.
 
 ## Branching Strategies
 

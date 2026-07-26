@@ -5,7 +5,7 @@
 # the matching specialist subagent, at most once per session per suggested agent.
 # Never blocks; fail-open: any error => exit 0 with no output.
 #
-# Registered in settings.json under hooks.PreToolUse.
+# Registered in hooks/hooks.json via the agentic-framework plugin (PreToolUse: Write|Edit).
 
 try {
     $payload = [Console]::In.ReadToEnd() | ConvertFrom-Json -ErrorAction Stop

@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 # record-subagent-run.ps1 — recorder for the peer-review final gate, hardened against stale overwrites.
 #
-# Fires on two events (both registered in settings.json, see settings.template.json):
+# Fires on two events (both registered in hooks/hooks.json via the agentic-framework plugin):
 #   - PostToolUse (matcher Task|Agent): a peer-review-critic subagent call completed
 #     (or, for background launches, started — those carry no report text yet).
 #   - SubagentStop: a peer-review-critic subagent finished; last_assistant_message
@@ -48,14 +48,14 @@ try {
 
     $reportText = ''
     if ([string]$payload.hook_event_name -eq 'SubagentStop') {
-        if ([string]$payload.agent_type -ne 'peer-review-critic') { exit 0 }
+        if ([string]$payload.agent_type -notmatch '^(agentic-framework:)?peer-review-critic$') { exit 0 }
         $reportText = [string]$payload.last_assistant_message
     } else {
         # PostToolUse (Task|Agent). The response field is tool_response on current
         # builds and tool_output in the documented schema; the report text is a
         # plain string, an object carrying a content[] array of text blocks, or a
         # bare array of such blocks.
-        if ([string]$payload.tool_input.subagent_type -ne 'peer-review-critic') { exit 0 }
+        if ([string]$payload.tool_input.subagent_type -notmatch '^(agentic-framework:)?peer-review-critic$') { exit 0 }
         $resp = $payload.tool_response
         if ($null -eq $resp) { $resp = $payload.tool_output }
         $blocks = $null

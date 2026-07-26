@@ -1,0 +1,16 @@
+{
+  "name": "claude-agentic-framework",
+  "owner": { "name": "Tomas Rampas", "url": "https://github.com/tomas-rampas" },
+  "plugins": [
+    {
+      "name": "agentic-framework",
+      "source": "./",
+      "description": "21-agent execution framework for Claude Code with specialist routing, spec-driven build loops, and an enforced peer-review quality gate."
+    },
+    {
+      "name": "agentic-framework-mcp",
+      "source": "./mcp-plugin",
+      "description": "Optional MCP server bundle: context7, filesystem, serena, sequential-thinking, fetch."
+    }
+  ]
+}

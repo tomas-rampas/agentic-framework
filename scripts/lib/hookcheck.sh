@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # hookcheck.sh - Shared hook-architecture checks (real Claude Code hooks).
 #
-# Asserts registration parity between settings.template.json's "hooks" block and
-# the hook implementations in hooks/*.ps1. Consumed by BOTH
+# Asserts registration parity between hooks/hooks.json (plugin hook registrations)
+# and the hook implementations in hooks/*.ps1. Consumed by BOTH
 # scripts/validate-consistency.sh (check 3) and scripts/validate-hooks.sh so the
 # two can never drift apart.
 #
@@ -33,21 +33,21 @@ PreCompact'
 # Empty output (and exit 0) means the hook architecture is consistent.
 #
 # Problem types:
-#   no-hooks-block         settings template has no "hooks" key at all
-#   missing-hook-script    registered in settings but hooks/<name> does not exist
-#   orphan-hook-script     hooks/*.ps1 exists but is not registered in settings
-#   invalid-hook-event     settings "hooks" uses an unknown event name
+#   no-hooks-block         hooks/hooks.json is missing or has no "hooks" key
+#   missing-hook-script    registered in hooks.json but hooks/<name> does not exist
+#   orphan-hook-script     hooks/*.ps1 exists but is not registered in hooks.json
+#   invalid-hook-event     hooks.json "hooks" uses an unknown event name
 #   missing-requires-ps7   hook script lacks the '#Requires -Version 7.0' header
 hookcheck_problems() {
   local registered files events e f first
 
-  if [[ ! -f "$FACTS_SETTINGS_TEMPLATE" ]]; then
-    printf 'no-hooks-block\t%s (file missing)\n' "$(basename "$FACTS_SETTINGS_TEMPLATE")"
+  _facts_require_hooks_json || {
+    printf 'no-hooks-block\thooks/hooks.json\n'
     return 0
-  fi
+  }
   if ! _facts_jq -e '.hooks | type == "object" and (keys | length > 0)' \
-        "$FACTS_SETTINGS_TEMPLATE" >/dev/null 2>&1; then
-    printf 'no-hooks-block\t%s\n' "$(basename "$FACTS_SETTINGS_TEMPLATE")"
+        "$FACTS_HOOKS_JSON" >/dev/null 2>&1; then
+    printf 'no-hooks-block\thooks/hooks.json\n'
     return 0
   fi
 

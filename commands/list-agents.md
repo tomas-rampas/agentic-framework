@@ -3,7 +3,9 @@ name: list-agents
 description: Display all available agents with capabilities and status
 ---
 
-# List Agents Command
+Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
+
+# /agentic-framework:list-agents — Display All Agents
 
 ## Purpose
 
@@ -12,7 +14,7 @@ Display comprehensive information about all 21 specialized agents in the framewo
 ## Usage
 
 ```
-/list-agents [filter] [--format=<table|json|detailed>]
+/agentic-framework:list-agents [filter] [--format=<table|json|detailed>]
 ```
 
 **Filters:**
@@ -60,7 +62,7 @@ Display comprehensive information about all 21 specialized agents in the framewo
 
 Total: 21 agents (21 ready, 0 unavailable)
 Quality enforcement is framework-wide: every agent's committed work passes the
-peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
+peer-review Stop gate (${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1) before a session ends.
 ```
 
 ### 2. Category View (--language)
@@ -94,8 +96,8 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
   • Category: Language Expert
   • Model: sonnet (resolves to claude-sonnet-4-6)
   • Specialization: rust_development_systems_programming
-  • File: agents/rust-expert.md
-  • Configuration: claude.json ✓
+  • File: ${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md
+  • Configuration: ${CLAUDE_PLUGIN_ROOT}/claude.json ✓
 
 🎯 CAPABILITIES
   • Rust systems programming
@@ -108,7 +110,7 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
 
 🔧 QUALITY ENFORCEMENT
   • Framework-wide: committed work passes the peer-review Stop gate
-    (hooks/stop-peer-review-gate.ps1) before a session can end
+    (${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1) before a session can end
   • Review chain: code-review-gatekeeper → peer-review-critic
 
 🔗 RELATED AGENTS
@@ -117,7 +119,7 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
   • Delegates to: comprehensive-analyst for debugging
 
 📚 DOCUMENTATION
-  • Agent Guide: agents/rust-expert.md
+  • Agent Guide: ${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md
   • Examples: See delegate.md for routing examples
 ```
 
@@ -131,7 +133,7 @@ peer-review Stop gate (hooks/stop-peer-review-gate.ps1) before a session ends.
       "category": "language_expert",
       "model": "sonnet",
       "specialization": "rust_development_systems_programming",
-      "file_path": "agents/rust-expert.md",
+      "file_path": "${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md",
       "status": "ready",
       "capabilities": [
         "Rust systems programming",
@@ -205,31 +207,31 @@ technical-docs-writer   → Documentation, guides
 
 ### 1. Quick Reference
 ```bash
-/list-agents
+/agentic-framework:list-agents
 # See all agents at a glance
 ```
 
 ### 2. Find Agent for Task
 ```bash
-/list-agents --language
+/agentic-framework:list-agents --language
 # See language experts for code development
 ```
 
 ### 3. Agent Details
 ```bash
-/list-agents rust-expert --format=detailed
+/agentic-framework:list-agents rust-expert --format=detailed
 # Get full details about Rust expert
 ```
 
 ### 4. Export Agent Catalog
 ```bash
-/list-agents --format=json > agents-catalog.json
+/agentic-framework:list-agents --format=json > agents-catalog.json
 # Export for documentation or tooling
 ```
 
 ### 5. Category Filtering
 ```bash
-/list-agents --category=domain
+/agentic-framework:list-agents --category=domain
 # Show only domain specialists
 ```
 
@@ -263,39 +265,39 @@ technical-docs-writer   → Documentation, guides
 ## Integration
 
 Works well with:
-- `/delegate` - Route tasks to agents
-- `/analyze-framework` - Check agent health
-- `/agent-status` - Runtime agent information
-- `/quality-report` - Framework quality assessment
+- `/agentic-framework:delegate` - Route tasks to agents
+- `/agentic-framework:analyze-framework` - Check agent health
+- `/agentic-framework:agent-status` - Runtime agent information
+- `/agentic-framework:quality-report` - Framework quality assessment
 
 ## Implementation Notes
 
 Agent information sourced from:
-1. **agents/*.md** - Agent definitions and capabilities
-2. **claude.json** - Agent configuration and models
-3. **CLAUDE.md** - Agent execution rules and routing
+1. **${CLAUDE_PLUGIN_ROOT}/agents/*.md** - Agent definitions and capabilities
+2. **${CLAUDE_PLUGIN_ROOT}/claude.json** - Agent configuration and models
+3. **${CLAUDE_PLUGIN_ROOT}/CLAUDE.md** - Agent execution rules and routing
 
 ## Quick Filters
 
 ```bash
 # By technology
-/list-agents rust-expert                    # Specific agent
-/list-agents --language                     # All language experts
-/list-agents --domain                       # All specialists
+/agentic-framework:list-agents rust-expert                    # Specific agent
+/agentic-framework:list-agents --language                     # All language experts
+/agentic-framework:list-agents --domain                       # All specialists
 
 # By capability
-/list-agents --category=quality             # Quality agents
-/list-agents --category=architecture        # Architecture agents
+/agentic-framework:list-agents --category=quality             # Quality agents
+/agentic-framework:list-agents --category=architecture        # Architecture agents
 
 # Export formats
-/list-agents --format=json                  # Machine-readable
-/list-agents --format=detailed              # Human-readable
-/list-agents --format=table                 # Compact view
+/agentic-framework:list-agents --format=json                  # Machine-readable
+/agentic-framework:list-agents --format=detailed              # Human-readable
+/agentic-framework:list-agents --format=table                 # Compact view
 ```
 
 ## Notes
 
-- Agent list is derived from `claude.json` and `agents/*.md` (no hardcoded roster)
+- Agent list is derived from `${CLAUDE_PLUGIN_ROOT}/claude.json` and `${CLAUDE_PLUGIN_ROOT}/agents/*.md` (no hardcoded roster)
 - Status reflects configuration state (file presence, registry parity, model parity)
-- Use `/agent-status` for per-agent configuration detail
-- Combine with `/analyze-framework` for comprehensive view
+- Use `/agentic-framework:agent-status` for per-agent configuration detail
+- Combine with `/agentic-framework:analyze-framework` for comprehensive view

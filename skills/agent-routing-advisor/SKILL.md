@@ -78,7 +78,7 @@ If the task is underspecified (e.g., "optimize performance", "improve the app"):
 
 ## Delegation Template
 
-When handing the recommendation to `/delegate` or a Task invocation, structure the prompt as:
+When handing the recommendation to `/agentic-framework:delegate` or a Task invocation, structure the prompt as:
 
 - **Objective**: what must be accomplished, in one sentence.
 - **Context**: relevant file paths, existing code, dependencies.

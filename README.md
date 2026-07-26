@@ -11,7 +11,7 @@ A configuration framework for [Claude Code CLI](https://docs.claude.com/en/docs/
 This framework extends Claude Code CLI with:
 
 - **21 Specialized Agents** covering the full development lifecycle
-- **Real Enforcement Hooks** — a blocking peer-review Stop gate plus session-context and delegation-hint hooks, registered via `settings.template.json` and covered by tests
+- **Real Enforcement Hooks** — a blocking peer-review Stop gate plus session-context and delegation-hint hooks, registered via the plugin's `hooks/hooks.json` and covered by tests
 - **Anti-Drift Consistency System** — dynamic validator, doc generator, and CI gate that keep the registry, docs, and filesystem in lockstep
 - **MCP Integration** — 5 MCP servers for code intelligence, file operations, documentation lookup, structured reasoning, and web fetching
 
@@ -43,41 +43,18 @@ curl -fsSL https://anthropic.com/install-claude.sh | sh
 claude --version
 ```
 
-### Configure MCP Servers
+### MCP Servers
 
-This repo ships a project-level `.mcp.json` with five servers:
+The optional `agentic-framework-mcp` plugin ships five MCP servers. They are provided by the plugin and become visible via `claude mcp list` after the plugin is installed (even if setup is skipped). Running `/agentic-framework-mcp:setup` configures their runtime environment variables.
 
-```json
-{
-  "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem",
-               "${MCP_FS_ROOT:-D:/src/github/claude-agentic-framework}"]
-    },
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"],
-      "env": { "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}" }
-    },
-    "serena": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/oraios/serena",
-               "serena", "start-mcp-server", "--context", "ide-assistant"]
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-    },
-    "fetch": {
-      "command": "uvx",
-      "args": ["mcp-server-fetch"]
-    }
-  }
-}
-```
+Set these runtime environment variables (globally via shell profile or system settings; copy `.env.example` for placeholders):
 
-Set `MCP_FS_ROOT` (and optionally `CONTEXT7_API_KEY`) in your environment or `.env` — see `.env.example`. Note that a project-level `.mcp.json` only applies to sessions started inside this directory; to make a server available in every project, register it with `claude mcp add --scope user` instead.
+| Env Var | Purpose |
+|---------|---------|
+| `CONTEXT7_API_KEY` | API key for the context7 MCP server (optional) |
+| `MCP_FS_ROOT` | Root directory for the filesystem MCP server (defaults to the current project directory) |
+
+**Servers available after plugin installation:**
 
 | MCP Server | Purpose | Runtime |
 |------------|---------|---------|
@@ -87,32 +64,130 @@ Set `MCP_FS_ROOT` (and optionally `CONTEXT7_API_KEY`) in your environment or `.e
 | **sequential-thinking** | Structured step-by-step reasoning for complex problem decomposition | Node.js (`npx`) |
 | **fetch** | Web content fetching and conversion for efficient page consumption | Python (`uvx`) |
 
+Note: to check which servers are available in your session, run `claude mcp list`.
+
 ---
 
 ## Installation
 
-```bash
-# 1. Clone into the Claude Code CLI config directory (or anywhere you like)
-git clone <your-framework-repo> ~/.claude
-cd ~/.claude
+The framework is distributed as **Claude Code plugins** via the marketplace (no local cloning).
 
-# 2. Install the runtime surface (settings.json from the template, hook
-#    registration, session-state directory). Refuses to clobber an existing
-#    hooks block unless -Force is passed.
-pwsh -NoProfile -File scripts/install.ps1        # Windows / any OS with pwsh
-# or: bash scripts/install.sh                    # Linux / macOS / WSL
+### 1. Install the Main Plugin
 
-# 3. Validate framework integrity
-bash scripts/validate-consistency.sh
+Using the Claude Code GUI:
+```
+/plugin marketplace add tomas-rampas/claude-agentic-framework
+/plugin install agentic-framework@claude-agentic-framework
 ```
 
-Notes:
-- `settings.json` is **not** tracked — it is created from `settings.template.json` by the installer, so your local permission tweaks never end up in git.
-- The installer prints a per-item report (hooks new/updated/unchanged, settings action, MCP merge results, framework-surface sync state) and ends with a summary.
-- **MCP merge is non-destructive**: the framework's MCP servers are merged into the user-scope `~/.claude.json` — missing servers are added (with `${VAR:-default}` placeholders expanded from your environment), existing definitions are **never overwritten**, and a timestamped backup is written before any change. Skip the step with `-SkipMcp`.
-- If `~/.claude` is a git clone of this framework, the installer reports when its checkout (commands/agents/skills) is behind this repo — sync it with `git -C ~/.claude pull`; the installer deliberately does not touch those surfaces.
-- Secrets/paths for MCP servers come from your environment or `.env` (copy `.env.example`); if `.claude/settings.local.json` lists servers under `disabledMcpjsonServers`, remove the ones you want active.
-- Restart any running Claude Code session after installing so the hooks load.
+Or via the CLI:
+```bash
+claude plugin marketplace add tomas-rampas/claude-agentic-framework
+claude plugin install agentic-framework@claude-agentic-framework
+```
+
+### 2. (Optional) Install the MCP Servers Plugin
+
+The optional `agentic-framework-mcp` plugin provides 5 MCP servers (context7, filesystem, serena, sequential-thinking, fetch):
+
+```
+/plugin install agentic-framework-mcp@claude-agentic-framework
+/agentic-framework-mcp:setup
+```
+
+Or via CLI:
+```bash
+claude plugin install agentic-framework-mcp@claude-agentic-framework
+```
+
+Then, inside a Claude Code session, run `/agentic-framework-mcp:setup` to configure runtime environment variables for the MCP servers (see `.env.example` for placeholders):
+- `CONTEXT7_API_KEY` — optional, for the context7 MCP server
+- `MCP_FS_ROOT` — optional, filesystem server root (defaults to the current project directory)
+
+### 3. Merge User Settings
+
+The main plugin ships `settings.template.json` with recommended permissions and `alwaysThinkingEnabled`. Merge these into your `~/.claude/settings.json`:
+
+```bash
+# Inspect the template (use the versioned cache path)
+cat ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/settings.template.json
+# (or open the plugin folder via /plugin)
+
+# Copy permissions and alwaysThinkingEnabled into your ~/.claude/settings.json
+# (do not overwrite hooks — they are registered via hooks/hooks.json in the plugin)
+```
+
+### 4. Restart Claude Code
+
+Hooks and MCP servers are loaded at session start:
+```bash
+# Restart any running Claude Code session
+claude
+```
+
+### 5. Validate Framework Integrity
+
+```bash
+/agentic-framework:validate-hooks
+/agentic-framework:analyze-framework
+```
+
+---
+
+### Migration: Existing Local Clones
+
+If you have this framework cloned into `~/.claude`, migrate to the plugin distribution:
+
+```bash
+# Dry-run (the default — reports what would change, makes no changes)
+/agentic-framework:migrate-legacy
+
+# Perform the migration (backs up settings.json + .claude.json, de-registers the
+# framework hooks, deletes the 4 copied hook scripts, and cleans a legacy ~/.claude
+# clone; add -RemoveMcp to also remove framework-shaped MCP servers)
+/agentic-framework:migrate-legacy -Apply
+```
+
+**Note**: Do not run the migration on dirty working trees or unpushed commits — it will refuse to proceed.
+
+---
+
+### Updating the Plugins
+
+Check for updates via the CLI:
+```bash
+claude plugin marketplace update tomas-rampas/claude-agentic-framework
+claude plugin update agentic-framework@claude-agentic-framework
+claude plugin update agentic-framework-mcp@claude-agentic-framework  # if installed
+```
+
+---
+
+### Uninstalling
+
+```bash
+/plugin uninstall agentic-framework
+/plugin uninstall agentic-framework-mcp     # if installed
+/plugin marketplace remove tomas-rampas/claude-agentic-framework
+
+# Clean up environment variables (optional)
+# Windows PowerShell:
+[Environment]::SetEnvironmentVariable('CONTEXT7_API_KEY', $null, 'User')
+[Environment]::SetEnvironmentVariable('MCP_FS_ROOT', $null, 'User')
+
+# macOS/Linux: remove the export lines from ~/.zshrc, ~/.bashrc, or ~/.bash_profile
+# (see the setup command's "To undo" section for the exact lines to remove)
+```
+
+---
+
+### Troubleshooting Installation
+
+**Plugin marketplace add fails:** ensure you use the exact owner/repo form (`tomas-rampas/claude-agentic-framework`), a git clone URL, or a local checkout path. Note that adding the marketplace directly via a URL to marketplace.json itself is unsupported (its relative plugin sources `./` and `./mcp-plugin` cannot resolve without repo context).
+
+**MCP servers not available after `/agentic-framework-mcp:setup`:** restart Claude Code; servers load at session start. Run `claude mcp list` to verify they are registered.
+
+**Hooks not firing after restart:** verify the agentic-framework plugin is installed: `/plugin list`. If missing, re-run `/plugin install agentic-framework@claude-agentic-framework`.
 
 ---
 
@@ -202,35 +277,50 @@ How the commands, self-scoring loop, review chain, and Stop gate fit together:
 
 ## Project Structure
 
+The framework distributes as two plugins:
+
+**agentic-framework** (main):
 ```
-~/.claude/
+<plugin root>*                      # ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/<version>/
 ├── CLAUDE.md                # Agent execution rules and task routing
 ├── claude.json              # Agent registry (single source of truth for the tooling)
-├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch)
-├── settings.template.json   # Tracked settings template: permissions + hook registration
+├── settings.template.json   # Recommended permissions + alwaysThinkingEnabled
 ├── agents/                  # 21 agent definitions (.md with YAML frontmatter)
-├── commands/                # 9 commands (delegate, spec, build, review-spec, etc.)
-├── hooks/                   # Real hook scripts (peer-review Stop gate, recorder, session context, delegation hint)
+├── commands/                # 10 namespaced commands (delegate, spec, build, review-spec, migrate-legacy, etc.)
+├── hooks/                   # Real hook scripts + hooks/hooks.json registration (peer-review Stop gate, recorder, session context, delegation hint)
 ├── skills/                  # Operational skills
-├── scripts/                 # Install, validation, anti-drift consistency, and doc-generation scripts
+├── scripts/                 # Validation, anti-drift consistency, and doc-generation scripts
 ├── tests/                   # Consistency + hook test harnesses
 ├── docs/design/             # Design rationale for the hook architecture
 ├── .github/workflows/       # CI (anti-drift consistency gate)
 └── security-check.sh        # Security validation
 ```
+*<plugin root> is the plugin cache path: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/<version>/`
+
+**agentic-framework-mcp** (optional):
+```
+<plugin root>*                      # ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework-mcp/<version>/
+├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch)
+├── commands/
+│   └── setup.md             # Registration command for MCP servers
+└── [other plugin files]
+```
+*<plugin root> is the plugin cache path: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework-mcp/<version>/`
 
 ---
 
 ## Management Commands
 
+**Note:** Commands are namespaced as `/agentic-framework:<name>`. For example, `/agentic-framework:spec` instead of `/spec`.
+
 | Command | Purpose |
 |---------|---------|
-| `/delegate` | End-to-end orchestration: auto-runs the `/spec` interview when no source of truth exists, then hands off to `/build` (single feature) or per-todo orchestration (multi-domain) |
-| `/analyze-framework` | Framework health checking and validation |
-| `/list-agents` | Agent catalog with filtering and multiple output formats |
-| `/validate-hooks` | Hook coverage and consistency verification |
-| `/agent-status` | Agent configuration status and health assessment |
-| `/quality-report` | Quality metrics, trend analysis, and reporting |
+| `/agentic-framework:delegate` | End-to-end orchestration: auto-runs the spec interview when no source of truth exists, then hands off to build (single feature) or per-todo orchestration (multi-domain) |
+| `/agentic-framework:analyze-framework` | Framework health checking and validation |
+| `/agentic-framework:list-agents` | Agent catalog with filtering and multiple output formats |
+| `/agentic-framework:validate-hooks` | Hook coverage and consistency verification |
+| `/agentic-framework:agent-status` | Agent configuration status and health assessment |
+| `/agentic-framework:quality-report` | Quality metrics, trend analysis, and reporting |
 
 ## Spec Loop Commands
 
@@ -238,9 +328,12 @@ The self-correcting spec → build → review loop: the system, not the user, ca
 
 | Command | Purpose |
 |---------|---------|
-| `/spec` | Interview the user one question at a time, then write `specs/<name>.md` with checkable acceptance criteria and a definition of done |
-| `/build` | Build exactly what the spec says, then loop build ⇆ `spec-compliance-reviewer` until `VERDICT: APPROVED` (max 3 iterations) |
-| `/review-spec` | Manual conformance check: per-requirement PASS/FAIL of the current build against the spec, without entering the loop |
+| `/agentic-framework:spec` | Interview the user one question at a time, then write `specs/<name>.md` with checkable acceptance criteria and a definition of done |
+| `/agentic-framework:build` | Build exactly what the spec says, then loop build ⇆ `spec-compliance-reviewer` until `VERDICT: APPROVED` (max 3 iterations) |
+| `/agentic-framework:review-spec` | Manual conformance check: per-requirement PASS/FAIL of the current build against the spec, without entering the loop |
+
+For legacy clones being migrated to plugins, there is also:
+| `/agentic-framework:migrate-legacy` | Migrate a local ~/.claude clone to the plugin distribution |
 
 ---
 
@@ -264,16 +357,16 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 
 ## Enforcement Hooks
 
-The framework registers real Claude Code hooks via `settings.template.json` (installed into `~/.claude/settings.json` by `scripts/install.ps1`):
+The framework ships real Claude Code hooks via the **agentic-framework plugin** in `hooks/hooks.json` (exec-form PowerShell with `${CLAUDE_PLUGIN_ROOT}` variable substitution).
 
 | Hook | Event | Behavior |
 |------|-------|----------|
-| `stop-peer-review-gate.ps1` | `Stop` | **Blocking.** Refuses to end a session while a feature branch has committed work ahead of its base and the latest `peer-review-critic` run did not record `VERDICT: APPROVED` — one block if no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`. Loop-safe, fail-open (legacy no-verdict markers unlock). |
+| `stop-peer-review-gate.ps1` | `Stop` | **Blocking.** Refuses to end a session while a feature branch has committed work ahead of its base and the latest `peer-review-critic` run did not record `VERDICT: APPROVED` — one block if no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`. Loop-safe, fail-open (legacy no-verdict markers unlock). Accepts bare and plugin-scoped reviewer names. |
 | `record-subagent-run.ps1` | `PostToolUse` + `SubagentStop` | Records each `peer-review-critic` run as a per-session marker, parsing the report's machine-readable `VERDICT:` line into it (the verdict the Stop gate enforces). |
 | `session-start-context.ps1` | `SessionStart` | Injects branch/review status into the session context at startup. |
 | `pretooluse-delegation-hint.ps1` | `PreToolUse` | Advisory: suggests the matching specialist subagent when a technology-specific file is written (once per session per agent). |
 
-Design rationale (including why the legacy TDD hard block was retired) lives in `docs/design/`. The hook scripts are tested by `tests/hooks.test.ps1`, and `scripts/validate-consistency.sh` asserts registration parity: every registered script exists, every script is registered, all event names are valid.
+Design rationale (including why the legacy TDD hard block was retired) lives in `docs/design/`. The hook scripts are tested by `tests/hooks.test.ps1`, and `/agentic-framework:validate-hooks` asserts registration parity: every registered script exists, every script is registered, all event names are valid.
 
 ---
 
@@ -284,27 +377,36 @@ Design rationale (including why the legacy TDD hard block was retired) lives in 
 which claude  # If missing, reinstall per the Prerequisites section
 ```
 
-**MCP servers not available:**
+**MCP servers not available after setup:**
 ```bash
-cat .mcp.json                                            # Check configuration
-npx -y @modelcontextprotocol/server-filesystem --help    # Test filesystem server
-npx -y @upstash/context7-mcp --help                      # Test context7 server
-uvx --from git+https://github.com/oraios/serena serena --help  # Test serena
-npx -y @modelcontextprotocol/server-sequential-thinking --help # Test sequential-thinking
-uvx mcp-server-fetch --help                              # Test fetch server
 claude mcp list                                          # What Claude Code sees
-```
-Also check `.claude/settings.local.json` — servers listed under `disabledMcpjsonServers` are switched off locally.
-
-**Agents not found:**
-```bash
-ls -1 agents/*.md | wc -l  # Should show 21
-./scripts/validate-consistency.sh
+# If empty: restart Claude Code or run /plugin list to verify agentic-framework-mcp is installed
 ```
 
-**Delegation not working:**
+**Agents not found or not loading:**
 ```bash
-cat commands/delegate.md | head -20  # Verify command exists
+/agentic-framework:list-agents                          # Verify agents are available
+/agentic-framework:analyze-framework                    # Framework health check
+```
+
+**Hooks not firing or Stop gate misbehaving:**
+```bash
+/agentic-framework:validate-hooks                       # Hook registration parity
+# If hooks are not firing after setup, restart Claude Code (hooks load at session start)
+```
+
+**Plugin installation failed:**
+```bash
+/plugin list                                             # Check installed plugins
+/plugin marketplace add tomas-rampas/claude-agentic-framework  # Re-add to marketplace
+/plugin install agentic-framework@claude-agentic-framework     # Re-install
+```
+
+**Migrating from a legacy local clone:**
+```bash
+/agentic-framework:migrate-legacy                        # Dry-run (default; no changes)
+/agentic-framework:migrate-legacy -Apply                 # Perform migration
+/agentic-framework:analyze-framework                     # Verify success
 ```
 
 ---
@@ -325,5 +427,5 @@ To add or modify agents, manage framework consistency, or understand the anti-dr
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 9 Commands • v3.1.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 10 Commands • v4.0.0**
 <!-- END GENERATED: framework-stats -->

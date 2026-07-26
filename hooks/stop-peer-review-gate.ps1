@@ -12,7 +12,7 @@
 # = 1, which is the pre-verdict on-disk format). Loop-safe (stop_hook_active),
 # fail-open: any error, parse failure, or non-git context => exit 0 with no output.
 #
-# Registered in settings.json under hooks.Stop (see settings.template.json).
+# Registered in hooks/hooks.json via the agentic-framework plugin.
 # Session markers are written by hooks/record-subagent-run.ps1.
 
 try {

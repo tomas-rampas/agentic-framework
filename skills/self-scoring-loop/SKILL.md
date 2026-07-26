@@ -12,7 +12,7 @@ This is the quality loop for deliverables that have no test suite. For code, use
 ## When to Apply
 
 - A spec, plan, proposal, or document is "done" but has not been judged against anything.
-- The `/spec` command finishes a draft spec (self-score it before presenting it).
+- The `/agentic-framework:spec` command finishes a draft spec (self-score it before presenting it).
 - A deliverable will be consumed by someone else (or another agent) and errors are expensive downstream.
 - The user asks to "polish", "tighten", or "make this good" without concrete criteria.
 

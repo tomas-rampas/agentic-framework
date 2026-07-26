@@ -17,11 +17,13 @@ Do not hand-edit agent counts, rosters, or model assignments in documentation or
 
 ## Adding or Changing an Agent
 
+Framework agents are part of the agentic-framework plugin and are distributed via the marketplace. This guide covers contribution to the repository. Changes you commit become part of the next plugin release.
+
 Follow these steps in order:
 
 ### 1. Create the agent prompt file
 
-Add `agents/<name>.md` with YAML frontmatter:
+Add `agents/<name>.md` (in the plugin source) with YAML frontmatter:
 
 ```yaml
 ---
@@ -58,7 +60,7 @@ Also add the agent to exactly one group in `.agent_categories`.
 
 ### 3. Quality enforcement is framework-wide
 
-There is no per-agent hook to create: every agent's committed work passes through the peer-review Stop gate (`hooks/stop-peer-review-gate.ps1`, registered in `settings.template.json`). If you are adding a **hook** rather than an agent, see `commands/validate-hooks.md` ("Adding a New Hook") — implementation in `hooks/*.ps1`, registration in `settings.template.json`, behavior cases in `tests/hooks.test.ps1`.
+There is no per-agent hook to create: every agent's committed work passes through the peer-review Stop gate (`hooks/stop-peer-review-gate.ps1`, shipped in the plugin). If you are adding a **hook** rather than an agent, see `skills/hook-config-generator/SKILL.md` ("Adding a New Hook") — implementation in `hooks/*.ps1`, registration in `hooks/hooks.json`, behavior cases in `tests/hooks.test.ps1`.
 
 ### 4. Refresh generated documentation
 
@@ -79,8 +81,8 @@ bash scripts/validate-consistency.sh
 This runs the full check battery, including:
 - Registry ↔ filesystem parity
 - Category partition (no duplicates, no gaps)
-- Hook registration parity (settings.template.json hooks block ↔ hooks/*.ps1: no missing scripts, no orphans, valid event names, PS7 pinned)
-- JSON validity (claude.json, settings.template.json, .mcp.json; best-effort YAML)
+- Hook registration parity (hooks/hooks.json ↔ hooks/*.ps1: no missing scripts, no orphans, valid event names, PS7 pinned)
+- JSON validity (claude.json, settings.template.json, hooks/hooks.json; best-effort YAML)
 - No use of deprecated names
 - Architecture description count accuracy
 - Model parity (agents/<name>.md frontmatter vs claude.json — both tier shorthand) — blocking (see note below)
@@ -89,7 +91,24 @@ This runs the full check battery, including:
 - README focus-text parity (README Focus cells match claude.json .focus fields)
 - Generated blocks are fresh (list-agents summary, README framework-stats footer)
 
+Additional validation and testing:
+
+- `bash tests/plugin-manifests.test.sh` — plugin manifest validation
+- `claude plugin validate .` — validate agentic-framework plugin
+- `claude plugin validate ./mcp-plugin` — validate agentic-framework-mcp plugin (if present)
+- `pwsh -NoProfile -File tests/migrate.test.ps1` — legacy migration dry-run validation
+
 All blocking checks must pass (exit 0).
+
+### 5b. Plugin manifest consistency
+
+Releases must maintain version consistency across three manifest files:
+
+- `claude.json` → `.version` field
+- `.claude-plugin/plugin.json` → `version` field
+- `mcp-plugin/.claude-plugin/plugin.json` → `version` field (if agentic-framework-mcp is shipped)
+
+The validator enforces this parity with a blocking check (check 13).
 
 ### 6. Update prose tables
 
