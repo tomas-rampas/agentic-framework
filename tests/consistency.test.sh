@@ -222,7 +222,7 @@ section "[4] Category partition break: drop an agent from agent_categories -> no
 }
 
 # ===========================================================================
-# CASE 5 - Missing hook script: registered in settings.template.json but
+# CASE 5 - Missing hook script: registered in hooks/hooks.json but
 #          deleted from hooks/ -> check 3 must fail.
 # ===========================================================================
 section "[5] Missing hook script: rm hooks/stop-peer-review-gate.ps1 -> non-zero (check 3)"
@@ -236,8 +236,8 @@ section "[5] Missing hook script: rm hooks/stop-peer-review-gate.ps1 -> non-zero
 }
 
 # ===========================================================================
-# CASE 6 - Orphan hook script: a hooks/*.ps1 that is NOT registered in the
-#          settings template is dead code -> check 3 must fail.
+# CASE 6 - Orphan hook script: a hooks/*.ps1 that is NOT registered in
+#          hooks/hooks.json is dead code -> check 3 must fail.
 # ===========================================================================
 section "[6] Orphan hook script: add unregistered hooks/zzz-orphan.ps1 -> non-zero (check 3)"
 {
@@ -246,6 +246,22 @@ section "[6] Orphan hook script: add unregistered hooks/zzz-orphan.ps1 -> non-ze
   run_validate "$copy"
   assert_rc_nonzero "validator fails on an unregistered hook script"
   assert_out_contains "reports orphan-hook-script" "orphan-hook-script: zzz-orphan.ps1"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 6b - dispatch.sh allowlist missing: drop a registered hook name from
+#           dispatch.sh case statement -> check 3 must fail.
+# ===========================================================================
+section "[6b] dispatch.sh allowlist incomplete: drop 'record-subagent-run' from case -> non-zero (check 3)"
+{
+  copy="$(make_copy)"
+  # Remove 'record-subagent-run|' from the dispatch.sh case statement, leaving
+  # stop-peer-review-gate|session-start-context|pretooluse-delegation-hint
+  sed -i 's/stop-peer-review-gate|record-subagent-run|/stop-peer-review-gate|/' "$copy/hooks/dispatch.sh"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails when dispatch.sh allowlist is incomplete"
+  assert_out_contains "reports missing-dispatch-allowlist for record-subagent-run" "missing-dispatch-allowlist: record-subagent-run"
   rm -rf "$copy"
 }
 
@@ -468,6 +484,48 @@ section "[17] Orphan hook (unregistered in hooks.json): add hooks/zzz-unregister
   run_validate "$copy"
   assert_rc_nonzero "validator fails on an unregistered hook script"
   assert_out_contains "reports orphan-hook-script for zzz-unregistered.ps1" "orphan-hook-script: zzz-unregistered.ps1"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 18 - Missing .sh hook implementation: registered but deleted from hooks/
+#           -> check 3 must fail with missing-sh-impl.
+# ===========================================================================
+section "[18] Missing .sh hook implementation: rm hooks/session-start-context.sh -> non-zero (check 3)"
+{
+  copy="$(make_copy)"
+  rm -f "$copy/hooks/session-start-context.sh"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails when a registered .sh hook is missing"
+  assert_out_contains "reports missing-sh-impl" "missing-sh-impl: session-start-context.sh"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 19 - Orphan .sh hook script: a hooks/*.sh (non-dispatch) NOT registered
+#           -> check 3 must fail with orphan-sh-script.
+# ===========================================================================
+section "[19] Orphan .sh hook script: add unregistered hooks/zzz-extra.sh -> non-zero (check 3)"
+{
+  copy="$(make_copy)"
+  printf '#!/bin/sh\nset -u\nexit 0\n' > "$copy/hooks/zzz-extra.sh"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails on an unregistered .sh hook script"
+  assert_out_contains "reports orphan-sh-script for zzz-extra.sh" "orphan-sh-script: zzz-extra.sh"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 20 - Missing dispatch.sh: the dispatcher not found -> check 3 must fail
+#           with missing-dispatch-sh.
+# ===========================================================================
+section "[20] Missing dispatch.sh: rm hooks/dispatch.sh -> non-zero (check 3)"
+{
+  copy="$(make_copy)"
+  rm -f "$copy/hooks/dispatch.sh"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails when dispatch.sh is missing"
+  assert_out_contains "reports missing-dispatch-sh" "missing-dispatch-sh: dispatch.sh"
   rm -rf "$copy"
 }
 

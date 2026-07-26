@@ -47,6 +47,12 @@ jobs:
       - name: Run plugin manifest test harness
         run: bash tests/plugin-manifests.test.sh
 
+      - name: Run hooks test harness
+        run: bash tests/hooks.test.sh
+
+      - name: Cross-impl equivalence (pwsh + sh) — self-skips on CI if no pwsh
+        run: bash tests/hooks-equivalence.test.sh
+
       - name: Install Claude Code CLI
         # Required for `claude plugin validate`; ubuntu-latest ships Node.js
         # and npm preinstalled, same "no apt-get" posture as the jq check
@@ -77,7 +83,7 @@ jobs:
         # pinned to warning so info-level style notes never break the build.
         run: |
           shellcheck --version
-          shellcheck --severity=warning -e SC1091 scripts/*.sh scripts/lib/*.sh tests/*.sh security-check.sh
+          shellcheck --severity=warning -e SC1091 scripts/*.sh scripts/lib/*.sh hooks/*.sh tests/*.sh security-check.sh
 
       - name: PSScriptAnalyzer over hook + install scripts
         shell: pwsh
@@ -117,3 +123,15 @@ jobs:
       - name: Run consistency test harness under Git Bash
         shell: bash
         run: bash tests/consistency.test.sh
+
+      - name: Run hooks test harness under Git Bash
+        # Exercises the dispatcher's MSYS->pwsh routing arm on real Windows,
+        # separate from the pwsh-native hook suite tested above.
+        shell: bash
+        run: bash tests/hooks.test.sh
+
+      - name: Cross-impl equivalence (pwsh + Git Bash)
+        # Runs the same fixtures through both PowerShell and Bash implementations,
+        # asserting marker/sidecar/JSON output equivalence.
+        shell: bash
+        run: bash tests/hooks-equivalence.test.sh

@@ -67,7 +67,7 @@ When a specific agent name is provided, show detailed information:
 - **Limited** — Agent file exists but configuration mismatch (e.g. model divergence)
 - **Unavailable** — Agent in claude.json but file missing
 
-Quality enforcement is framework-wide, not per-agent: every agent's committed work passes through the peer-review Stop gate (`${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1`), so there is no per-agent hook to check.
+Quality enforcement is framework-wide, not per-agent: every agent's committed work passes through the peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN_ROOT}/hooks/`), so there is no per-agent hook to check.
 
 ## Expected Agent Count
 

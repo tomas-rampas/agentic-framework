@@ -24,7 +24,7 @@ Verify that every external tool this framework actually depends on is installed,
 | jq | The bash validators (`validate-consistency.sh` aborts without it); parsing the registry (`claude.json`) and config files |
 | gh (GitHub CLI) | The command-line executor agents (bash-expert, powershell-expert): PR/issue/run queries, log grinding, `gh api` reads; must be authenticated |
 | yq (mikefarah v4) | The executor agents: YAML processing and agent-frontmatter extraction (`yq --front-matter=extract`) |
-| PowerShell 7+ (`pwsh`) | Every hook script carries `#Requires -Version 7.0`; `tests/hooks.test.ps1` runs hook tests |
+| PowerShell 7+ (`pwsh`) | **Windows**: hook chain and installer scripts require pwsh 7 (hooks/dispatch.sh detection runs .ps1 on MINGW/MSYS). **Linux/macOS**: optional — hooks run as POSIX shell; pwsh only needed for the optional .ps1 test suite (`tests/hooks.test.ps1`). |
 | Node.js + npx | The `filesystem`, `context7`, and `sequential-thinking` MCP servers (launched via `npx -y`) — only needed if the optional agentic-framework-mcp plugin is installed |
 | uv (`uvx`) | The `serena` and `fetch` MCP servers — only needed if the optional agentic-framework-mcp plugin is installed |
 | Claude Code CLI | Host runtime that loads the agentic-framework plugin and executes hooks |
@@ -57,6 +57,8 @@ Run each probe and classify the result as OK (with version), MISSING, or WRONG V
 ### PowerShell 7+
 - Probe: `pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'`
 - Pass: 7.0 or newer. `powershell.exe` (Windows PowerShell 5.1) is NOT sufficient — the hook scripts refuse to run under it.
+- **Windows: REQUIRED** — hooks need pwsh 7+ (dispatch.sh routes the .ps1 when MINGW*/MSYS*/CYGWIN* is detected, or directly if sh is unavailable).
+- **Linux/macOS: OPTIONAL** — hooks run as POSIX shell natively; pwsh is only needed if you want to run the .ps1 test suite for verification (for example, in CI when both interpreters are available for equivalence testing).
 
 ### Node.js and npx
 - Probes: `node --version` and `npx --version`
@@ -78,9 +80,10 @@ Run each probe and classify the result as OK (with version), MISSING, or WRONG V
 
 Version probes prove installation, not integration. When the user is troubleshooting (not just installing), also run:
 
-- `pwsh -NoProfile -File tests/hooks.test.ps1` — exercises the hook scripts end to end (needs pwsh 7+ and git).
-- `bash scripts/validate-consistency.sh` — runs the full consistency battery (needs bash and jq); it validates the registry (`claude.json`), agent frontmatter parity, and hook registration parity against `hooks/hooks.json`.
-- `bash scripts/validate-hooks.sh` — focused hook-parity check.
+- `pwsh -NoProfile -File tests/hooks.test.ps1` — exercises the .ps1 hook implementations end to end (needs pwsh 7+ and git). Windows: required check. Linux/macOS: optional verification.
+- `bash tests/hooks.test.sh` — exercises the .sh hook implementations (needs bash and git). Linux/macOS: verifies POSIX hooks work. Windows: optional if Git Bash is available.
+- `bash scripts/validate-consistency.sh` — runs the full consistency battery (needs bash and jq); it validates the registry (`claude.json`), agent frontmatter parity, and hook pair parity against `hooks/hooks.json`.
+- `bash scripts/validate-hooks.sh` — focused hook pair-parity and dispatch check.
 
 If a smoke check fails while all version probes pass, the problem is configuration (PATH visible to Claude Code's hook shell, plugin installation state), not a missing tool — verify the agentic-framework plugin is installed and active: `/plugin list` should show it, and the session may need restarting for hooks to load.
 

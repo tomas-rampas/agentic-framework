@@ -182,13 +182,39 @@ fact_hook_events() {
   _facts_jq -r '.hooks // {} | keys[]' "$FACTS_HOOKS_JSON" | LC_ALL=C sort
 }
 
-# fact_registered_hook_scripts - sorted basenames of every *.ps1 referenced by a
-# hook command in hooks.json. Extracts from BOTH .command field and .args[] array elements.
+# fact_registered_hook_scripts - sorted basenames of every *.ps1 referenced in
+# hook command strings in hooks.json. Uses jq scan() to extract from shell-form chains.
+# Parity check only; does not inspect command strings for appended shell content (dev/CI lint, not a runtime boundary).
 fact_registered_hook_scripts() {
   _facts_require_jq || return $?
   _facts_require_hooks_json || return $?
-  _facts_jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | (.command, (.args[]?))] | .[] | strings | select(endswith(".ps1")) | sub("^.*/"; "")' \
+  _facts_jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("[a-zA-Z0-9._-]+[.]ps1") | sub("^.*/"; "")' \
       "$FACTS_HOOKS_JSON" | LC_ALL=C sort -u
+}
+
+# fact_registered_sh_scripts - sorted basenames of every *.sh referenced in
+# hook command strings in hooks.json. Extracts hook names from dispatch.sh arguments
+# and derives expected .sh basenames (name.sh), plus dispatch.sh itself.
+# Parity check only; does not inspect command strings for appended shell content (dev/CI lint, not a runtime boundary).
+fact_registered_sh_scripts() {
+  _facts_require_jq || return $?
+  _facts_require_hooks_json || return $?
+  # Extract hook names from dispatch.sh arguments (the word after dispatch.sh in the chain)
+  # and convert to .sh basenames, then add dispatch.sh itself
+  {
+    _facts_jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("dispatch[.]sh[\" ] +([a-zA-Z0-9._-]+)") | .[0] + ".sh"' \
+        "$FACTS_HOOKS_JSON"
+    printf 'dispatch.sh\n'
+  } | LC_ALL=C sort -u
+}
+
+# fact_hook_sh_impl_files - sorted basenames of hooks/*.sh on disk
+# (hook implementations + dispatch.sh)
+fact_hook_sh_impl_files() {
+  local f
+  shopt -s nullglob
+  for f in "$FACTS_HOOKS_DIR"/*.sh; do basename "$f"; done | LC_ALL=C sort
+  shopt -u nullglob
 }
 
 # fact_hook_script_files - sorted basenames of hooks/*.ps1 on disk

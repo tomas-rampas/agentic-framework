@@ -16,11 +16,11 @@ Configuration lives in the **agentic-framework plugin** (typically at `~/.claude
   - **Override location** (if present): `~/.claude/agents/<name>.md` (takes priority)
 - `claude.json` — the registry. `.sub_agents` maps each agent to its config (including `model` shorthand and `focus`); `.agent_categories` partitions the roster into the canonical categories; `.consistency.model_shorthand_map` defines the only legal model values; `.consistency.deprecated_agent_names` lists dead names that must never be referenced.
   - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/claude.json`
-- `hooks/hooks.json` — hook registration in exec-form with `${CLAUDE_PLUGIN_ROOT}` variable substitution. Hooks are loaded automatically by Claude Code.
+- `hooks/hooks.json` — hook registration as shell-form dispatch chains (`sh dispatch.sh <name> || pwsh -NoProfile -File <name>.ps1`) with `${CLAUDE_PLUGIN_ROOT}` substitution; each hook is a `.ps1`/`.sh` pair routed by `hooks/dispatch.sh`. Hooks are loaded automatically by Claude Code.
   - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/hooks.json`
 - `settings.template.json` — recommended permissions and `alwaysThinkingEnabled` for merging into user settings.
   - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/settings.template.json`
-- Validators: `scripts/validate-consistency.sh` (the full anti-drift battery), `scripts/validate-hooks.sh` (hook parity), `scripts/validate-framework.sh`, `scripts/generate-docs.sh --check`. Tests: `tests/hooks.test.ps1`, `tests/consistency.test.sh`.
+- Validators: `scripts/validate-consistency.sh` (the full anti-drift battery), `scripts/validate-hooks.sh` (hook pair parity + dispatch), `scripts/validate-framework.sh`, `scripts/generate-docs.sh --check`. Tests: `tests/hooks.test.ps1` (PowerShell), `tests/hooks.test.sh` (POSIX shell), `tests/hooks-equivalence.test.sh` (cross-platform byte-equality).
 - Namespaced slash commands for quick inspection: `/agentic-framework:list-agents`, `/agentic-framework:agent-status`, `/agentic-framework:analyze-framework`, `/agentic-framework:validate-hooks`, `/agentic-framework:quality-report`.
 
 ## Debug Workflow
@@ -83,7 +83,7 @@ Check 7 fails on: missing frontmatter `model:`, empty registry model, a value no
 
 ## Playbook: Hook Not Firing or Stop Gate Misbehaving
 
-Hooks are real Claude Code hooks — PowerShell 7 scripts executed when registered in `hooks/hooks.json` of the agentic-framework plugin.
+Hooks are real Claude Code hooks — PowerShell 7 (.ps1) and POSIX shell (.sh) script pairs, routed by dispatch.sh, registered in `hooks/hooks.json` of the agentic-framework plugin.
 
 ```bash
 # Check plugin hook registration
@@ -92,8 +92,9 @@ jq '.hooks.Stop' ~/.claude/plugins/cache/claude-agentic-framework/agentic-framew
 # Verify plugin is installed
 /plugin list | grep agentic-framework
 
-# Check hook scripts exist
-ls ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/*.ps1
+# Check hook scripts exist (each hook is a .ps1/.sh pair plus dispatch.sh)
+ls ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/*.ps1 \
+   ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/*.sh
 
 # Validate hook registration parity
 /agentic-framework:validate-hooks
@@ -105,10 +106,10 @@ pwsh -NoProfile -Command '$PSVersionTable.PSVersion'
 Common causes, in order of likelihood:
 - Plugin not installed or not enabled: run `/plugin install agentic-framework@claude-agentic-framework` and verify with `/plugin list`.
 - The session predates the plugin install: hooks load at session start, so restart Claude Code after installing.
-- Matcher mismatch: `record-subagent-run.ps1` fires on PostToolUse `Task|Agent` and on SubagentStop; `pretooluse-delegation-hint.ps1` on PreToolUse `Write|Edit`. An event without a matching tool never fires.
+- Matcher mismatch: `record-subagent-run` fires on PostToolUse `Task|Agent` and on SubagentStop; `pretooluse-delegation-hint` on PreToolUse `Write|Edit` (each name = its `.ps1`/`.sh` pair). An event without a matching tool never fires.
 - Plugin cache stale: try `/plugin uninstall agentic-framework` and then `/plugin install agentic-framework@claude-agentic-framework`.
 
-Check 3 of `validate-consistency.sh` asserts parity between scripts referenced in `hooks/hooks.json` and `hooks/*.ps1` on disk. Behavior is covered by `tests/hooks.test.ps1`.
+Check 3 of `validate-consistency.sh` asserts pair parity: every hook name in `hooks/hooks.json` has both .ps1 and .sh implementations; `dispatch.sh` is present and referenced in every registered chain; no orphans on either side. (The name allowlist inside dispatch.sh itself is not validator-checked — keep it in sync by hand.) Behavior is covered by `tests/hooks.test.ps1` (PowerShell) and `tests/hooks.test.sh` (POSIX).
 
 Stop-gate specifics: `stop-peer-review-gate.ps1` blocks session end only when a feature branch has committed work ahead of its base and the latest `peer-review-critic` run this session did not record `VERDICT: APPROVED` (verdicts are parsed into the session marker by `record-subagent-run.ps1`; blocks are bounded — once with no review, up to 3 on `CHANGES_REQUIRED`). It is loop-safe and fail-open — if it appears to "block forever", verify the recorder hook is registered and firing, since the gate clears based on its records. Design rationale lives in `docs/design/`.
 

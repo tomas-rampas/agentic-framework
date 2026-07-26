@@ -23,8 +23,8 @@ This framework extends Claude Code CLI with:
 |-------------|---------|
 | **[Claude Code CLI](https://docs.claude.com/en/docs/claude-code)** | Agent execution platform (required) |
 | **Git** | Version control |
-| **PowerShell 7.3+ (`pwsh`)** | Runs the hook scripts (`hooks/*.ps1`, 7.0+) and the installer (`scripts/install.ps1`, 7.3+ for order-preserving case-sensitive JSON parsing) — required on every platform |
-| **bash + jq** | Validation and doc-generation tooling (Git Bash works on Windows) |
+| **PowerShell 7+ (`pwsh`)** | Windows: runs hooks and installer scripts (7.0+ for hooks, 7.3+ for installer); Linux/macOS: optional (hooks run as POSIX shell; pwsh needed only for the optional .ps1 test suites) |
+| **bash + jq** | Validation and doc-generation tooling (Git Bash works on Windows). On Linux/macOS, `sh` + `jq` + `git` are the complete hook runtime — nothing else needed |
 | **gh + yq** | Command-line executor agents (bash-expert / powershell-expert): GitHub CLI queries and YAML processing; run `gh auth login` once. yq is mikefarah v4 |
 | **Node.js/npm** | filesystem, context7, sequential-thinking MCP servers via `npx` |
 | **uv (`uvx`)** | serena + fetch MCP servers |
@@ -357,16 +357,16 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 
 ## Enforcement Hooks
 
-The framework ships real Claude Code hooks via the **agentic-framework plugin** in `hooks/hooks.json` (exec-form PowerShell with `${CLAUDE_PLUGIN_ROOT}` variable substitution).
+The framework ships real Claude Code hooks via the **agentic-framework plugin** in `hooks/hooks.json`. Each hook is registered as a shell-form fallback chain: `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name> || pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/hooks/<name>.ps1"`. On Linux/macOS, the dispatcher runs the POSIX shell script; on Windows, it runs the PowerShell script. Each hook exists as both a `.ps1` (PowerShell 7) and `.sh` (POSIX shell) pair.
 
 | Hook | Event | Behavior |
 |------|-------|----------|
-| `stop-peer-review-gate.ps1` | `Stop` | **Blocking.** Refuses to end a session while a feature branch has committed work ahead of its base and the latest `peer-review-critic` run did not record `VERDICT: APPROVED` — one block if no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`. Loop-safe, fail-open (legacy no-verdict markers unlock). Accepts bare and plugin-scoped reviewer names. |
-| `record-subagent-run.ps1` | `PostToolUse` + `SubagentStop` | Records each `peer-review-critic` run as a per-session marker, parsing the report's machine-readable `VERDICT:` line into it (the verdict the Stop gate enforces). |
-| `session-start-context.ps1` | `SessionStart` | Injects branch/review status into the session context at startup. |
-| `pretooluse-delegation-hint.ps1` | `PreToolUse` | Advisory: suggests the matching specialist subagent when a technology-specific file is written (once per session per agent). |
+| `stop-peer-review-gate` (.ps1/.sh pair) | `Stop` | **Blocking.** Refuses to end a session while a feature branch has committed work ahead of its base and the latest `peer-review-critic` run did not record `VERDICT: APPROVED` — one block if no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`. Loop-safe, fail-open (legacy no-verdict markers unlock). Accepts bare and plugin-scoped reviewer names. |
+| `record-subagent-run` (.ps1/.sh pair) | `PostToolUse` + `SubagentStop` | Records each `peer-review-critic` run as a per-session marker, parsing the report's machine-readable `VERDICT:` line into it (the verdict the Stop gate enforces). |
+| `session-start-context` (.ps1/.sh pair) | `SessionStart` | Injects branch/review status into the session context at startup. |
+| `pretooluse-delegation-hint` (.ps1/.sh pair) | `PreToolUse` | Advisory: suggests the matching specialist subagent when a technology-specific file is written (once per session per agent). |
 
-Design rationale (including why the legacy TDD hard block was retired) lives in `docs/design/`. The hook scripts are tested by `tests/hooks.test.ps1`, and `/agentic-framework:validate-hooks` asserts registration parity: every registered script exists, every script is registered, all event names are valid.
+Design rationale (including why the legacy TDD hard block was retired) lives in `docs/design/`. The hook scripts are tested by `tests/hooks.test.ps1` (PowerShell) and `tests/hooks.test.sh` (POSIX), and `/agentic-framework:validate-hooks` asserts pair parity: every registered hook has both .ps1 and .sh implementations, every registered script exists and is paired, all event names are valid. An equivalence test `tests/hooks-equivalence.test.sh` verifies the two implementations produce identical output on systems where both interpreters are present (primarily CI).
 
 ---
 
@@ -391,9 +391,12 @@ claude mcp list                                          # What Claude Code sees
 
 **Hooks not firing or Stop gate misbehaving:**
 ```bash
-/agentic-framework:validate-hooks                       # Hook registration parity
+/agentic-framework:validate-hooks                       # Hook pair parity and dispatch check
 # If hooks are not firing after setup, restart Claude Code (hooks load at session start)
 ```
+
+**Harmless "sh: not found" stderr on Windows without Git Bash:**
+When Git Bash is not installed, the hook chain's `sh` command fails with a "not found" error line in the transcript. This is harmless — the `||` arm runs the PowerShell `.ps1` script directly. (Installing Git Bash removes the noise: `sh` then exists and `dispatch.sh` detects MINGW*/MSYS*/CYGWIN* to route to the same PowerShell script — the `.sh` implementations run only on Linux/macOS.)
 
 **Plugin installation failed:**
 ```bash
@@ -401,6 +404,9 @@ claude mcp list                                          # What Claude Code sees
 /plugin marketplace add tomas-rampas/claude-agentic-framework  # Re-add to marketplace
 /plugin install agentic-framework@claude-agentic-framework     # Re-install
 ```
+
+**Running the shell test suites or validators manually on Windows:**
+If you are running the test suites manually on Windows, use the Git Bash bash.exe directly (not WSL's bash, which may be on PATH by default): `C:\Program Files\Git\bin\bash.exe -c 'bash tests/hooks.test.sh'`. Bare `bash` without a full path may resolve to WSL bash, which will fail or behave incorrectly.
 
 **Migrating from a legacy local clone:**
 ```bash

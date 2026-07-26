@@ -36,7 +36,8 @@ The authoritative implementation is the anti-drift tooling — this command runs
 ```bash
 FRAMEWORK_ROOT="${CLAUDE_PLUGIN_ROOT:-.}" bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts/validate-consistency.sh"    # the full check battery (see CONTRIBUTING.md)
 FRAMEWORK_ROOT="${CLAUDE_PLUGIN_ROOT:-.}" bash "${CLAUDE_PLUGIN_ROOT:-.}/scripts/generate-docs.sh" --check   # generated doc blocks are fresh
-pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT:-.}/tests/hooks.test.ps1"   # hook behavior tests
+pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT:-.}/tests/hooks.test.ps1"   # hook behavior tests (.ps1 implementations)
+bash "${CLAUDE_PLUGIN_ROOT:-.}/tests/hooks.test.sh"                     # hook behavior tests (.sh implementations)
 ```
 
 ### 1. Configuration Validation
@@ -73,10 +74,10 @@ Analyzes every registered agent using the canonical categories from `${CLAUDE_PL
 
 ### 3. Hook Architecture Analysis
 
-Hooks are real Claude Code hooks: PowerShell scripts in `${CLAUDE_PLUGIN_ROOT}/hooks/` registered in the settings `hooks` block (distributed via `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json`).
+Hooks are real Claude Code hooks: .ps1/.sh script pairs in `${CLAUDE_PLUGIN_ROOT}/hooks/`, routed by `${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh`, registered in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` as shell-form dispatch chains.
 
-- Registration parity: every registered script exists; every script is registered; event names are valid; scripts pin PowerShell 7 (check 3)
-- Behavior: `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1` exercises block/allow paths of the peer-review Stop gate, the run recorder, session context, and the delegation hint
+- Pair parity: every registered hook name has both .ps1 and .sh implementations; dispatch.sh is present and referenced in every registered chain; no orphans on either side (check 3). The name allowlist inside dispatch.sh is not validator-checked.
+- Behavior: `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1` (PowerShell suite) and `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.sh` (POSIX suite) exercise block/allow paths of the peer-review Stop gate, the run recorder, session context, and the delegation hint on both implementations
 - Design rationale: `${CLAUDE_PLUGIN_ROOT}/docs/design/`
 
 ### 4. Skills System Check
@@ -127,8 +128,8 @@ AGENTS
    • Registry == filesystem; all categories partition the roster; model parity OK
 
 HOOKS
-   • Registration parity OK (no missing, no orphans, events valid)
-   • hooks.test.ps1: all assertions pass
+   • Pair parity OK (.ps1 + .sh present for every hook, dispatch referenced, events valid)
+   • hooks.test.ps1 + hooks.test.sh: all assertions pass
 
 DOCS
    • Generated blocks fresh; stated counts match derived values
@@ -179,10 +180,15 @@ FAIL Agents registered in claude.json with NO agents/<name>.md file
 Remediation: create the agent file or remove the registry entry
 ```
 
-**Hook parity break:**
+**Hook pair parity break:**
 ```
-FAIL registered hook script missing on disk: hooks/<name>.ps1
-Remediation: restore the script, or remove its registration from hooks/hooks.json
+FAIL missing-hook-file: stop-peer-review-gate.ps1
+Remediation: restore ${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1, or remove its registration
+```
+
+```
+FAIL missing-sh-impl: stop-peer-review-gate.sh
+Remediation: restore ${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.sh, or remove the hook's registration from hooks/hooks.json (and its dispatch.sh allowlist entry)
 ```
 
 **Stale generated block:**
@@ -202,4 +208,4 @@ Remediation: bash scripts/generate-docs.sh --write
 
 - Analysis is read-only and doesn't modify any files
 - Safe to run at any time
-- Requires bash + jq (validators) and PowerShell 7 (hook tests)
+- Requires bash + jq (validators); PowerShell 7 for the .ps1 hook tests (Windows: required; Linux/macOS: optional)

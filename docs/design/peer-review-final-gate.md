@@ -1,7 +1,8 @@
 # Design: peer-review-final-gate (Stop hook)
 
-**Status: implemented** — `hooks/stop-peer-review-gate.ps1` + `hooks/record-subagent-run.ps1`,
-shipped with the **agentic-framework plugin** via `hooks/hooks.json` (exec-form PowerShell with `${CLAUDE_PLUGIN_ROOT}` substitution).
+**Status: implemented** — `hooks/stop-peer-review-gate.ps1` + `hooks/stop-peer-review-gate.sh` (a .ps1/.sh pair), plus `hooks/record-subagent-run.ps1` + `hooks/record-subagent-run.sh`,
+shipped with the **agentic-framework plugin** via `hooks/hooks.json` as shell-form dispatch chains (`sh dispatch.sh <name> || pwsh -NoProfile -File <name>.ps1`) with `${CLAUDE_PLUGIN_ROOT}` substitution.
+On Linux/macOS, the dispatcher runs the .sh scripts; on Windows, the .ps1 scripts.
 This document is the design rationale; the scripts are the source of truth for behavior.
 
 ## Purpose
