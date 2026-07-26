@@ -645,7 +645,10 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
                 Write-Host "    ... and $($filesToDelete.Count - 20) more"
             }
         }
-        $summary['checkout'] = "$fileCount tracked file(s), .git"
+        # Only update summary if checkout didn't abort (preserve abort message)
+        if ($checkoutCanProceed) {
+            $summary['checkout'] = "$fileCount tracked file(s), .git"
+        }
     }
 } else {
     Write-Host '  ~/.claude is not a git clone - nothing to do'
