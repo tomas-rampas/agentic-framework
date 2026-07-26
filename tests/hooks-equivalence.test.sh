@@ -150,7 +150,7 @@ printf '%s================================================%s\n' "$C_CYN" "$C_NC"
 # --- RECORDER-A: SubagentStop APPROVED
 section "[RECORDER-A] SubagentStop APPROVED plain-string"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   state_ps_msys="$workdir/state_ps"
   state_sh_msys="$workdir/state_sh"
   state_ps_win=$(cygpath -w "$state_ps_msys" 2>/dev/null || echo "$state_ps_msys")
@@ -168,7 +168,7 @@ section "[RECORDER-A] SubagentStop APPROVED plain-string"
 # --- RECORDER-B: PostToolUse CHANGES_REQUIRED
 section "[RECORDER-B] PostToolUse CHANGES_REQUIRED content-array"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   state_ps_msys="$workdir/state_ps"
   state_sh_msys="$workdir/state_sh"
   state_ps_win=$(cygpath -w "$state_ps_msys" 2>/dev/null || echo "$state_ps_msys")
@@ -186,7 +186,7 @@ section "[RECORDER-B] PostToolUse CHANGES_REQUIRED content-array"
 # --- RECORDER-C: Verdict-less
 section "[RECORDER-C] Verdict-less run (ran-marker)"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   state_ps_msys="$workdir/state_ps"
   state_sh_msys="$workdir/state_sh"
   state_ps_win=$(cygpath -w "$state_ps_msys" 2>/dev/null || echo "$state_ps_msys")
@@ -219,7 +219,7 @@ section "[RECORDER-C] Verdict-less run (ran-marker)"
 # --- RECORDER-D: Scoped
 section "[RECORDER-D] Scoped agentic-framework:peer-review-critic"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   state_ps_msys="$workdir/state_ps"
   state_sh_msys="$workdir/state_sh"
   state_ps_win=$(cygpath -w "$state_ps_msys" 2>/dev/null || echo "$state_ps_msys")
@@ -237,7 +237,7 @@ section "[RECORDER-D] Scoped agentic-framework:peer-review-critic"
 # --- RECORDER-E: Stale-guard
 section "[RECORDER-E] Stale-guard: instance-dedupe suppression"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   state_ps_msys="$workdir/state_ps"
   state_sh_msys="$workdir/state_sh"
   state_ps_win=$(cygpath -w "$state_ps_msys" 2>/dev/null || echo "$state_ps_msys")
@@ -271,7 +271,7 @@ section "[RECORDER-E] Stale-guard: instance-dedupe suppression"
 # --- GATE-A: APPROVED allows
 section "[GATE-A] APPROVED marker allows"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   state_ps_msys="$workdir/state_ps"
   state_sh_msys="$workdir/state_sh"
@@ -315,7 +315,7 @@ section "[GATE-A] APPROVED marker allows"
 # --- GATE-B: CHANGES_REQUIRED blocks
 section "[GATE-B] CHANGES_REQUIRED marker blocks"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   state_ps_msys="$workdir/state_ps"
   state_sh_msys="$workdir/state_sh"
@@ -374,7 +374,7 @@ section "[GATE-B] CHANGES_REQUIRED marker blocks"
 # --- GATE-C: No marker blocks
 section "[GATE-C] No marker blocks"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   state_ps_msys="$workdir/state_ps"
   state_sh_msys="$workdir/state_sh"

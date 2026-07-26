@@ -92,11 +92,11 @@ try {
 
 ```bash
 # EXAMPLE: Copy and paste this into YOUR OWN terminal:
-# EXAMPLE: Secure token capture and persistence (works on bash, zsh, and other POSIX shells)
+# EXAMPLE: Secure token capture and persistence (works on bash, zsh, and ksh; read -s is a shell extension, not POSIX — dash/ash don't support it)
 printf 'Paste your Context7 API key: '
 read -r -s C7KEY
-echo
-if ! echo "$C7KEY" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null; then
+printf '\n'
+if ! printf '%s\n' "$C7KEY" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null; then
   echo "ERROR: API key contains invalid characters. Must match ^[A-Za-z0-9_-]+ without spaces or special chars" >&2
 else
   SHELL_NAME=$(basename "$SHELL")
@@ -126,8 +126,8 @@ unset C7KEY
 # EXAMPLE: Copy and paste this into YOUR OWN fish terminal:
 # EXAMPLE: Secure token capture and persistence
 set -l c7key (read -s -P 'Paste your Context7 API key: ')
-if echo "$c7key" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null 2>&1
-  grep -q "^set -Ux CONTEXT7_API_KEY" ~/.config/fish/config.fish 2>/dev/null || set -Ux CONTEXT7_API_KEY "$c7key"  # EXAMPLE: setup
+if printf '%s\n' "$c7key" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null 2>&1
+  if not set -q CONTEXT7_API_KEY; set -Ux CONTEXT7_API_KEY "$c7key"; end  # EXAMPLE: setup
   echo "Added to fish configuration"
 else
   echo "ERROR: API key contains invalid characters. Must match ^[A-Za-z0-9_-]+ without spaces or special chars" >&2
@@ -195,11 +195,11 @@ Detect the user's login shell and append to its profile (with guard to prevent d
 
 ```bash
 # EXAMPLE: Option C - Validate and persist token (user provides in chat)
-# EXAMPLE: Secure token capture and persistence (works on bash, zsh, and other POSIX shells)
+# EXAMPLE: Secure token capture and persistence (works on bash, zsh, and ksh; read -s is a shell extension, not POSIX — dash/ash don't support it)
 printf 'Paste your Context7 API key: '
 read -r -s C7KEY
-echo
-if ! echo "$C7KEY" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null; then
+printf '\n'
+if ! printf '%s\n' "$C7KEY" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null; then
   echo "ERROR: API key contains invalid characters. Must match ^[A-Za-z0-9_-]+$ without spaces or special chars." >&2
 else
   SHELL_NAME=$(basename "$SHELL")
@@ -228,8 +228,8 @@ unset C7KEY
 # EXAMPLE: Option C - Validate and persist token (fish shell)
 # EXAMPLE: Secure token capture and persistence
 set -l c7key (read -s -P 'Paste your Context7 API key: ')
-if echo "$c7key" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null 2>&1
-  grep -q "^set -Ux CONTEXT7_API_KEY" ~/.config/fish/config.fish 2>/dev/null || set -Ux CONTEXT7_API_KEY "$c7key"  # EXAMPLE: setup
+if printf '%s\n' "$c7key" | grep -E '^[A-Za-z0-9_-]+$' > /dev/null 2>&1
+  if not set -q CONTEXT7_API_KEY; set -Ux CONTEXT7_API_KEY "$c7key"; end  # EXAMPLE: setup
   echo "Added to fish configuration"
 else
   echo "ERROR: API key contains invalid characters. Must match ^[A-Za-z0-9_-]+ without spaces or special chars" >&2
