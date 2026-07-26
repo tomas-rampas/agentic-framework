@@ -406,7 +406,7 @@ When Git Bash is not installed, the hook chain's `sh` command fails with a "not 
 ```
 
 **Marketplace name suffix vs. GitHub path:**
-When installing a plugin, use the full `<name>@<marketplace>` form where `<marketplace>` is the marketplace's **registered name** (the `"name"` field in `.claude-plugin/marketplace.json` — for this repo, `claude-agentic-framework`).
+When installing a plugin, use the full `<name>@<marketplace>` form where `<marketplace>` is the marketplace's **registered name** (the `"name"` field in `.claude-plugin/marketplace.json` — for this repo, `claude-agentic-framework`), **not** the GitHub `owner/repo` path used with `/plugin marketplace add`.
 ```
 /plugin install agentic-framework@claude-agentic-framework
 ```
