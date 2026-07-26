@@ -266,6 +266,25 @@ section "[6b] dispatch.sh allowlist incomplete: drop 'record-subagent-run' from 
 }
 
 # ===========================================================================
+# CASE 6c - chain command mismatch: dispatch arg differs from .ps1 filename
+#           -> check 3 must fail.
+# ===========================================================================
+section "[6c] chain command mismatch: dispatch arg != .ps1 filename -> non-zero (check 3)"
+{
+  copy="$(make_copy)"
+  # Mutate one chain: change the dispatch arg but leave the .ps1 filename unchanged
+  # Original: sh "...dispatch.sh" record-subagent-run || pwsh -File ".../record-subagent-run.ps1"
+  # Mutated:  sh "...dispatch.sh" record-subagent-runs || pwsh -File ".../record-subagent-run.ps1" (typo in dispatch arg)
+  jq '.hooks.PostToolUse[0].hooks[0].command = "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" record-subagent-runs || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/record-subagent-run.ps1\""' \
+    "$copy/hooks/hooks.json" > "$copy/hooks/hooks.json.tmp" \
+    && mv "$copy/hooks/hooks.json.tmp" "$copy/hooks/hooks.json"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails on chain command mismatch"
+  assert_out_contains "reports chain-name-mismatch" "chain-name-mismatch"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # CASE 7 - Stale claude.json description ("18-agent") -> check 6a must fail.
 # ===========================================================================
 section "[7] Stale architecture description: claude.json set to '18-agent' -> non-zero"

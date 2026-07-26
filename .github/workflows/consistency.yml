@@ -95,6 +95,24 @@ jobs:
           $results | Format-Table -AutoSize
           if ($results | Where-Object Severity -eq 'Error') { exit 1 }
 
+  hooks-macos:
+    name: hook behavior + validators (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure jq is available
+        run: |
+          command -v jq >/dev/null || { echo "jq missing"; exit 1; }
+          jq --version
+
+      - name: Validate consistency (macOS/POSIX)
+        run: bash scripts/validate-consistency.sh
+
+      - name: Run hooks test harness (macOS/POSIX)
+        run: bash tests/hooks.test.sh
+
   hooks-windows:
     name: hook behavior + validators (windows)
     runs-on: windows-latest

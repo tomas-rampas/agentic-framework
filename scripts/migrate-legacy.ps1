@@ -634,7 +634,7 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
             }
 
             Write-Host "  deleted $($filesToDelete.Count) tracked file(s) and .git directory"
-        } else {
+        } elseif (-not $Apply) {
             # Dry-run: show first 20 files
             $display = $filesToDelete | Select-Object -First 20
             Write-Host "  (dry-run: would delete $($filesToDelete.Count) tracked file(s)):"
@@ -645,7 +645,11 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
                 Write-Host "    ... and $($filesToDelete.Count - 20) more"
             }
         }
-        $summary['checkout'] = "$fileCount tracked file(s), .git"
+        # Only update summary if checkout didn't abort (preserve abort message)
+        if ($checkoutCanProceed) {
+            $summary['checkout'] = "$fileCount tracked file(s), .git"
+        }
+        # If Apply but not checkoutCanProceed: abort message already printed, don't print anything else
     }
 } else {
     Write-Host '  ~/.claude is not a git clone - nothing to do'

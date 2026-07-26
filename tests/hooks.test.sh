@@ -31,8 +31,16 @@ TESTS_FAIL=0
 # Create a single mktemp-based harness root for all test fixtures.
 # All temp dirs are created under this single root; cleanup_all removes
 # it wholesale. This eliminates PID-based naming collision issues and
-# ensures predictable cleanup across concurrent runs.
+# ensures predictable cleanup across concurrent runs (a prior incident:
+# a shared/global glob pattern caused one test-harness instance to delete
+# another CONCURRENT instance's live fixture directories mid-run).
 HARNESS_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/hooks-test.XXXXXXXX") || exit 1
+
+cleanup_all() {
+  cd / 2>/dev/null || true
+  [ -n "${HARNESS_ROOT:-}" ] && rm -rf "$HARNESS_ROOT"
+}
+trap cleanup_all EXIT INT TERM
 
 # Defensive precondition: ensure harness root is NOT inside a git worktree.
 # This belt-and-suspenders check prevents test dirs from mutating the repo
@@ -43,17 +51,16 @@ if git -C "$HARNESS_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 2
 fi
 
-cleanup_all() {
-  cd / 2>/dev/null || true
-  [ -n "${HARNESS_ROOT:-}" ] && rm -rf "$HARNESS_ROOT"
-}
-trap cleanup_all EXIT INT TERM
-
 # --- temp dir and repo helpers ─────────────────────────────────────────────
 make_work_dir() {
   # Create a throwaway temp directory under HARNESS_ROOT for test fixtures.
   # All test subdirectories are created here, ensuring proper isolation.
-  mktemp -d "$HARNESS_ROOT/wd.XXXXXX"
+  local wd
+  wd=$(mktemp -d "$HARNESS_ROOT/wd.XXXXXX") || {
+    printf 'FATAL: mktemp failed\n' >&2
+    exit 2
+  }
+  printf '%s\n' "$wd"
 }
 
 make_test_repo() {
@@ -125,7 +132,7 @@ printf '%s================================================%s\n' "$C_CYN" "$C_NC"
 
 section "[DISPATCH-A] Unknown hook name → exit 0, empty output"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   cp "$SRC_REPO/hooks/dispatch.sh" "$workdir/" 2>/dev/null || true
 
   if [ -f "$workdir/dispatch.sh" ]; then
@@ -140,7 +147,7 @@ section "[DISPATCH-A] Unknown hook name → exit 0, empty output"
 
 section "[DISPATCH-B] Empty/missing hook name → exit 0, empty output"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   cp "$SRC_REPO/hooks/dispatch.sh" "$workdir/" 2>/dev/null || true
 
   if [ -f "$workdir/dispatch.sh" ]; then
@@ -155,7 +162,7 @@ section "[DISPATCH-B] Empty/missing hook name → exit 0, empty output"
 
 section "[DISPATCH-C1] platform-aware routing: MSYS arm vs Linux sh arm"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   mkdir -p "$workdir/hooks"
   cp "$SRC_REPO/hooks/dispatch.sh" "$workdir/hooks/" 2>/dev/null || true
 
@@ -211,7 +218,7 @@ SHFAKE
 
 section "[DISPATCH-C2] sh-arm routing via fake uname"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   mkdir -p "$workdir/hooks" "$workdir/bin"
   cp "$SRC_REPO/hooks/dispatch.sh" "$workdir/hooks/" 2>/dev/null || true
 
@@ -254,7 +261,7 @@ SHARM
 
 section "[DISPATCH-D] dispatch always exits 0 even if child fails"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   mkdir -p "$workdir/hooks"
   cp "$SRC_REPO/hooks/dispatch.sh" "$workdir/hooks/" 2>/dev/null || true
 
@@ -299,7 +306,7 @@ section "[DISPATCH-E] No CR byte in all *.sh files"
 
 section "[SESSION-START-CONTEXT] ahead-of-base on feature branch"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   mkdir -p "$workdir/test_repo"
   testgit="$workdir/test_repo"
 
@@ -337,7 +344,7 @@ section "[SESSION-START-CONTEXT] ahead-of-base on feature branch"
 
 section "[SESSION-START-CONTEXT] base-branch state on main"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   mkdir -p "$workdir/test_repo"
   testgit="$workdir/test_repo"
 
@@ -372,7 +379,7 @@ section "[SESSION-START-CONTEXT] base-branch state on main"
 section "[SESSION-START-CONTEXT] silent outside a git worktree"
 {
   # Create temp dir OUTSIDE the repo (under HARNESS_ROOT, safe from repo mutations)
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
 
   # Test outside git worktree
   test_payload="{\"session_id\":\"s3\",\"cwd\":\"$workdir\"}"
@@ -396,7 +403,7 @@ section "[SESSION-START-CONTEXT] fail-open on malformed stdin"
 
 section "[PRETOOLUSE-DELEGATION-HINT] suggests rust-expert for .rs file"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
 
   # Set CLAUDE_STATE_DIR for this test to isolate state
   export CLAUDE_STATE_DIR="$workdir/state"
@@ -425,7 +432,7 @@ section "[PRETOOLUSE-DELEGATION-HINT] suggests rust-expert for .rs file"
 
 section "[PRETOOLUSE-DELEGATION-HINT] hints at most once per session per agent"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
 
   # Set CLAUDE_STATE_DIR for this test
   export CLAUDE_STATE_DIR="$workdir/state"
@@ -454,7 +461,7 @@ section "[PRETOOLUSE-DELEGATION-HINT] hints at most once per session per agent"
 
 section "[PRETOOLUSE-DELEGATION-HINT] silent for unmapped extensions"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
 
   # Set CLAUDE_STATE_DIR for this test
   export CLAUDE_STATE_DIR="$workdir/state"
@@ -482,7 +489,7 @@ section "[PRETOOLUSE-DELEGATION-HINT] fail-open on malformed stdin"
 
 section "[STOP-PEER-REVIEW-GATE-1] loop-safety: stop_hook_active=true allows"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -503,7 +510,7 @@ section "[STOP-PEER-REVIEW-GATE-1] loop-safety: stop_hook_active=true allows"
 
 section "[STOP-PEER-REVIEW-GATE-2] blocks: feature branch ahead, clean tree, no marker"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -533,7 +540,7 @@ section "[STOP-PEER-REVIEW-GATE-2] blocks: feature branch ahead, clean tree, no 
 
 section "[STOP-PEER-REVIEW-GATE-3] fires at most once per session (.fired marker)"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -564,7 +571,7 @@ section "[STOP-PEER-REVIEW-GATE-3] fires at most once per session (.fired marker
 
 section "[STOP-PEER-REVIEW-GATE-4] allows when peer-review marker exists (legacy)"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -588,7 +595,7 @@ section "[STOP-PEER-REVIEW-GATE-4] allows when peer-review marker exists (legacy
 
 section "[STOP-PEER-REVIEW-GATE-5] allows when working tree is dirty"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -612,7 +619,7 @@ section "[STOP-PEER-REVIEW-GATE-5] allows when working tree is dirty"
 
 section "[STOP-PEER-REVIEW-GATE-6] allows on base branch (main)"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -636,7 +643,7 @@ section "[STOP-PEER-REVIEW-GATE-6] allows on base branch (main)"
 
 section "[STOP-PEER-REVIEW-GATE-7] allows outside a git worktree"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   non_git="$workdir/not_a_repo"
   mkdir -p "$non_git"
 
@@ -656,7 +663,8 @@ section "[STOP-PEER-REVIEW-GATE-7] allows outside a git worktree"
 
 section "[STOP-PEER-REVIEW-GATE-8] fail-open on malformed stdin"
 {
-  CLAUDE_STATE_DIR="$(make_work_dir)/state"
+  _wd="$(make_work_dir)" || exit 2
+  CLAUDE_STATE_DIR="$_wd/state"
   export CLAUDE_STATE_DIR
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -671,7 +679,7 @@ section "[STOP-PEER-REVIEW-GATE-8] fail-open on malformed stdin"
 
 section "[STOP-PEER-REVIEW-GATE-R7a] 3-line marker with verdict=APPROVED allows"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -698,7 +706,7 @@ section "[STOP-PEER-REVIEW-GATE-R7a] 3-line marker with verdict=APPROVED allows"
 
 section "[STOP-PEER-REVIEW-GATE-R7b] 3-line marker with verdict=CHANGES_REQUIRED blocks"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -729,7 +737,7 @@ section "[STOP-PEER-REVIEW-GATE-R7b] 3-line marker with verdict=CHANGES_REQUIRED
 
 section "[STOP-PEER-REVIEW-GATE-g1] allows on verdict=APPROVED marker"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -753,7 +761,7 @@ section "[STOP-PEER-REVIEW-GATE-g1] allows on verdict=APPROVED marker"
 
 section "[STOP-PEER-REVIEW-GATE-g2] verdict=CHANGES_REQUIRED blocks with 3-call budget"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -812,7 +820,7 @@ section "[STOP-PEER-REVIEW-GATE-g2] verdict=CHANGES_REQUIRED blocks with 3-call 
 
 section "[STOP-PEER-REVIEW-GATE-g2-approved] later APPROVED marker allows"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -846,7 +854,7 @@ section "[STOP-PEER-REVIEW-GATE-g2-approved] later APPROVED marker allows"
 
 section "[STOP-PEER-REVIEW-GATE-g3] legacy empty .fired counts as 1 block"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -893,7 +901,7 @@ section "[STOP-PEER-REVIEW-GATE-g3] legacy empty .fired counts as 1 block"
 
 section "[RECORD-SUBAGENT-RUN] writes marker for peer-review-critic run"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -914,7 +922,7 @@ section "[RECORD-SUBAGENT-RUN] writes marker for peer-review-critic run"
 
 section "[RECORD-SUBAGENT-RUN] marker without report text carries no verdict line"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -937,7 +945,7 @@ section "[RECORD-SUBAGENT-RUN] marker without report text carries no verdict lin
 
 section "[RECORD-SUBAGENT-RUN] ignores other subagents"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -958,7 +966,8 @@ section "[RECORD-SUBAGENT-RUN] ignores other subagents"
 
 section "[RECORD-SUBAGENT-RUN] fail-open on malformed stdin"
 {
-  CLAUDE_STATE_DIR="$(make_work_dir)/state"
+  _wd="$(make_work_dir)" || exit 2
+  CLAUDE_STATE_DIR="$_wd/state"
   export CLAUDE_STATE_DIR
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -972,7 +981,7 @@ section "[RECORD-SUBAGENT-RUN] fail-open on malformed stdin"
 
 section "[RECORD-SUBAGENT-RUN] parses verdict from string tool_response"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -995,7 +1004,7 @@ section "[RECORD-SUBAGENT-RUN] parses verdict from string tool_response"
 
 section "[RECORD-SUBAGENT-RUN] parses verdict from content-array tool_response"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1018,7 +1027,7 @@ section "[RECORD-SUBAGENT-RUN] parses verdict from content-array tool_response"
 
 section "[RECORD-SUBAGENT-RUN] SubagentStop path records verdict"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1041,7 +1050,7 @@ section "[RECORD-SUBAGENT-RUN] SubagentStop path records verdict"
 
 section "[RECORD-SUBAGENT-RUN] SubagentStop ignores other agent types"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1062,7 +1071,7 @@ section "[RECORD-SUBAGENT-RUN] SubagentStop ignores other agent types"
 
 section "[RECORD-SUBAGENT-RUN] SubagentStop ignores otherplugin:peer-review-critic"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1083,7 +1092,7 @@ section "[RECORD-SUBAGENT-RUN] SubagentStop ignores otherplugin:peer-review-crit
 
 section "[RECORD-SUBAGENT-RUN] last VERDICT occurrence wins"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1106,7 +1115,7 @@ section "[RECORD-SUBAGENT-RUN] last VERDICT occurrence wins"
 
 section "[RECORD-SUBAGENT-RUN] re-review overwrites marker"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1133,7 +1142,7 @@ section "[RECORD-SUBAGENT-RUN] re-review overwrites marker"
 
 section "[RECORD-SUBAGENT-RUN] no-downgrade: verdict-less event preserves CHANGES_REQUIRED"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1159,7 +1168,7 @@ section "[RECORD-SUBAGENT-RUN] no-downgrade: verdict-less event preserves CHANGE
 
 section "[RECORD-SUBAGENT-RUN] parses verdict from bare-array tool_response"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1182,7 +1191,7 @@ section "[RECORD-SUBAGENT-RUN] parses verdict from bare-array tool_response"
 
 section "[RECORD-SUBAGENT-RUN] falls back to tool_output when tool_response absent"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1205,7 +1214,7 @@ section "[RECORD-SUBAGENT-RUN] falls back to tool_output when tool_response abse
 
 section "[RECORD-SUBAGENT-RUN] parses verdict from CRLF report text"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1229,7 +1238,7 @@ section "[RECORD-SUBAGENT-RUN] parses verdict from CRLF report text"
 
 section "[RECORD-SUBAGENT-RUN] mid-line quoted verdict does not count"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1253,7 +1262,7 @@ section "[RECORD-SUBAGENT-RUN] mid-line quoted verdict does not count"
 
 section "[RECORD-SUBAGENT-RUN-R1] instance dedupe: same id does not overwrite APPROVED"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1287,7 +1296,7 @@ section "[RECORD-SUBAGENT-RUN-R1] instance dedupe: same id does not overwrite AP
 
 section "[RECORD-SUBAGENT-RUN-R2] instance dedupe: same id does not bypass (CHANGES_REQUIRED)"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1318,7 +1327,7 @@ section "[RECORD-SUBAGENT-RUN-R2] instance dedupe: same id does not bypass (CHAN
 
 section "[RECORD-SUBAGENT-RUN-R3] different ids at same HEAD, latest wins"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -1349,7 +1358,7 @@ section "[RECORD-SUBAGENT-RUN-R3] different ids at same HEAD, latest wins"
 
 section "[RECORD-SUBAGENT-RUN-R4] id-less same-HEAD contradiction guard"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -1407,7 +1416,7 @@ section "[RECORD-SUBAGENT-RUN-R4] id-less same-HEAD contradiction guard"
 
 section "[RECORD-SUBAGENT-RUN-R5] id-absent, HEAD MOVES → verdicts can change"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -1448,7 +1457,7 @@ section "[RECORD-SUBAGENT-RUN-R5] id-absent, HEAD MOVES → verdicts can change"
 
 section "[RECORD-SUBAGENT-RUN-R6] tool_use_id dedupe and no-downgrade"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1496,7 +1505,7 @@ section "[RECORD-SUBAGENT-RUN-R6] tool_use_id dedupe and no-downgrade"
 
 section "[RECORD-SUBAGENT-RUN-R7] HEAD-qualified instance dedupe"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -1539,7 +1548,7 @@ section "[RECORD-SUBAGENT-RUN-R7] HEAD-qualified instance dedupe"
 
 section "[RECORD-SUBAGENT-RUN-R8] same id, same HEAD suppressed"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -1580,7 +1589,7 @@ section "[RECORD-SUBAGENT-RUN-R8] same id, same HEAD suppressed"
 
 section "[RECORD-SUBAGENT-RUN] plugin-scoped agentic-framework:peer-review-critic"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1610,7 +1619,7 @@ section "[EDGE-D1] dispatch handles paths with spaces in root"
 {
   # Create temp dir WITH spaces in path (under HARNESS_ROOT, preserving space property)
   # mktemp creates the base, then we add the space-containing subdirectory
-  base="$(make_work_dir)"
+  base="$(make_work_dir)" || exit 2
   root_with_spaces="$base/space test root"
   mkdir -p "$root_with_spaces/hooks"
   cp "$SRC_REPO/hooks/dispatch.sh" "$root_with_spaces/hooks/" 2>/dev/null || true
@@ -1666,7 +1675,7 @@ section "[EDGE-D1-CHAIN] dispatch chain-quoting: spaces in path correctly tokeni
 {
   # Test that spaced root path is correctly handled in shell chain context
   # This validates the ${0%[\\/]*} separator-strip logic on a spaced absolute path
-  base="$(make_work_dir)"
+  base="$(make_work_dir)" || exit 2
   root_with_spaces="$base/space test chain"
   mkdir -p "$root_with_spaces/hooks"
   cp "$SRC_REPO/hooks/dispatch.sh" "$root_with_spaces/hooks/" 2>/dev/null || true
@@ -1736,7 +1745,7 @@ SPACEPS
 
 section "[INTEGRATION-R1] record-subagent-run APPROVED → stop-peer-review-gate allows"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -1772,7 +1781,7 @@ section "[INTEGRATION-R1] record-subagent-run APPROVED → stop-peer-review-gate
 
 section "[INTEGRATION-V6] record-subagent-run CHANGES_REQUIRED, verdict-less re-emission → gate still blocks"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -1810,7 +1819,7 @@ section "[INTEGRATION-V6] record-subagent-run CHANGES_REQUIRED, verdict-less re-
 
 section "[INTEGRATION-G4] CR verdict → gate blocks; later APPROVED → gate allows"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   testgit="$workdir/test_repo"
   mkdir -p "$testgit"
   make_test_repo "$testgit"
@@ -1853,7 +1862,7 @@ section "[INTEGRATION-G4] CR verdict → gate blocks; later APPROVED → gate al
 
 section "[INTEGRATION-IMPOSTOR] agent-name enforcement: agentic-framework:impostor-agent not recorded"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1874,7 +1883,7 @@ section "[INTEGRATION-IMPOSTOR] agent-name enforcement: agentic-framework:impost
 
 section "[INTEGRATION-ABSENT-PLUGIN] otherplugin:some-agent absent from registry → handled gracefully"
 {
-  workdir="$(make_work_dir)"
+  workdir="$(make_work_dir)" || exit 2
   export CLAUDE_STATE_DIR="$workdir/state"
   mkdir -p "$CLAUDE_STATE_DIR/peer-review"
 
@@ -1886,6 +1895,44 @@ section "[INTEGRATION-ABSENT-PLUGIN] otherplugin:some-agent absent from registry
     _pass "INTEGRATION-ABSENT-PLUGIN: no marker created (agent not in registry)"
   else
     _fail "INTEGRATION-ABSENT-PLUGIN: should ignore" "unexpected marker created"
+  fi
+
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[GATE-PRECEDENCE] dual verdict in marker: CHANGES_REQUIRED wins over APPROVED (fail-closed)"
+{
+  workdir="$(make_work_dir)" || exit 2
+  mkdir -p "$workdir/test_repo" "$workdir/state/peer-review"
+  testgit="$workdir/test_repo"
+  export CLAUDE_STATE_DIR="$workdir/state"
+
+  # Build test repo using the shared function (with safety guard for failed git init)
+  make_test_repo "$testgit"
+
+  # Create marker with BOTH lines (APPROVED first, to prove CHANGES_REQUIRED still wins)
+  marker_file="$CLAUDE_STATE_DIR/peer-review/precedence-test"
+  {
+    printf 'verdict=APPROVED\n'
+    printf 'verdict=CHANGES_REQUIRED\n'
+  } > "$marker_file"
+
+  # Run gate hook with ahead-of-base scenario
+  test_payload="{\"session_id\":\"precedence-test\",\"cwd\":\"$testgit\",\"stop_hook_active\":false}"
+  RUN_OUT="$(printf '%s' "$test_payload" | sh "$SRC_REPO/hooks/stop-peer-review-gate.sh" 2>&1)"
+  RUN_RC=$?
+
+  assert_rc_zero "GATE-PRECEDENCE: hook exits 0 (always returns decision JSON)"
+  if printf '%s' "$RUN_OUT" | grep -q '"decision":"block"'; then
+    _pass "GATE-PRECEDENCE: correctly blocks (CHANGES_REQUIRED precedence)"
+  else
+    _fail "GATE-PRECEDENCE: should block" "expected decision:block, got: $RUN_OUT"
+  fi
+  if printf '%s' "$RUN_OUT" | grep -q 'CHANGES_REQUIRED'; then
+    _pass "GATE-PRECEDENCE: reason mentions CHANGES_REQUIRED (not APPROVED)"
+  else
+    _fail "GATE-PRECEDENCE: reason string" "expected CHANGES_REQUIRED mention, got: $RUN_OUT"
   fi
 
   unset CLAUDE_STATE_DIR

@@ -200,7 +200,10 @@ fact_registered_sh_scripts() {
   _facts_require_jq || return $?
   _facts_require_hooks_json || return $?
   # Extract hook names from dispatch.sh arguments (the word after dispatch.sh in the chain)
-  # and convert to .sh basenames, then add dispatch.sh itself
+  # and convert to .sh basenames, then add dispatch.sh itself.
+  # NOTE: The regex REQUIRES hook names to follow dispatch.sh separated by a space or quote
+  # (scan pattern: 'dispatch[.]sh[" ] +([a-zA-Z0-9._-]+)'). Unquoted names without space
+  # will silently extract nothing; the orphan-sh-script check catches these loudly later.
   {
     _facts_jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("dispatch[.]sh[\" ] +([a-zA-Z0-9._-]+)") | .[0] + ".sh"' \
         "$FACTS_HOOKS_JSON"

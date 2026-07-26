@@ -199,6 +199,8 @@ section "[3] Hook registration parity (hooks/hooks.json <-> hooks/*.ps1)"
                               detail "missing-set-u: $subject" ;;
         missing-dispatch-allowlist) fail "dispatch.sh allowlist missing hook name: hooks/$subject"
                               detail "missing-dispatch-allowlist: $subject" ;;
+        chain-name-mismatch)  fail "hook chain command mismatch: dispatch arg differs from .ps1 filename: $subject"
+                              detail "chain-name-mismatch: $subject" ;;
         invalid-hook-event)   fail "unknown Claude Code hook event in hooks/hooks.json: $subject"
                               detail "invalid-hook-event: $subject" ;;
         missing-requires-ps7) fail ".ps1 hook script lacks '#Requires -Version 7.0' header: hooks/$subject"

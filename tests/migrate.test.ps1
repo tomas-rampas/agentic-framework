@@ -319,19 +319,19 @@ Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
 $workRoot   = Join-Path ([IO.Path]::GetTempPath()) ("migrate-test-" + [guid]::NewGuid().ToString('N'))
 $sandboxDir = Join-Path $workRoot 'home'
 $claudeHome = Join-Path $sandboxDir '.claude'
-$claudeJson = Join-Path $sandboxDir '.claude.json'
 New-Item -ItemType Directory -Force -Path $claudeHome | Out-Null
 
 # Create a minimal config for the test
 $settings = @{ hooks = @{} }
 $settings | ConvertTo-Json -Depth 16 | Set-Content (Join-Path $claudeHome 'settings.json') -NoNewline
-'{"test":"data"}' | Set-Content $claudeJson -NoNewline
+'{"test":"data"}' | Set-Content (Join-Path $claudeHome 'claude.json') -NoNewline
 
 # Initialize git repo and track a file
 $gitDir = Join-Path $claudeHome '.git'
 git -C $claudeHome init 2>$null | Out-Null
 git -C $claudeHome config user.email "test@test.local" 2>$null
 git -C $claudeHome config user.name "Test" 2>$null
+git -C $claudeHome config core.safecrlf false 2>$null
 $trackFile = Join-Path $claudeHome 'agents' 'dummy.md'
 New-Item -ItemType Directory -Force -Path (Split-Path $trackFile -Parent) | Out-Null
 'agent' | Set-Content $trackFile -NoNewline
@@ -351,10 +351,21 @@ New-Item -ItemType Directory -Force -Path (Join-Path $claudeHome 'todos') | Out-
 git -C $claudeHome add -A 2>$null
 git -C $claudeHome commit -m "protected" 2>$null | Out-Null
 
-$r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply')
+# Create a bare remote repo and push commits (so they're not "unpushed")
+$remoteDir = Join-Path $workRoot 'remote.git'
+git init --bare $remoteDir 2>$null | Out-Null
+git -C $claudeHome remote add origin $remoteDir 2>$null
+# Get current branch name (could be master or main depending on git version)
+$branch = git -C $claudeHome rev-parse --abbrev-ref HEAD 2>$null
+git -C $claudeHome push -u origin $branch 2>$null | Out-Null
+
+# Run in dry-run mode first to verify summary is generated correctly
+$r = Invoke-Migrator $claudeHome
 
 Assert 'checkout cleanup runs' ($r.Code -eq 0)
 Assert 'checkout cleanup detects repo' ($r.Out -imatch 'Checkout Cleanup|detected|git clone')
+# This assertion only covers the dry-run path; the apply+success path (where the regression originally occurred) is not exercised by this fixture because -Apply aborts before reaching that code (backup step dirties tree before Section 5 check).
+Assert 'checkout summary row present (dry-run path)' ($r.Out -match 'checkout:\s+\d+\s+tracked file\(s\),\s+\.git')
 Assert '.state preserved' ((Test-Path (Join-Path $claudeHome '.state' 'marker.txt')))
 Assert 'settings.local.json preserved' ((Test-Path (Join-Path $claudeHome 'settings.local.json')))
 Assert 'projects dir preserved' ((Test-Path (Join-Path $claudeHome 'projects' 'myp' 'file.txt')))

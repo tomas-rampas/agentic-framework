@@ -44,8 +44,12 @@ PreCompact'
 #   missing-dispatch-sh    dispatch.sh not found or not referenced in all chains
 #   missing-sh-shebang     hook .sh script lacks #!/bin/sh header
 #   missing-set-u          hook .sh script lacks 'set -u' line
+#   missing-dispatch-allowlist  hook name missing from dispatch.sh allowlist
+#   chain-name-mismatch    dispatch-arg name differs from .ps1 filename stem in same chain
 hookcheck_problems() {
   local registered_ps1 registered_sh sh_files ps1_files events e f first
+  local dispatch_line dispatch_pattern allowlist_names hook_name hook_base
+  local dispatch_arg ps1_file ps1_path ps1_stem cmd
 
   _facts_require_hooks_json || {
     printf 'no-hooks-block\thooks/hooks.json\n'
@@ -151,7 +155,7 @@ hookcheck_problems() {
     # Look for lines like: "  hook1|hook2|hook3) ;;" between "case "$hook" in" and "esac"
     # Extract the first pattern line (before the *) catch-all), then extract just the pattern part
     dispatch_line=$(sed -n '/^[[:space:]]*case "\$hook" in$/,/^[[:space:]]*esac$/p' "$FACTS_HOOKS_DIR/dispatch.sh" 2>/dev/null | \
-                    grep -v '^\*' | grep -v '^[[:space:]]*case' | grep -v '^[[:space:]]*esac' | head -1)
+                    grep -v '^[[:space:]]*\*' | grep -v '^[[:space:]]*case' | grep -v '^[[:space:]]*esac' | head -1)
     # Extract pattern: everything before the closing paren
     dispatch_pattern=$(printf '%s' "$dispatch_line" | sed 's/^[[:space:]]*//; s/[[:space:]]*)[[:space:]]*;;.*//')
 
@@ -170,4 +174,20 @@ hookcheck_problems() {
       fi
     done <<< "$registered_sh"
   fi
+
+  # (k) chain command strings: dispatch.sh argument must match .ps1 filename stem
+  # Each chain has format: sh "...dispatch.sh" <name> || pwsh -File ".../name.ps1"
+  _facts_jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[]' "$FACTS_HOOKS_JSON" | while IFS= read -r cmd; do
+    [[ -z "$cmd" || ! "$cmd" =~ dispatch\.sh ]] && continue
+    # Extract dispatch-arg: the word after dispatch.sh (may be quoted or bare)
+    dispatch_arg=$(printf '%s' "$cmd" | sed -n 's/.*dispatch\.sh[[:space:]]*["'"'"']\{0,1\}[[:space:]]*\([^"'"'"' ][^ ]*\).*/\1/p')
+    # Extract .ps1 filename: the basename after -File argument (look for -File context, not greedy from start)
+    ps1_path=$(printf '%s' "$cmd" | sed -n 's/.*-File[[:space:]]*"\([^"]*\.ps1\)".*/\1/p')
+    ps1_file=$(basename "$ps1_path" 2>/dev/null)
+    ps1_stem="${ps1_file%.ps1}"
+
+    if [[ -n "$dispatch_arg" && -n "$ps1_stem" && "$dispatch_arg" != "$ps1_stem" ]]; then
+      printf 'chain-name-mismatch\t%s (dispatch: %s vs .ps1: %s)\n' "$cmd" "$dispatch_arg" "$ps1_stem"
+    fi
+  done
 }
