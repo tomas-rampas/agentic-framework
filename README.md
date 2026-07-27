@@ -410,7 +410,7 @@ When installing a plugin, use the full `<name>@<marketplace>` form where `<marke
 ```
 /plugin install agentic-framework@claude-agentic-framework
 ```
-Alternatively, once the marketplace is added, the bare plugin name also works: `/plugin install agentic-framework` (in this rehearsal, the bare form resolved and installed successfully, though Claude Code's own reference docs only demonstrate the explicit `@marketplace` form — treat the bare form as an observed convenience rather than a guaranteed contract).
+Alternatively, once the marketplace is added, the bare plugin name also works: `/plugin install agentic-framework`. The CLI reference documents `<plugin>` as "plugin name or `plugin-name@marketplace-name`", so the bare form is supported — but prefer the qualified form: it's unambiguous if another registered marketplace ever ships a plugin with the same name.
 
 **Windows MAX_PATH limit during marketplace clone:**
 On deeply nested Windows paths, marketplace clone fails with "Filename too long" at the 260-character limit. **Remediation:** enable Windows 10+ long paths in two steps (both required). First, run this PowerShell command as Administrator:
@@ -421,7 +421,7 @@ Then configure Git for long paths:
 ```bash
 git config --global core.longpaths true
 ```
-Restart Claude Code. Without both steps, the "Filename too long" error will recur.
+Restart Claude Code, then re-run the marketplace add and install from *Plugin installation failed* above. Without both steps, the "Filename too long" error will recur.
 
 **Running the shell test suites or validators manually on Windows:**
 If you are running the test suites manually on Windows, use the Git Bash bash.exe directly (not WSL's bash, which may be on PATH by default): `C:\Program Files\Git\bin\bash.exe -c 'bash tests/hooks.test.sh'`. Bare `bash` without a full path may resolve to WSL bash, which will fail or behave incorrectly.
