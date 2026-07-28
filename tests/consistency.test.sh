@@ -82,27 +82,37 @@ trap cleanup_all EXIT INT TERM
 # make_copy -> prints the path to a fresh, isolated, non-git copy of the repo.
 # The caller mutates and runs scripts against the returned path.
 #
-# We copy every top-level entry EXCEPT .git. Skipping .git is deliberate:
-#   * the copy must be a detached, NON-git tree (exercises facts.sh's non-git
-#     root-resolution fallback), so .git would be removed anyway;
-#   * copying .git (thousands of tiny objects) is by far the slowest part of a
-#     `cp -r` under Cygwin/Windows - excluding it keeps each case fast.
-# Dotfiles that matter (.gitattributes, .mcp.json, .claude/, etc.) ARE copied;
-# only .git (and the . / .. pseudo-entries) are skipped.
+# Source: git ls-files piped through tar, streaming to minimize I/O and process
+# overhead (critical for performance on Windows where process creation is slow).
+#   * Lists only tracked files from the working tree's index, not committed content.
+#   * Immune to untracked junk (stray directories, backup files, etc).
+#   * Avoids copying .git — the copy is a detached, NON-git tree (exercises
+#     facts.sh's non-git root-resolution fallback).
+#   * Preserves file permissions including executable bit on *.sh scripts.
+#   * Handles paths with spaces safely (NUL-delimited input to tar).
+#   * Single streaming pipeline: minimal process spawning.
+#
+# The copy will contain CURRENT WORKING TREE content (uncommitted changes), not
+# committed content—this is correct, as the test must exercise the actual files
+# a developer is about to validate, not a snapshot from HEAD.
 make_copy() {
-  local dst entry base
+  local dst
   dst="$(mktemp -d "${TMPDIR:-/tmp}/consistency-test.XXXXXX")" || {
     printf 'FATAL: mktemp failed\n' >&2
     exit 2
   }
   __TMP_DIRS+=("$dst")
-  shopt -s dotglob nullglob
-  for entry in "$SRC_REPO"/*; do
-    base="$(basename "$entry")"
-    [[ "$base" == ".git" ]] && continue
-    cp -r "$entry" "$dst/"
-  done
-  shopt -u dotglob nullglob
+
+  # Stream: read tracked files from git (NUL-delimited), pipe through tar to create
+  # the archive on stdout, then extract into the destination directory.
+  # tar with --null mode automatically creates parent directories and preserves
+  # file permissions and executable bits.
+  ( cd "$SRC_REPO" && git ls-files -z | tar -c --null -T - -f - ) | \
+    ( cd "$dst" && tar -xf - ) || {
+    printf 'FATAL: tar pipeline failed\n' >&2
+    exit 2
+  }
+
   printf '%s\n' "$dst"
 }
 
