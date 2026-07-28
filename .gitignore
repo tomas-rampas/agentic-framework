@@ -5,6 +5,7 @@
 !/claude.json
 !/CLAUDE.md
 !/.gitignore
+!/.gitattributes
 !/README.md
 !/CONTRIBUTING.md
 !/.env.example
