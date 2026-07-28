@@ -941,6 +941,36 @@ section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/
 }
 
 # ===========================================================================
+# CHECK 14 - No tracked file is git-ignored (BLOCKING)
+# ===========================================================================
+# A tracked file that is also git-ignored is a configuration defect: git will
+# ignore changes to the file, so updates will silently fail to commit. This check
+# requires a git checkout; on non-git copies (the test harness's copy), it
+# gracefully skips without failing.
+section "[14] No tracked file is git-ignored"
+{
+  ok=1
+
+  # Check if this is a git repo: git ls-files only works if .git exists.
+  if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    info "skipping (not a git repository)"
+  else
+    # git ls-files -c -i --exclude-standard: show cached (tracked) files that
+    # match the ignore patterns (standard .gitignore + .git/info/exclude).
+    # If output is non-empty, tracked files are git-ignored (a defect).
+    ignored="$(git -C "$ROOT" ls-files -c -i --exclude-standard 2>/dev/null || true)"
+    if [[ -n "$ignored" ]]; then
+      ok=0
+      fail "Tracked file(s) are git-ignored (will be silently untracked on update):"
+      while IFS= read -r f; do [[ -n "$f" ]] && detail "ignored-tracked: $f"; done <<< "$ignored"
+    fi
+    if [[ "$ok" -eq 1 ]]; then
+      pass "no tracked file is git-ignored (safe to commit)"
+    fi
+  fi
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"
