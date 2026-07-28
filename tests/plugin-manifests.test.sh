@@ -4,12 +4,15 @@
 #
 # ISOLATION CONTRACT (same as consistency.test.sh):
 #   Each test case operates on its own throwaway copy of the repo, created by
-#   streaming tracked files through git ls-files and tar (avoiding .git).
+#   streaming tracked files through git ls-files (NUL-delimited), piping through tar,
+#   and extracting to a fresh directory (avoiding .git).
 #   The real working tree is NEVER mutated.
 #
 # Usage:
 #   bash tests/plugin-manifests.test.sh
 #   echo "exit=$?"      # 0 = all cases passed, 1 = at least one failed
+#
+# Requirements: bash, jq, git, tar, mktemp, grep, basename, printf, sort, comm, tr.
 
 set -uo pipefail
 # NOTE: -e is intentionally NOT set — we run every case and aggregate results;
@@ -38,13 +41,21 @@ TESTS_RUN=0
 TESTS_PASS=0
 TESTS_FAIL=0
 
-declare -a __TMP_DIRS=()
+# Track every temp dir we create so the global trap can sweep them even if a
+# case dies unexpectedly. The real tree never appears in here.
+# Use a tracking file since array mutations inside subshells don't propagate to parent.
+__TMP_DIRS_FILE="$(mktemp "${TMPDIR:-/tmp}/plugin-manifests-test-dirs.XXXXXX")" || {
+  printf 'FATAL: mktemp for tracking file failed\n' >&2
+  exit 2
+}
 
 cleanup_all() {
   local d
-  for d in "${__TMP_DIRS[@]:-}"; do
+  [[ -f "$__TMP_DIRS_FILE" ]] || return 0
+  while IFS= read -r d; do
     [[ -n "${d:-}" && -d "$d" ]] && rm -rf "$d"
-  done
+  done < "$__TMP_DIRS_FILE"
+  rm -f "$__TMP_DIRS_FILE"
 }
 trap cleanup_all EXIT INT TERM
 
@@ -71,7 +82,8 @@ make_copy() {
     printf 'FATAL: mktemp failed\n' >&2
     exit 2
   }
-  __TMP_DIRS+=("$dst")
+  # Record dir in tracking file so cleanup_all (outside subshell) can sweep it.
+  printf '%s\n' "$dst" >> "$__TMP_DIRS_FILE"
 
   # Stream: read tracked files from git (NUL-delimited), pipe through tar to create
   # the archive on stdout, then extract into the destination directory.
@@ -122,7 +134,7 @@ assert_file_not_exists() {
 
 _verify_copy() {
   local copy="$1"
-  if [[ -z "$copy" || ! -d "$copy" ]]; then
+  if [[ -z "$copy" || ! -d "$copy" || ! -f "$copy/scripts/validate-consistency.sh" ]]; then
     printf '%sFATAL%s copy directory invalid or empty\n' "$C_RED" "$C_NC" >&2
     exit 2
   fi
@@ -198,7 +210,7 @@ fi
 deleted_unstaged="$(git -C "$SRC_REPO" ls-files --deleted 2>/dev/null || true)"
 if [[ -n "$deleted_unstaged" ]]; then
   printf '%sFATAL%s tracked files are deleted but not staged. Stage or restore them:\n' "$C_RED" "$C_NC" >&2
-  printf '%s' "$deleted_unstaged" | while IFS= read -r f; do printf '  %s\n' "$f" >&2; done
+  printf '%s\n' "$deleted_unstaged" | while IFS= read -r f; do printf '  %s\n' "$f" >&2; done
   exit 2
 fi
 
@@ -208,7 +220,7 @@ fi
 section "[GREEN] Plugin manifest validation — happy path"
 
 copy="$(make_copy)"
-  _verify_copy "$copy"
+_verify_copy "$copy"
 FRAMEWORK_ROOT="$copy"
 export FRAMEWORK_ROOT
 

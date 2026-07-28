@@ -8,9 +8,9 @@
 #
 # ISOLATION CONTRACT (the real working tree is NEVER mutated):
 #   Each test case operates on its own throwaway copy of the repo:
-#     1. Stream tracked files from git via `git ls-files -z`, pipe through
-#        `tar` to create a NUL-delimited archive on stdout, then extract into a
-#        fresh `mktemp -d` directory. The copy is therefore a detached, NON-git
+#     1. Stream tracked files from git via `git ls-files -z` (NUL-delimited file
+#        list), pipe through `tar` to create an archive on stdout, then extract into
+#        a fresh `mktemp -d` directory. The copy is therefore a detached, NON-git
 #        tree (avoids copying .git, both for correctness and speed). Preserves
 #        file permissions and handles paths with spaces safely.
 #     2. Mutate ONLY the copy (inject a defect, or leave it clean).
@@ -29,7 +29,7 @@
 #   bash tests/consistency.test.sh
 #   echo "exit=$?"      # 0 = all cases passed, 1 = at least one failed
 #
-# Requirements: bash, jq, git, tar, mktemp, awk, grep.
+# Requirements: bash, jq, git, tar, mktemp, awk, grep, sed, cp, find, head, basename, cmp.
 
 set -uo pipefail
 # NOTE: -e is intentionally NOT set. We run every case and aggregate results; a
@@ -70,13 +70,19 @@ TESTS_FAIL=0
 
 # Track every temp dir we create so the global trap can sweep them even if a
 # case dies unexpectedly. The real tree never appears in here.
-declare -a __TMP_DIRS=()
+# Use a tracking file since array mutations inside subshells don't propagate to parent.
+__TMP_DIRS_FILE="$(mktemp "${TMPDIR:-/tmp}/consistency-test-dirs.XXXXXX")" || {
+  printf 'FATAL: mktemp for tracking file failed\n' >&2
+  exit 2
+}
 
 cleanup_all() {
   local d
-  for d in "${__TMP_DIRS[@]:-}"; do
+  [[ -f "$__TMP_DIRS_FILE" ]] || return 0
+  while IFS= read -r d; do
     [[ -n "${d:-}" && -d "$d" ]] && rm -rf "$d"
-  done
+  done < "$__TMP_DIRS_FILE"
+  rm -f "$__TMP_DIRS_FILE"
 }
 trap cleanup_all EXIT INT TERM
 
@@ -105,7 +111,8 @@ make_copy() {
     printf 'FATAL: mktemp failed\n' >&2
     exit 2
   }
-  __TMP_DIRS+=("$dst")
+  # Record dir in tracking file so cleanup_all (outside subshell) can sweep it.
+  printf '%s\n' "$dst" >> "$__TMP_DIRS_FILE"
 
   # Stream: read tracked files from git (NUL-delimited), pipe through tar to create
   # the archive on stdout, then extract into the destination directory.
@@ -151,7 +158,7 @@ _fail() {
 
 _verify_copy() {
   local copy="$1"
-  if [[ -z "$copy" || ! -d "$copy" ]]; then
+  if [[ -z "$copy" || ! -d "$copy" || ! -f "$copy/scripts/validate-consistency.sh" ]]; then
     printf '%sFATAL%s copy directory invalid or empty\n' "$C_RED" "$C_NC" >&2
     exit 2
   fi
@@ -207,7 +214,7 @@ fi
 deleted_unstaged="$(git -C "$SRC_REPO" ls-files --deleted 2>/dev/null || true)"
 if [[ -n "$deleted_unstaged" ]]; then
   printf '%sFATAL%s tracked files are deleted but not staged. Stage or restore them:\n' "$C_RED" "$C_NC" >&2
-  printf '%s' "$deleted_unstaged" | while IFS= read -r f; do printf '  %s\n' "$f" >&2; done
+  printf '%s\n' "$deleted_unstaged" | while IFS= read -r f; do printf '  %s\n' "$f" >&2; done
   exit 2
 fi
 
@@ -650,6 +657,27 @@ section "[22] Drifted marketplace top-level description: set to '99 specialized 
   run_validate "$copy"
   assert_rc_nonzero "validator fails when marketplace.json top-level description agent count drifts"
   assert_out_contains "reports agent count mismatch in marketplace.json" "agent count: stated '99' != derived"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 23 - Check 14 red path: tracked file is git-ignored -> check 14 must fail.
+# ===========================================================================
+# NOTE: This is a deliberate, case-local exception to the non-git isolation
+# contract (see ISOLATION CONTRACT at top). Check 14 cannot be exercised on a
+# non-git tree, so we initialize git inside this one copy to test the FAIL arm.
+section "[23] Check 14 red path: tracked-but-ignored file -> non-zero (check 14)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  # Initialize a real git repo in the copy.
+  ( cd "$copy" && git init -q . && git add -A \
+    && git -c user.email=t@t -c user.name=t commit -qm base )
+  # CONTRIBUTING.md is tracked; drop its whitelist line so it becomes ignored.
+  awk '!/^!\/CONTRIBUTING\.md$/' "$copy/.gitignore" > "$copy/.gi.tmp" && mv "$copy/.gi.tmp" "$copy/.gitignore"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails on a tracked-but-ignored file"
+  assert_out_contains "reports the offender" "ignored-tracked: CONTRIBUTING.md"
   rm -rf "$copy"
 }
 

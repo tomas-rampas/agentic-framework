@@ -144,7 +144,7 @@
 - **Run only the suites the change feeds.** Map changed files to the suites that exercise
   them, run those, and state plainly which suites were skipped and why. Re-running an
   unaffected 12-minute battery is pure latency, not diligence.
-- **Long-running work**: Tool call timeout is bounded at 600,000 ms (roughly 600 seconds).
+- **Long-running work**: Tool call timeout is bounded at 600,000 ms (10 minutes).
   Work exceeding that — e.g., a 12-minute test suite — must be launched detached: the
   executor redirects stdout/stderr to a log file, writes the integer exit code to a marker
   file when complete, then returns. Follow-up executor calls poll the marker. Always confirm
