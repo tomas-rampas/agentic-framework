@@ -95,13 +95,13 @@
 
 **Principle**: Delegate when the output is large and the conclusion is small.
 
-- Delegate **all** command-line work — builds, tests, git and gh operations, JSON/YAML
+- Delegate **all shell execution** — builds, tests, git and gh operations, JSON/YAML
   processing with jq/yq, log grinding, any shell command — to the executor agents:
   **bash-expert** (POSIX shell, Git Bash, Linux/CI/containers) or **powershell-expert**
   (PowerShell, Windows-native administration). They run on the cheap model tier, so
   routing shell work to them preserves the weekly quota of Opus/Sonnet/Fable-tier callers.
 - Delegate broad, exploratory search — "every surface in the repo that mentions X", questions
-  with fan-out across many files and directories — to **Explore** when you need only the
+  with fan-out across many files and directories — to **Explore** (a built-in Claude Code agent) when you need only the
   conclusion. Explore is optimized for read-only code location work.
 - The orchestrator/caller retains targeted reads: when you know the file (or line range)
   and use Read/Grep/Glob to write a precise delegation or verify a sub-agent claim, keep
@@ -144,12 +144,15 @@
 - **Run only the suites the change feeds.** Map changed files to the suites that exercise
   them, run those, and state plainly which suites were skipped and why. Re-running an
   unaffected 12-minute battery is pure latency, not diligence.
-- **Long-running work**: Sub-agent calls are bounded by a system timeout (roughly 600 seconds).
+- **Long-running work**: Tool call timeout is bounded at 600,000 ms (roughly 600 seconds).
   Work exceeding that — e.g., a 12-minute test suite — must be launched detached: the
   executor redirects stdout/stderr to a log file, writes the integer exit code to a marker
   file when complete, then returns. Follow-up executor calls poll the marker. Always confirm
   a detached launch is alive by checking the log file exists and is growing — a reported PID
-  alone is not proof (a mis-quoted launch can report a PID and die immediately).
+  alone is not proof (a mis-quoted launch can report a PID and die immediately). If a detached
+  launch cannot be confirmed alive by a growing log file, or wedges without producing an exit
+  marker, that is a failure to report and escalate — do not retry blindly. Repeated wedging
+  of detached launches indicates the work belongs in CI rather than on the local host.
 
 ### Orchestration Guidelines
 When delegating tasks to specialized agents:

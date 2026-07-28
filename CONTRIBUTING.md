@@ -98,7 +98,7 @@ Additional validation and testing:
 - `claude plugin validate ./mcp-plugin` — validate agentic-framework-mcp plugin (if present)
 - `pwsh -NoProfile -File tests/migrate.test.ps1` — legacy migration dry-run validation
 
-All blocking checks must pass (exit 0).
+All blocking checks must pass (exit 0). **Note:** Test harnesses build per-case repository copies from `git ls-files`, so new or renamed files must be staged with `git add` before running the suites — untracked files are invisible to the test harness.
 
 ### 5b. Plugin manifest consistency
 
