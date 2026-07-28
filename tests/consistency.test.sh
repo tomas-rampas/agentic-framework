@@ -549,6 +549,38 @@ section "[20] Missing dispatch.sh: rm hooks/dispatch.sh -> non-zero (check 3)"
 }
 
 # ===========================================================================
+# CASE 21 - Drifted marketplace agent count: mutate marketplace.json
+#           plugins[0].description agent count -> check 8 must fail (rule 8g).
+# ===========================================================================
+section "[21] Drifted marketplace agent count: set to '99-agent' -> non-zero (check 8)"
+{
+  copy="$(make_copy)"
+  jq '.plugins[0].description = (.plugins[0].description | sub("[0-9]+-agent"; "99-agent"))' \
+    "$copy/.claude-plugin/marketplace.json" > "$copy/.claude-plugin/marketplace.json.tmp" \
+    && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails when marketplace.json agent count drifts"
+  assert_out_contains "reports N-agent count mismatch in marketplace.json" "N-agent count: stated '99' != derived"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 22 - Drifted marketplace top-level description: mutate marketplace.json
+#           .description agent count -> check 8 must fail (rule 8a).
+# ===========================================================================
+section "[22] Drifted marketplace top-level description: set to '99 specialized agents' -> non-zero (check 8)"
+{
+  copy="$(make_copy)"
+  jq '.description = (.description | sub("[0-9]+ specialized"; "99 specialized"))' \
+    "$copy/.claude-plugin/marketplace.json" > "$copy/.claude-plugin/marketplace.json.tmp" \
+    && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails when marketplace.json top-level description agent count drifts"
+  assert_out_contains "reports agent count mismatch in marketplace.json" "agent count: stated '99' != derived"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"

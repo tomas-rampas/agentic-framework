@@ -418,7 +418,9 @@ section "[8] Stated-count scan (README/docs headline counts == derived values)"
   # skills/<name>/SKILL.md layout only: legacy flat skills/*.md are excluded
   # (pending migration/removal, their internal narratives carry historical
   # numbers that are not current declarations). The marketplace manifest is
-  # included to guard the public plugin description against drift.
+  # scanned for agent counts: both the top-level .description (rule 8a: "N
+  # specialized agents") and per-plugin plugins[].description (rule 8g: "N-agent").
+  # Note that .claude-plugin/plugin.json and docs/ are NOT in scan_files.
   scan_files=()
   [[ -f "$ROOT/README.md" ]] && scan_files+=("$ROOT/README.md")
   [[ -f "$ROOT/.claude-plugin/marketplace.json" ]] && scan_files+=("$ROOT/.claude-plugin/marketplace.json")
@@ -458,6 +460,8 @@ section "[8] Stated-count scan (README/docs headline counts == derived values)"
         # Pull the full source line for context-based exclusions.
         srcline="$(sed -n "${lineno}p" "$f")"
         # Exclude grep-pattern contexts (detecting an old value, not stating one).
+        # NOTE: for single-line JSON prose (e.g., marketplace.json .description),
+        # a field containing the word "grep" in prose will silently bypass this check.
         if printf '%s' "$srcline" | grep -qE '\bgrep\b'; then
           continue
         fi
@@ -502,6 +506,9 @@ section "[8] Stated-count scan (README/docs headline counts == derived values)"
 
   # ---- 8f: "<N> commands" ----------------------------------------------------
   _scan_counts '[0-9]+ [Cc]ommands\b' first "$n_commands" "command count"
+
+  # ---- 8g: "<N>-agent" headline (the claude.json/plugin.json phrasing family) --
+  _scan_counts '[0-9]+-agent' first "$n_agents" "N-agent count"
 
   if [[ "$ok" -eq 1 ]]; then
     pass "all high-signal stated counts match derived values (agents=$n_agents, hooks=$n_hooks, skills=$n_skills, commands=$n_commands)"

@@ -115,6 +115,14 @@ assert_json_field_matches() {
   fi
 }
 
+_desc_is_valid() {           # <manifest> -> 0 iff .description is a non-blank string
+  local f="$1" t d
+  t="$(jq -r '.description | type' "$f" 2>/dev/null)" || return 1
+  [[ "$t" == "string" ]] || return 1
+  d="$(jq -r '.description' "$f")"; d="${d//$'\r'/}"
+  [[ $d =~ [^[:space:]] ]]
+}
+
 section() { printf '\n%s%s%s\n' "$C_CYN" "$1" "$C_NC"; }
 
 # --- validator helper -------------------------------------------------------
@@ -244,17 +252,10 @@ export FRAMEWORK_ROOT
 
 # --- Assertion 6a: marketplace.json has a non-empty top-level description ---
 {
-  desc_type="$(jq -r '.description | type' "$copy/.claude-plugin/marketplace.json")"
-  desc="$(jq -r '.description' "$copy/.claude-plugin/marketplace.json")"
-  # Remove Windows line endings
-  desc="${desc//$'\r'/}"
-
-  if [[ "$desc_type" != "string" ]]; then
-    _fail "marketplace.json has a non-empty top-level .description" "type is $desc_type, not string"
-  elif [[ -n "$desc" && "$desc" != "null" && $desc =~ [^[:space:]] ]]; then
+  if _desc_is_valid "$copy/.claude-plugin/marketplace.json"; then
     _pass "marketplace.json has a non-empty top-level .description"
   else
-    _fail "marketplace.json has a non-empty top-level .description" "description was: $desc"
+    _fail "marketplace.json has a non-empty top-level .description" "description is not a valid non-blank string"
   fi
 }
 
@@ -677,16 +678,11 @@ section "[RED-17] Empty marketplace description (should fail non-empty check)"
     > "$copy/.claude-plugin/marketplace.json.tmp" \
     && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
 
-  # Re-run the assertion logic to verify it fails
-  desc_type="$(jq -r '.description | type' "$copy/.claude-plugin/marketplace.json")"
-  desc="$(jq -r '.description' "$copy/.claude-plugin/marketplace.json")"
-  desc="${desc//$'\r'/}"
-
-  # The assertion should fail because description is empty
-  if [[ "$desc_type" == "string" && -z "$desc" ]]; then
-    _pass "RED-17: empty description correctly fails the non-empty check"
+  # Verify the helper catches empty description
+  if _desc_is_valid "$copy/.claude-plugin/marketplace.json"; then
+    _fail "RED-17: empty description should fail" "but helper returned success"
   else
-    _fail "RED-17: empty description should fail" "type=$desc_type, desc='$desc'"
+    _pass "RED-17: empty description correctly fails the non-empty check"
   fi
 
   rm -rf "$copy"
@@ -702,16 +698,11 @@ section "[RED-18] Non-string marketplace description (should fail type check)"
     > "$copy/.claude-plugin/marketplace.json.tmp" \
     && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
 
-  # Re-run the assertion logic to verify it fails on type check
-  desc_type="$(jq -r '.description | type' "$copy/.claude-plugin/marketplace.json")"
-  desc="$(jq -r '.description' "$copy/.claude-plugin/marketplace.json")"
-  desc="${desc//$'\r'/}"
-
-  # The assertion should fail because description is not a string
-  if [[ "$desc_type" != "string" ]]; then
-    _pass "RED-18: numeric description correctly fails the type check"
+  # Verify the helper catches non-string description
+  if _desc_is_valid "$copy/.claude-plugin/marketplace.json"; then
+    _fail "RED-18: numeric description should fail" "but helper returned success"
   else
-    _fail "RED-18: numeric description should fail type check" "type=$desc_type, desc='$desc'"
+    _pass "RED-18: numeric description correctly fails the type check"
   fi
 
   rm -rf "$copy"
