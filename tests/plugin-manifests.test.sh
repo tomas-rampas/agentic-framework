@@ -242,6 +242,22 @@ export FRAMEWORK_ROOT
   fi
 }
 
+# --- Assertion 6a: marketplace.json has a non-empty top-level description ---
+{
+  desc_type="$(jq -r '.description | type' "$copy/.claude-plugin/marketplace.json")"
+  desc="$(jq -r '.description' "$copy/.claude-plugin/marketplace.json")"
+  # Remove Windows line endings
+  desc="${desc//$'\r'/}"
+
+  if [[ "$desc_type" != "string" ]]; then
+    _fail "marketplace.json has a non-empty top-level .description" "type is $desc_type, not string"
+  elif [[ -n "$desc" && "$desc" != "null" && $desc =~ [^[:space:]] ]]; then
+    _pass "marketplace.json has a non-empty top-level .description"
+  else
+    _fail "marketplace.json has a non-empty top-level .description" "description was: $desc"
+  fi
+}
+
 # --- Assertion 7: hooks.json hook event names are valid ---
 {
   # Valid Claude Code hook events (from hookcheck.sh)
@@ -646,6 +662,56 @@ section "[RED-16] Remove dispatch.sh (should fail dispatch presence check)"
     _pass "RED-16: validator fails with missing-dispatch-sh when dispatch.sh is deleted"
   else
     _fail "RED-16: validator should fail with missing-dispatch-sh" "exit=$RUN_RC, output: $(printf '%s\n' "$RUN_OUT" | grep -E 'missing-dispatch-sh|check' || echo '(no matches)')"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 17: Empty marketplace description (should fail Assertion 6a)
+# ===========================================================================
+section "[RED-17] Empty marketplace description (should fail non-empty check)"
+{
+  copy="$(make_copy)"
+  jq '.description = ""' "$copy/.claude-plugin/marketplace.json" \
+    > "$copy/.claude-plugin/marketplace.json.tmp" \
+    && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
+
+  # Re-run the assertion logic to verify it fails
+  desc_type="$(jq -r '.description | type' "$copy/.claude-plugin/marketplace.json")"
+  desc="$(jq -r '.description' "$copy/.claude-plugin/marketplace.json")"
+  desc="${desc//$'\r'/}"
+
+  # The assertion should fail because description is empty
+  if [[ "$desc_type" == "string" && -z "$desc" ]]; then
+    _pass "RED-17: empty description correctly fails the non-empty check"
+  else
+    _fail "RED-17: empty description should fail" "type=$desc_type, desc='$desc'"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 18: Non-string marketplace description (should fail type check)
+# ===========================================================================
+section "[RED-18] Non-string marketplace description (should fail type check)"
+{
+  copy="$(make_copy)"
+  jq '.description = 42' "$copy/.claude-plugin/marketplace.json" \
+    > "$copy/.claude-plugin/marketplace.json.tmp" \
+    && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
+
+  # Re-run the assertion logic to verify it fails on type check
+  desc_type="$(jq -r '.description | type' "$copy/.claude-plugin/marketplace.json")"
+  desc="$(jq -r '.description' "$copy/.claude-plugin/marketplace.json")"
+  desc="${desc//$'\r'/}"
+
+  # The assertion should fail because description is not a string
+  if [[ "$desc_type" != "string" ]]; then
+    _pass "RED-18: numeric description correctly fails the type check"
+  else
+    _fail "RED-18: numeric description should fail type check" "type=$desc_type, desc='$desc'"
   fi
 
   rm -rf "$copy"

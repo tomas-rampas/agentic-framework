@@ -417,9 +417,11 @@ section "[8] Stated-count scan (README/docs headline counts == derived values)"
   # Files to scan for headline counts. Skills are scanned in the canonical
   # skills/<name>/SKILL.md layout only: legacy flat skills/*.md are excluded
   # (pending migration/removal, their internal narratives carry historical
-  # numbers that are not current declarations).
+  # numbers that are not current declarations). The marketplace manifest is
+  # included to guard the public plugin description against drift.
   scan_files=()
   [[ -f "$ROOT/README.md" ]] && scan_files+=("$ROOT/README.md")
+  [[ -f "$ROOT/.claude-plugin/marketplace.json" ]] && scan_files+=("$ROOT/.claude-plugin/marketplace.json")
   shopt -s nullglob
   for f in "$ROOT"/commands/*.md "$ROOT"/skills/*/SKILL.md; do scan_files+=("$f"); done
   shopt -u nullglob

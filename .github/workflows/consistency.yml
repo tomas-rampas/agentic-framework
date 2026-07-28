@@ -61,10 +61,10 @@ jobs:
 
       - name: Validate plugin manifest (root)
         # A live spike confirmed `claude plugin validate` runs headless and
-        # unauthenticated in CI, exiting 0 in non-strict mode. --strict
-        # promotes warnings to errors and this repo currently carries known
-        # benign warnings, so the gate intentionally checks errors only
-        # rather than skipping manifest validation altogether.
+        # unauthenticated in CI, exiting 0 in non-strict mode. Errors-only
+        # is deliberate policy: the step above installs the latest
+        # @anthropic-ai/claude-code at run time, so a newly-introduced
+        # upstream warning class must not turn the build red.
         run: claude plugin validate .
 
       - name: Validate plugin manifest (mcp-plugin)
