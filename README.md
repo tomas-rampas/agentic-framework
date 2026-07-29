@@ -1,4 +1,4 @@
-# Claude Code CLI - Agent Execution Framework
+# An Agent Execution Framework for Claude Code CLI
 
 A configuration framework for [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) that adds 21 specialized agents, a real peer-review enforcement gate, an anti-drift consistency system, and intelligent task routing.
 
