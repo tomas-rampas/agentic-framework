@@ -664,6 +664,39 @@ section "[22] Drifted marketplace top-level description: set to '99 specialized 
 }
 
 # ===========================================================================
+# CASE 23 - Policy re-broadening phrase on an operative surface -> check 14
+#           must fail. Injects the exact phrasing the Jul 2026 perf
+#           regression shipped ("delegate all shell execution").
+# ===========================================================================
+section "[23] Policy re-broadening: inject 'delegate all shell execution' into CLAUDE.md -> non-zero (check 14)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  printf '\nAgents should delegate all shell execution to the executor agents.\n' >> "$copy/CLAUDE.md"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails when a re-broadening phrase appears in CLAUDE.md"
+  assert_out_contains "reports the re-broadening phrase with its location" "policy re-broadening phrase in CLAUDE.md"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 24 - Required policy statement removed -> check 14 must fail. Strips
+#           the selective section header from CLAUDE.md, simulating a doc
+#           pass that quietly rewrites the policy heading.
+# ===========================================================================
+section "[24] Policy statement removed: strip '(selective)' header from CLAUDE.md -> non-zero (check 14)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak 's/Command-line Execution Policy (selective)/Command-line Execution Policy/' "$copy/CLAUDE.md" \
+    && rm -f "$copy/CLAUDE.md.bak"
+  run_validate "$copy"
+  assert_rc_nonzero "validator fails when the selective policy header is gone"
+  assert_out_contains "reports the missing required statement" "missing from CLAUDE.md"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"

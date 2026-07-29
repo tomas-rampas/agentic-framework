@@ -941,6 +941,64 @@ section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/
 }
 
 # ===========================================================================
+# CHECK 14 - Execution-policy drift guard (BLOCKING)
+# ===========================================================================
+# The Jul 2026 performance regression traced to the execution policy silently
+# broadening until every shell command routed through an executor subagent
+# (40k-100k tokens of fixed overhead per call). This check pins the selective
+# policy on the operative surfaces:
+#   (a) phrases that re-broaden the policy must not appear in CLAUDE.md,
+#       README.md, agents/, commands/, skills/, or hooks/. docs/ is exempt
+#       (historical records may quote the old policy); tests/ is exempt
+#       (red-path fixtures inject these very phrases); scripts/ is exempt
+#       (this check names them).
+#   (b) the governing statements must remain present: CLAUDE.md carries the
+#       selective section header and the inline-by-default principle, and
+#       both executor agents advertise the compresses-to-a-small-conclusion
+#       delegation trigger in their descriptions.
+section "[14] Execution-policy drift guard (selective policy pinned on operative surfaces)"
+{
+  # (a) forbidden re-broadening phrases (case-insensitive ERE)
+  POLICY_FORBIDDEN='blanket|delegate (all|every) shell|all shell (work|execution)|every shell command|any shell command|short commands included'
+  policy_files=()
+  while IFS= read -r f; do policy_files+=("$f"); done < <(
+    {
+      printf '%s\n' "$ROOT/CLAUDE.md" "$ROOT/README.md"
+      find "$ROOT/agents" "$ROOT/commands" "$ROOT/skills" "$ROOT/hooks" \
+        -type f \( -name '*.md' -o -name '*.json' \) 2>/dev/null
+    } | LC_ALL=C sort
+  )
+  policy_hits=0
+  for f in "${policy_files[@]}"; do
+    [[ -f "$f" ]] || continue
+    m="$(grep -niE "$POLICY_FORBIDDEN" "$f" 2>/dev/null || true)"
+    [[ -z "$m" ]] && continue
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      fail "policy re-broadening phrase in ${f#"$ROOT"/}: $line"
+      policy_hits=$((policy_hits + 1))
+    done <<< "$m"
+  done
+  if [[ "$policy_hits" -eq 0 ]]; then
+    pass "no re-broadening phrases across ${#policy_files[@]} operative file(s)"
+  fi
+
+  # (b) required principle statements (fixed-string, so wording drift is loud)
+  _policy_require() {
+    local file="$1" needle="$2" label="$3"
+    if [[ -f "$ROOT/$file" ]] && grep -qF "$needle" "$ROOT/$file" 2>/dev/null; then
+      pass "$label"
+    else
+      fail "$label — literal '$needle' missing from $file"
+    fi
+  }
+  _policy_require "CLAUDE.md" "Command-line Execution Policy (selective)" "CLAUDE.md keeps the selective policy section"
+  _policy_require "CLAUDE.md" "Run it yourself by default" "CLAUDE.md keeps inline-by-default as the governing principle"
+  _policy_require "agents/bash-expert.md" "compresses to a small conclusion" "bash-expert advertises the selective delegation trigger"
+  _policy_require "agents/powershell-expert.md" "compresses to a small conclusion" "powershell-expert advertises the selective delegation trigger"
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"
