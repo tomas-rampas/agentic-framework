@@ -2,6 +2,7 @@
   "name": "agentic-framework",
   "displayName": "Agentic Framework for Claude",
   "version": "4.0.0",
+  "license": "Apache-2.0",
   "description": "21-agent execution framework for Claude Code: specialist routing, spec-driven build loops, and an enforced peer-review quality gate (hooks included).",
   "author": { "name": "Tomas Rampas" },
   "homepage": "https://github.com/tomas-rampas/agentic-framework",
