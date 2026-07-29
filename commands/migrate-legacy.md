@@ -1,6 +1,6 @@
 ---
 description: Migrate legacy framework installs to the plugin pipeline
-argument-hint: <optional: any arguments to pass to the migration script>
+argument-hint: "<optional: any arguments to pass to the migration script>"
 ---
 
 Framework root: `${CLAUDE_PLUGIN_ROOT}` (when running from a development checkout of the framework itself, this may be empty — then use the current directory if it contains `claude.json`). All framework file paths below are relative to that root.
