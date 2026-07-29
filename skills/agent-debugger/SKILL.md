@@ -9,9 +9,7 @@ Systematic diagnosis of agent configuration problems in this framework. Every ch
 
 ## Ground Truth: Where Configuration Lives
 
-Configuration lives in the **agentic-framework plugin** (typically at `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/`) and is overridden by user-scope copies in `~/.claude/agents/`, `~/.claude/commands/`, and `~/.claude/skills/`.
-
-**Note:** The cache path format is `{marketplace}/{plugin}/{version}/`; the repeated `agentic-framework/agentic-framework` segment is correct and intentional.
+Configuration lives in the **agentic-framework plugin** (typically at `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/`) and is overridden by user-scope copies in `~/.claude/agents/`, `~/.claude/commands/`, and `~/.claude/skills/`:
 
 - `agents/<name>.md` — agent definition. YAML frontmatter carries `name` (must equal the filename), `description` (the routing trigger text Claude Code matches tasks against), `model` (tier shorthand, e.g. `sonnet`), and `color`. The body is the agent's system prompt.
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/agents/<name>.md`
@@ -24,6 +22,8 @@ Configuration lives in the **agentic-framework plugin** (typically at `~/.claude
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/settings.template.json`
 - Validators: `scripts/validate-consistency.sh` (the full anti-drift battery), `scripts/validate-hooks.sh` (hook pair parity + dispatch), `scripts/validate-framework.sh`, `scripts/generate-docs.sh --check`. Tests: `tests/hooks.test.ps1` (PowerShell), `tests/hooks.test.sh` (POSIX shell), `tests/hooks-equivalence.test.sh` (cross-platform byte-equality).
 - Namespaced slash commands for quick inspection: `/agentic-framework:list-agents`, `/agentic-framework:agent-status`, `/agentic-framework:analyze-framework`, `/agentic-framework:validate-hooks`, `/agentic-framework:quality-report`.
+
+**Note:** The cache path format is `{marketplace}/{plugin}/{version}/`; the repeated `agentic-framework/agentic-framework` segment is correct and intentional.
 
 ## Debug Workflow
 
