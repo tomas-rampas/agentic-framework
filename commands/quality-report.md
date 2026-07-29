@@ -18,12 +18,13 @@ Generate a quality assessment of the framework by inspecting actual configuratio
 ```
 
 ## Command-line execution
-Delegate every shell command this workflow needs — validators, git/gh calls, JSON/YAML
-processing, test and build runs — to **bash-expert** (POSIX/Git Bash) or
-**powershell-expert** (PowerShell/Windows) instead of running it inline. Executors
-return the exact command, its integer exit code, and a distilled result (verbatim
-fenced where it will be used literally). Read files with Read/Grep/Glob directly —
-never via shell.
+Run short shell commands inline — git/gh calls, jq one-liners, quick checks.
+Delegate only the long, output-heavy runs this workflow needs — the validator
+battery, full test and build runs, log grinding — to **bash-expert**
+(POSIX/Git Bash) or **powershell-expert** (PowerShell/Windows), where hundreds of
+output lines compress to a verdict. Executors return the exact command, its integer
+exit code, and a distilled result (verbatim fenced where it will be used literally).
+Read files with Read/Grep/Glob directly — never via shell.
 
 ## What This Command Does
 

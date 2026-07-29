@@ -24,8 +24,8 @@
 | **python-expert** | Python development, web frameworks, data science, automation |
 | **typescript-expert** | TypeScript/JavaScript development, React/Next.js, Node.js backends |
 | **mql-trading-dev** | MQL4/MQL5 and C/C++ development for MetaTrader, Expert Advisors, indicators, trading systems |
-| **powershell-expert** | Windows command-line executor — runs delegated shell work; PowerShell automation, Windows administration |
-| **bash-expert** | Command-line executor — runs delegated shell work; Bash/POSIX scripting, Linux/CI automation |
+| **powershell-expert** | Windows command-line executor — runs delegated long, noisy shell runs; PowerShell automation, Windows administration |
+| **bash-expert** | Command-line executor — runs delegated long, noisy shell runs; Bash/POSIX scripting, Linux/CI automation |
 | **database-specialist** | Database design, schema optimization, query optimization, SQL/NoSQL |
 | **frontend-specialist** | Frontend UI development, React/Vue/Angular, responsive design |
 | **security-specialist** | Security audits, vulnerability assessment, authentication, compliance |
@@ -48,7 +48,7 @@
 - **MQL4/MQL5 & MetaTrader trading systems** → mql-trading-dev
 
 ### Scripting & Automation
-- **Any shell command a task needs run** → bash-expert (POSIX/CI) or powershell-expert (Windows) — see the blanket execution policy below
+- **Long, noisy shell runs (test batteries, log grinding, CI-log analysis)** → bash-expert (POSIX/CI) or powershell-expert (Windows) — see the selective execution policy below; short commands run inline
 - **Bash/shell script authoring** → bash-expert
 - **PowerShell automation** → powershell-expert
 - **Infrastructure automation** → devops-orchestrator
@@ -74,7 +74,7 @@
 ### Agent Capabilities
 - Agents have FULL TOOL ACCESS within their domain of expertise
 - Agents read and write files directly without requesting permission
-- Agents execute commands and run tests as needed, within the command-line execution policy below
+- Agents execute commands and run tests as needed, inline by default (see the command-line execution policy below)
 - Agents create implementations, configurations, and documentation
 - Agents validate and test their work independently
 - Agents make technical decisions within their specialization
@@ -86,20 +86,35 @@
 
 ### Agent Empowerment
 - Agents have unrestricted access to tools within their domain
-- Agents implement solutions directly; the one routine onward delegation is command-line work, per the policy below
+- Agents implement solutions directly without additional delegation
 - Agents create concrete deliverables and working implementations
 - Agents validate their work and ensure quality standards
 - Agents operate autonomously with full technical authority
 
-### 🖥️ Command-line Execution Policy (blanket)
+### 🖥️ Command-line Execution Policy (selective)
 
-**Principle**: Delegate when the output is large and the conclusion is small.
+**Principle**: Run it yourself by default; delegate only when the output is large
+and the conclusion is small.
 
-- Delegate **all shell execution** — builds, tests, git and gh operations, JSON/YAML
-  processing with jq/yq, log grinding, any shell command — to the executor agents:
-  **bash-expert** (POSIX shell, Git Bash, Linux/CI/containers) or **powershell-expert**
-  (PowerShell, Windows-native administration). They run on the cheap model tier, so
-  routing shell work to them preserves the weekly quota of Opus/Sonnet/Fable-tier callers.
+- **Inline is the default.** Every agent runs its own shell commands directly —
+  git and gh operations, quick builds, short test runs, jq/yq one-liners, file
+  operations. A 2-second command answered inline costs less than any delegation
+  round trip can; a sub-agent call cannot pay back its fixed overhead on a command
+  whose output is already the conclusion.
+- Delegate a run to an executor agent — **bash-expert** (POSIX shell, Git Bash,
+  Linux/CI/containers) or **powershell-expert** (PowerShell, Windows-native
+  administration) — only when its output is large and compresses to a small
+  conclusion, or it is long enough to need the detached protocol below. Canonical
+  cases: a multi-minute test battery → one exit code; thousands of lines of CI or
+  build log → the failing step; a multi-step throwaway pipeline whose intermediates
+  nobody needs. Executors run on the cheap model tier, so genuinely long, noisy work
+  routed there preserves the weekly quota of Opus/Sonnet/Fable-tier callers — but
+  only above that threshold does the delegation pay for itself.
+- **No nested delegation of shell work.** Specialist agents — language experts,
+  domain specialists, analysts — run their own commands inline; they do not route
+  builds, tests, or git operations onward to an executor. Only the top-level
+  orchestrator delegates, and only runs that clear the threshold above. A two-level
+  agent chain per command multiplies fixed overhead by every command a task runs.
 - Delegate broad, exploratory search — "every surface in the repo that mentions X", questions
   with fan-out across many files and directories — to **Explore** (a built-in Claude Code agent) when you need only the
   conclusion. Explore is optimized for read-only code location work.
@@ -117,8 +132,9 @@
   structurally — their frontmatter carries `disallowedTools: Agent` (a denylist, unlike the
   reviewers' curated `tools:` allowlists below: executors keep every tool except Agent,
   while reviewers enumerate exactly what they may use).
-- **peer-review-critic** and **spec-compliance-reviewer** are exempt by design: their
-  tools allowlist omits the Agent tool, so they gather their own evidence directly.
+- **peer-review-critic** and **spec-compliance-reviewer** structurally cannot
+  delegate: their tools allowlist omits the Agent tool, so they always gather their
+  own evidence directly.
 - Executors return a distilled report: working directory and branch, the exact command,
   its integer exit code, the result (verbatim fenced block for anything used literally),
   and an explicit note if output was truncated.
