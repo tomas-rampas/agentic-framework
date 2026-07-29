@@ -6,6 +6,8 @@
 
 ---
 
+**Note:** The marketplace name was subsequently changed in a later rename commit. The commands below using the old marketplace name are preserved as a historical record of the v4.0.0 rehearsal; they are not for use with current versions.
+
 ## Executed Checklist
 
 ### 1. Version Consistency (Check 13)

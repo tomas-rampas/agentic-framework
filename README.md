@@ -154,9 +154,18 @@ If you have this framework cloned into `~/.claude`, migrate to the plugin distri
 
 ### Updating the Plugins
 
-**Upgrading from a pre-rename install:** the marketplace name changed from `claude-agentic-framework` to `agentic-framework`. If you have an older registration, run `/plugin marketplace remove claude-agentic-framework` (the **old registered name**), then re-add and re-install using the commands below.
+<!-- intentional: pre-rename marketplace name; do not rename -->
+**Upgrading from a pre-rename install:** the marketplace name changed from `claude-agentic-framework` to `agentic-framework`. If you have an older registration, remove it first, then re-add and re-install:
 
-Check for updates via the CLI:
+In Claude Code:
+```
+/plugin marketplace remove claude-agentic-framework
+/plugin marketplace add tomas-rampas/agentic-framework
+/plugin install agentic-framework@agentic-framework
+/plugin install agentic-framework-mcp@agentic-framework  # if installed
+```
+
+Once re-registered, check for updates via the CLI (shown below):
 ```bash
 claude plugin marketplace update agentic-framework
 claude plugin update agentic-framework@agentic-framework
@@ -402,15 +411,15 @@ When Git Bash is not installed, the hook chain's `sh` command fails with a "not 
 
 **Plugin installation failed:**
 
-See the "Upgrading from a pre-rename install" section above if you have a pre-rename registration — you must remove the old registration first.
+See **Upgrading from a pre-rename install** under [Updating the Plugins](#updating-the-plugins) if you have a pre-rename registration — you must remove the old registration first.
 
 ```bash
-/plugin list                                                   # Check installed plugins
-/plugin marketplace add tomas-rampas/agentic-framework       # Re-add to marketplace
-/plugin install agentic-framework@agentic-framework          # Re-install
+/plugin list                                                # Check installed plugins
+/plugin marketplace add tomas-rampas/agentic-framework  # Re-add to marketplace
+/plugin install agentic-framework@agentic-framework     # Re-install
 ```
 
-**Marketplace name suffix:**
+**Marketplace name suffix vs. GitHub path:**
 When installing a plugin, use the full `<name>@<marketplace>` form where `<marketplace>` is the marketplace's **registered name** (the `"name"` field in `.claude-plugin/marketplace.json`) — here, `agentic-framework`. The repo segment of the GitHub path now matches that name, but the two remain distinct values: `/plugin marketplace add` takes the `owner/repo` path, while the `@` suffix — and `marketplace update` and `marketplace remove` — take the registered marketplace name.
 ```
 /plugin install agentic-framework@agentic-framework
