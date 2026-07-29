@@ -79,14 +79,14 @@ The framework is distributed as **Claude Code plugins** via the marketplace (no 
 
 Using the Claude Code GUI:
 ```
-/plugin marketplace add tomas-rampas/claude-agentic-framework
-/plugin install agentic-framework@claude-agentic-framework
+/plugin marketplace add tomas-rampas/agentic-framework
+/plugin install agentic-framework@agentic-framework
 ```
 
 Or via the CLI:
 ```bash
-claude plugin marketplace add tomas-rampas/claude-agentic-framework
-claude plugin install agentic-framework@claude-agentic-framework
+claude plugin marketplace add tomas-rampas/agentic-framework
+claude plugin install agentic-framework@agentic-framework
 ```
 
 ### 2. (Optional) Install the MCP Servers Plugin
@@ -94,13 +94,13 @@ claude plugin install agentic-framework@claude-agentic-framework
 The optional `agentic-framework-mcp` plugin provides 5 MCP servers (context7, filesystem, serena, sequential-thinking, fetch):
 
 ```
-/plugin install agentic-framework-mcp@claude-agentic-framework
+/plugin install agentic-framework-mcp@agentic-framework
 /agentic-framework-mcp:setup
 ```
 
 Or via CLI:
 ```bash
-claude plugin install agentic-framework-mcp@claude-agentic-framework
+claude plugin install agentic-framework-mcp@agentic-framework
 ```
 
 Then, inside a Claude Code session, run `/agentic-framework-mcp:setup` to configure runtime environment variables for the MCP servers (see `.env.example` for placeholders):
@@ -113,7 +113,7 @@ The main plugin ships `settings.template.json` with recommended permissions and 
 
 ```bash
 # Inspect the template (use the versioned cache path)
-cat ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/settings.template.json
+cat ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/settings.template.json
 # (or open the plugin folder via /plugin)
 
 # Copy permissions and alwaysThinkingEnabled into your ~/.claude/settings.json
@@ -157,11 +157,25 @@ If you have this framework cloned into `~/.claude`, migrate to the plugin distri
 
 ### Updating the Plugins
 
-Check for updates via the CLI:
+<!-- intentional: pre-rename marketplace name; do not rename -->
+**Upgrading from a pre-rename install:** the marketplace name changed from `claude-agentic-framework` to `agentic-framework`. If you have an older registration, remove it first, then re-add and re-install:
+
+In Claude Code:
+```
+/plugin marketplace remove claude-agentic-framework
+/plugin marketplace add tomas-rampas/agentic-framework
+/plugin install agentic-framework@agentic-framework
+/plugin install agentic-framework-mcp@agentic-framework  # if installed
+/reload-plugins
+```
+
+Restarting Claude Code has the same effect as `/reload-plugins`.
+
+To check for updates (whether or not you migrated):
 ```bash
-claude plugin marketplace update tomas-rampas/claude-agentic-framework
-claude plugin update agentic-framework@claude-agentic-framework
-claude plugin update agentic-framework-mcp@claude-agentic-framework  # if installed
+claude plugin marketplace update agentic-framework
+claude plugin update agentic-framework@agentic-framework
+claude plugin update agentic-framework-mcp@agentic-framework  # if installed
 ```
 
 ---
@@ -171,7 +185,7 @@ claude plugin update agentic-framework-mcp@claude-agentic-framework  # if instal
 ```bash
 /plugin uninstall agentic-framework
 /plugin uninstall agentic-framework-mcp     # if installed
-/plugin marketplace remove tomas-rampas/claude-agentic-framework
+/plugin marketplace remove agentic-framework
 
 # Clean up environment variables (optional)
 # Windows PowerShell:
@@ -186,11 +200,11 @@ claude plugin update agentic-framework-mcp@claude-agentic-framework  # if instal
 
 ### Troubleshooting Installation
 
-**Plugin marketplace add fails:** ensure you use the exact owner/repo form (`tomas-rampas/claude-agentic-framework`), a git clone URL, or a local checkout path. Note that adding the marketplace directly via a URL to marketplace.json itself is unsupported (its relative plugin sources `./` and `./mcp-plugin` cannot resolve without repo context).
+**Plugin marketplace add fails:** ensure you use the exact owner/repo form (`tomas-rampas/agentic-framework`), a git clone URL, or a local checkout path. Note that adding the marketplace directly via a URL to marketplace.json itself is unsupported (its relative plugin sources `./` and `./mcp-plugin` cannot resolve without repo context).
 
 **MCP servers not available after `/agentic-framework-mcp:setup`:** restart Claude Code; servers load at session start. Run `claude mcp list` to verify they are registered.
 
-**Hooks not firing after restart:** verify the agentic-framework plugin is installed: `/plugin list`. If missing, re-run `/plugin install agentic-framework@claude-agentic-framework`.
+**Hooks not firing after restart:** verify the agentic-framework plugin is installed: `/plugin list`. If missing, re-run `/plugin install agentic-framework@agentic-framework`.
 
 ---
 
@@ -284,7 +298,7 @@ The framework distributes as two plugins:
 
 **agentic-framework** (main):
 ```
-<plugin root>*                      # ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/<version>/
+<plugin root>*                      # ~/.claude/plugins/cache/agentic-framework/agentic-framework/<version>/
 ├── CLAUDE.md                # Agent execution rules and task routing
 ├── claude.json              # Agent registry (single source of truth for the tooling)
 ├── settings.template.json   # Recommended permissions + alwaysThinkingEnabled
@@ -298,17 +312,17 @@ The framework distributes as two plugins:
 ├── .github/workflows/       # CI (anti-drift consistency gate)
 └── security-check.sh        # Security validation
 ```
-*<plugin root> is the plugin cache path: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/<version>/`
+*<plugin root> is the plugin cache path: `~/.claude/plugins/cache/agentic-framework/agentic-framework/<version>/`
 
 **agentic-framework-mcp** (optional):
 ```
-<plugin root>*                      # ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework-mcp/<version>/
+<plugin root>*                      # ~/.claude/plugins/cache/agentic-framework/agentic-framework-mcp/<version>/
 ├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch)
 ├── commands/
 │   └── setup.md             # Registration command for MCP servers
 └── [other plugin files]
 ```
-*<plugin root> is the plugin cache path: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework-mcp/<version>/`
+*<plugin root> is the plugin cache path: `~/.claude/plugins/cache/agentic-framework/agentic-framework-mcp/<version>/`
 
 ---
 
@@ -402,16 +416,19 @@ claude mcp list                                          # What Claude Code sees
 When Git Bash is not installed, the hook chain's `sh` command fails with a "not found" error line in the transcript. This is harmless — the `||` arm runs the PowerShell `.ps1` script directly. (Installing Git Bash removes the noise: `sh` then exists and `dispatch.sh` detects MINGW*/MSYS*/CYGWIN* to route to the same PowerShell script — the `.sh` implementations run only on Linux/macOS.)
 
 **Plugin installation failed:**
+
+See **Upgrading from a pre-rename install** under [Updating the Plugins](#updating-the-plugins) if you have a pre-rename registration — you must remove the old registration first.
+
 ```bash
-/plugin list                                             # Check installed plugins
-/plugin marketplace add tomas-rampas/claude-agentic-framework  # Re-add to marketplace
-/plugin install agentic-framework@claude-agentic-framework     # Re-install
+/plugin list                                            # Check installed plugins
+/plugin marketplace add tomas-rampas/agentic-framework  # Re-add to marketplace
+/plugin install agentic-framework@agentic-framework     # Re-install
 ```
 
 **Marketplace name suffix vs. GitHub path:**
-When installing a plugin, use the full `<name>@<marketplace>` form where `<marketplace>` is the marketplace's **registered name** (the `"name"` field in `.claude-plugin/marketplace.json` — for this repo, `claude-agentic-framework`), **not** the GitHub `owner/repo` path used with `/plugin marketplace add`.
+When installing a plugin, use the full `<name>@<marketplace>` form where `<marketplace>` is the marketplace's **registered name** (the `"name"` field in `.claude-plugin/marketplace.json`) — here, `agentic-framework`. The repo segment of the GitHub path now matches that name, but the two remain distinct values: `/plugin marketplace add` takes the `owner/repo` path, while the `@` suffix — and `marketplace update` and `marketplace remove` — take the registered marketplace name.
 ```
-/plugin install agentic-framework@claude-agentic-framework
+/plugin install agentic-framework@agentic-framework
 ```
 Alternatively, once the marketplace is added, the bare plugin name also works: `/plugin install agentic-framework`. The CLI reference documents `<plugin>` as "plugin name or `plugin-name@marketplace-name`", so the bare form is supported — but prefer the qualified form: it's unambiguous if another registered marketplace ever ships a plugin with the same name.
 

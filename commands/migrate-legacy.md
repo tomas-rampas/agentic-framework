@@ -61,9 +61,9 @@ This:
 After migration completes, follow the on-screen instructions:
 
 ```
-/plugin marketplace add tomas-rampas/claude-agentic-framework
-/plugin install agentic-framework@claude-agentic-framework
-(optional) /plugin install agentic-framework-mcp@claude-agentic-framework
+/plugin marketplace add tomas-rampas/agentic-framework
+/plugin install agentic-framework@agentic-framework
+(optional) /plugin install agentic-framework-mcp@agentic-framework
 (optional) /agentic-framework-mcp:setup
 ```
 

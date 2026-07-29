@@ -9,19 +9,21 @@ Systematic diagnosis of agent configuration problems in this framework. Every ch
 
 ## Ground Truth: Where Configuration Lives
 
-Configuration lives in the **agentic-framework plugin** (typically at `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/`) and is overridden by user-scope copies in `~/.claude/agents/`, `~/.claude/commands/`, and `~/.claude/skills/`:
+Configuration lives in the **agentic-framework plugin** (typically at `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/`) and is overridden by user-scope copies in `~/.claude/agents/`, `~/.claude/commands/`, and `~/.claude/skills/`:
 
 - `agents/<name>.md` — agent definition. YAML frontmatter carries `name` (must equal the filename), `description` (the routing trigger text Claude Code matches tasks against), `model` (tier shorthand, e.g. `sonnet`), and `color`. The body is the agent's system prompt.
-  - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/agents/<name>.md`
+  - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/agents/<name>.md`
   - **Override location** (if present): `~/.claude/agents/<name>.md` (takes priority)
 - `claude.json` — the registry. `.sub_agents` maps each agent to its config (including `model` shorthand and `focus`); `.agent_categories` partitions the roster into the canonical categories; `.consistency.model_shorthand_map` defines the only legal model values; `.consistency.deprecated_agent_names` lists dead names that must never be referenced.
-  - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/claude.json`
+  - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/claude.json`
 - `hooks/hooks.json` — hook registration as shell-form dispatch chains (`sh dispatch.sh <name> || pwsh -NoProfile -File <name>.ps1`) with `${CLAUDE_PLUGIN_ROOT}` substitution; each hook is a `.ps1`/`.sh` pair routed by `hooks/dispatch.sh`. Hooks are loaded automatically by Claude Code.
-  - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/hooks.json`
+  - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/hooks/hooks.json`
 - `settings.template.json` — recommended permissions and `alwaysThinkingEnabled` for merging into user settings.
-  - **Plugin location**: `~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/settings.template.json`
+  - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/settings.template.json`
 - Validators: `scripts/validate-consistency.sh` (the full anti-drift battery), `scripts/validate-hooks.sh` (hook pair parity + dispatch), `scripts/validate-framework.sh`, `scripts/generate-docs.sh --check`. Tests: `tests/hooks.test.ps1` (PowerShell), `tests/hooks.test.sh` (POSIX shell), `tests/hooks-equivalence.test.sh` (cross-platform byte-equality).
 - Namespaced slash commands for quick inspection: `/agentic-framework:list-agents`, `/agentic-framework:agent-status`, `/agentic-framework:analyze-framework`, `/agentic-framework:validate-hooks`, `/agentic-framework:quality-report`.
+
+**Note:** The cache path format is `{marketplace}/{plugin}/{version}/`; the repeated `agentic-framework/agentic-framework` segment is correct and intentional.
 
 ## Debug Workflow
 
@@ -37,19 +39,19 @@ Configuration lives in the **agentic-framework plugin** (typically at `~/.claude
 
 ```bash
 # Check plugin location first (default)
-ls ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/agents/<name>.md        # file exists, exactly matching name?
+ls ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/agents/<name>.md        # file exists, exactly matching name?
 # Or check override location (if applicable)
 ls ~/.claude/agents/<name>.md                                  # override present?
 
 # Check registry
-jq '.sub_agents["<name>"]' ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/claude.json    # registered?
+jq '.sub_agents["<name>"]' ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/claude.json    # registered?
 
 # Check frontmatter (from plugin or override)
-head -10 ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/agents/<name>.md   # frontmatter sane?
+head -10 ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/agents/<name>.md   # frontmatter sane?
 # or: head -10 ~/.claude/agents/<name>.md
 
 # Check for deprecated names
-jq -r '.consistency.deprecated_agent_names[]' ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/claude.json   # is the name dead/legacy?
+jq -r '.consistency.deprecated_agent_names[]' ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/claude.json   # is the name dead/legacy?
 ```
 
 Check 1 of `validate-consistency.sh` reports both failure directions: `missing-md` (registered in `claude.json` but no `agents/<name>.md`) and `orphan-md` (file exists but not registered). Fix by adding the missing side, never by deleting the working side.
@@ -87,14 +89,14 @@ Hooks are real Claude Code hooks — PowerShell 7 (.ps1) and POSIX shell (.sh) s
 
 ```bash
 # Check plugin hook registration
-jq '.hooks.Stop' ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/hooks.json    # hook registration for Stop event
+jq '.hooks.Stop' ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/hooks/hooks.json    # hook registration for Stop event
 
 # Verify plugin is installed
 /plugin list | grep agentic-framework
 
 # Check hook scripts exist (each hook is a .ps1/.sh pair plus dispatch.sh)
-ls ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/*.ps1 \
-   ~/.claude/plugins/cache/claude-agentic-framework/agentic-framework/*/hooks/*.sh
+ls ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/hooks/*.ps1 \
+   ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/hooks/*.sh
 
 # Validate hook registration parity
 /agentic-framework:validate-hooks
@@ -104,10 +106,10 @@ pwsh -NoProfile -Command '$PSVersionTable.PSVersion'
 ```
 
 Common causes, in order of likelihood:
-- Plugin not installed or not enabled: run `/plugin install agentic-framework@claude-agentic-framework` and verify with `/plugin list`.
+- Plugin not installed or not enabled: run `/plugin install agentic-framework@agentic-framework` and verify with `/plugin list`.
 - The session predates the plugin install: hooks load at session start, so restart Claude Code after installing.
 - Matcher mismatch: `record-subagent-run` fires on PostToolUse `Task|Agent` and on SubagentStop; `pretooluse-delegation-hint` on PreToolUse `Write|Edit` (each name = its `.ps1`/`.sh` pair). An event without a matching tool never fires.
-- Plugin cache stale: try `/plugin uninstall agentic-framework` and then `/plugin install agentic-framework@claude-agentic-framework`.
+- Plugin cache stale: try `/plugin uninstall agentic-framework` and then `/plugin install agentic-framework@agentic-framework`.
 
 Check 3 of `validate-consistency.sh` asserts pair parity: every hook name in `hooks/hooks.json` has both .ps1 and .sh implementations; `dispatch.sh` is present and referenced in every registered chain; no orphans on either side. (The name allowlist inside dispatch.sh itself is not validator-checked — keep it in sync by hand.) Behavior is covered by `tests/hooks.test.ps1` (PowerShell) and `tests/hooks.test.sh` (POSIX).
 

@@ -1,5 +1,5 @@
 {
-  "name": "claude-agentic-framework",
+  "name": "agentic-framework",
   "description": "Agent execution framework for Claude Code: 21 specialized agents with task routing, spec-driven build loops, and an enforced peer-review quality gate — shipped as a core plugin plus an optional MCP server bundle.",
   "owner": { "name": "Tomas Rampas", "url": "https://github.com/tomas-rampas" },
   "plugins": [
