@@ -58,6 +58,7 @@ It asserts:
 5. **Shell pins** — every `.sh` script starts with `#!/bin/sh` (shebang) and has `set -u` (second line).
 6. **Dispatch chain coherence** — in each hook chain, the dispatch-shell argument matches the `.ps1` filename stem.
 7. **No deprecated agent names** referenced by any hook script.
+8. **No legacy duplicate registrations** (WARN-only, never fails the run) — hook names from `hooks/hooks.json` must not also appear in the user's `~/.claude/settings.json` (override with `CLAUDE_SETTINGS_FILE`); a surviving pre-v4 entry makes every hook fire twice. Remediation: `/agentic-framework:migrate-legacy`.
 
 ## Behavior Validation (--behavior)
 
@@ -85,6 +86,10 @@ OK: 4 .ps1 + 5 .sh hook script(s) registered across 5 event(s); dispatch chains 
 Checking for deprecated agent references in hooks/...
 
 OK: no deprecated agent references found (checked 7 names)
+
+Checking user settings for legacy duplicate hook registrations...
+
+OK: no legacy duplicate hook registrations in user settings
 
 ================================
 Hook validation passed

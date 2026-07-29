@@ -49,7 +49,7 @@ The POSIX shell twin, used on Linux/macOS via dispatch.sh:
 
 ## Step 3: Add the Hook Name to dispatch.sh's Case Allowlist
 
-The dispatcher `hooks/dispatch.sh` is a shell-form router that detects the platform (POSIX vs MINGW/MSYS/CYGWIN) and runs the appropriate script. It has a hardcoded allowlist of hook names — if a hook is not listed, the dispatcher exits 0 silently on POSIX (a silent no-op).
+The dispatcher `hooks/dispatch.sh` is a shell-form router that detects the platform (POSIX vs MINGW/MSYS/CYGWIN) and runs the appropriate script — on Windows Git Bash it runs the POSIX .sh directly when jq is on PATH (skipping a pwsh cold start), else the .ps1 via pwsh. It has a hardcoded allowlist of hook names — if a hook is not listed, the dispatcher exits 0 silently on POSIX (a silent no-op).
 
 Open `hooks/dispatch.sh` and add your hook name to the case statement (this matches the real file — the allowlist branch is an empty pass-through; platform routing happens further down):
 

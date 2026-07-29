@@ -415,7 +415,10 @@ claude mcp list                                          # What Claude Code sees
 ```
 
 **Harmless "sh: not found" stderr on Windows without Git Bash:**
-When Git Bash is not installed, the hook chain's `sh` command fails with a "not found" error line in the transcript. This is harmless — the `||` arm runs the PowerShell `.ps1` script directly. (Installing Git Bash removes the noise: `sh` then exists and `dispatch.sh` detects MINGW*/MSYS*/CYGWIN* to route to the same PowerShell script — the `.sh` implementations run only on Linux/macOS.)
+When Git Bash is not installed, the hook chain's `sh` command fails with a "not found" error line in the transcript. This is harmless — the `||` arm runs the PowerShell `.ps1` script directly. (Installing Git Bash removes the noise and speeds hooks up: `sh` then exists and `dispatch.sh` detects MINGW*/MSYS*/CYGWIN*, running the POSIX `.sh` implementation directly when `jq` is on PATH — which skips a pwsh cold start of roughly 1–2 seconds on every hook fire — and routing to the same PowerShell script otherwise.)
+
+**Hooks feel slow, or fire twice:**
+Two known causes. First, on Windows without `jq` in Git Bash, every hook fire pays a pwsh cold start — install `jq` (`winget install jqlang.jq`) so the dispatcher can take the POSIX fast path described above. Second, if you migrated from a pre-v4 (pre-plugin) install, the legacy hook entries may still sit in `~/.claude/settings.json` alongside the plugin's `hooks/hooks.json` registration, making every hook fire twice. Run `/agentic-framework:validate-hooks` — it warns on exactly this — and remove the legacy entries (`/agentic-framework:migrate-legacy` automates the cleanup).
 
 **Plugin installation failed:**
 
