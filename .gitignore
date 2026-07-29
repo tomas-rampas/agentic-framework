@@ -6,6 +6,7 @@
 !/CLAUDE.md
 !/.gitignore
 !/.gitattributes
+!/LICENSE
 !/README.md
 !/CONTRIBUTING.md
 !/.env.example
