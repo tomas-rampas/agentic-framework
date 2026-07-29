@@ -2,26 +2,26 @@
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_FS_ROOT:-${CLAUDE_PROJECT_DIR}}"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2026.7.10", "${MCP_FS_ROOT:-${CLAUDE_PROJECT_DIR}}"]
     },
     "context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"],
+      "args": ["-y", "@upstash/context7-mcp@3.2.5"],
       "env": { "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}" }
     },
     "serena": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "ide-assistant"]
+      "args": ["--from", "git+https://github.com/oraios/serena@bcac0969fb8685783ea6d0f2642468fcc47e6395", "serena", "start-mcp-server", "--context", "ide-assistant"]
     },
     "sequential-thinking": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@2026.7.4"],
       "env": {}
     },
     "fetch": {
       "command": "uvx",
-      "args": ["mcp-server-fetch"]
+      "args": ["mcp-server-fetch==2026.7.10"]
     }
   }
 }

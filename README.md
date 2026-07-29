@@ -69,6 +69,8 @@ Set these runtime environment variables (globally via shell profile or system se
 
 Note: to check which servers are available in your session, run `claude mcp list`.
 
+All five launchers are version-pinned (serena by commit SHA, matching its v1.6.1 release), so `npx`/`uvx` resolve from local cache instead of hitting the network at every session start — an unpinned serena re-resolved its git repository on each launch. Cost note: serena is the heavyweight of the bundle (it boots language servers for the project); if you don't use its semantic-code tools, remove it from your installed plugin's `.mcp.json` to cut session-start latency and per-request tool-schema weight.
+
 ---
 
 ## Installation
