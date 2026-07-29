@@ -57,7 +57,10 @@ cleanup_all() {
   done < "$__TMP_DIRS_FILE"
   rm -f "$__TMP_DIRS_FILE"
 }
-trap cleanup_all EXIT INT TERM
+# Handle EXIT normally; INT/TERM must terminate immediately, not resume.
+trap cleanup_all EXIT
+trap 'cleanup_all; exit 130' INT
+trap 'cleanup_all; exit 143' TERM
 
 # --- copy helper -------------------------------------------------------
 # make_copy -> prints the path to a fresh, isolated, non-git copy of the repo.

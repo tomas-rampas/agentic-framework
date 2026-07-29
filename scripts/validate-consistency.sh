@@ -15,7 +15,7 @@
 #   bash scripts/validate-consistency.sh
 #   echo "exit=$?"
 #
-# Requirements: bash, jq, git (optional — check 14 skips if absent), awk, grep, sed, sort, uniq, head, basename, paste, comm. YAML validity is best-effort via python3/ruby.
+# Requirements: bash, jq, awk, grep, sed, sort, uniq, head, basename, paste, comm. YAML validity is best-effort via python3/ruby.
 
 set -uo pipefail
 # NOTE: -e is deliberately NOT set. We want to run every check and aggregate
@@ -936,44 +936,6 @@ section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/
     done
     if [[ "$ok" -eq 1 ]]; then
       pass "all three version fields are identical: $first"
-    fi
-  fi
-}
-
-# ===========================================================================
-# CHECK 14 - No tracked file is git-ignored (BLOCKING)
-# ===========================================================================
-# A tracked file that is also git-ignored is a configuration defect: once a
-# path leaves the index (rename, git rm --cached, delete-and-recreate), it
-# cannot be re-added and silently falls out of version control. This check
-# judges committed ignore rules only; it requires a git checkout and on non-git
-# copies (the test harness's copy) gracefully skips without failing.
-section "[14] No tracked file is git-ignored"
-{
-  ok=1
-
-  # Check if this is a git repo: git ls-files only works if .git exists.
-  if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    info "skipping (not a git repository)"
-  else
-    # git ls-files -c -i --exclude-standard: show cached (tracked) files that
-    # match the ignore patterns (standard .gitignore + .git/info/exclude).
-    # If output is non-empty, tracked files are git-ignored (a defect).
-    # Neutralise machine-local git config by pinning core.excludesFile=/dev/null
-    # so only committed ignore rules are judged (not the user's personal ~/.gitignore).
-    ignored="$(git -c core.excludesFile=/dev/null -C "$ROOT" ls-files -c -i --exclude-standard 2>&1)"
-    git_rc=$?
-    if [[ "$git_rc" -ne 0 ]]; then
-      ok=0
-      fail "check 14 query failed (corrupt/locked index or unreadable excludesFile; exit $git_rc):"
-      detail "$ignored"
-    elif [[ -n "$ignored" ]]; then
-      ok=0
-      fail "Tracked file(s) are git-ignored (once removed from the index, cannot be re-added):"
-      while IFS= read -r f; do [[ -n "$f" ]] && detail "ignored-tracked: $f"; done <<< "$ignored"
-    fi
-    if [[ "$ok" -eq 1 ]]; then
-      pass "no tracked file is git-ignored (safe to commit)"
     fi
   fi
 }

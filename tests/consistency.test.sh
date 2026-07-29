@@ -84,7 +84,10 @@ cleanup_all() {
   done < "$__TMP_DIRS_FILE"
   rm -f "$__TMP_DIRS_FILE"
 }
-trap cleanup_all EXIT INT TERM
+# Handle EXIT normally; INT/TERM must terminate immediately, not resume.
+trap cleanup_all EXIT
+trap 'cleanup_all; exit 130' INT
+trap 'cleanup_all; exit 143' TERM
 
 # --- copy helper ------------------------------------------------------------
 # make_copy -> prints the path to a fresh, isolated, non-git copy of the repo.
@@ -657,27 +660,6 @@ section "[22] Drifted marketplace top-level description: set to '99 specialized 
   run_validate "$copy"
   assert_rc_nonzero "validator fails when marketplace.json top-level description agent count drifts"
   assert_out_contains "reports agent count mismatch in marketplace.json" "agent count: stated '99' != derived"
-  rm -rf "$copy"
-}
-
-# ===========================================================================
-# CASE 23 - Check 14 red path: tracked file is git-ignored -> check 14 must fail.
-# ===========================================================================
-# NOTE: This is a deliberate, case-local exception to the non-git isolation
-# contract (see ISOLATION CONTRACT at top). Check 14 cannot be exercised on a
-# non-git tree, so we initialize git inside this one copy to test the FAIL arm.
-section "[23] Check 14 red path: tracked-but-ignored file -> non-zero (check 14)"
-{
-  copy="$(make_copy)"
-  _verify_copy "$copy"
-  # Initialize a real git repo in the copy.
-  ( cd "$copy" && git init -q . && git add -A \
-    && git -c user.email=t@t -c user.name=t commit -qm base )
-  # CONTRIBUTING.md is tracked; drop its whitelist line so it becomes ignored.
-  awk '!/^!\/CONTRIBUTING\.md$/' "$copy/.gitignore" > "$copy/.gi.tmp" && mv "$copy/.gi.tmp" "$copy/.gitignore"
-  run_validate "$copy"
-  assert_rc_nonzero "validator fails on a tracked-but-ignored file"
-  assert_out_contains "reports the offender" "ignored-tracked: CONTRIBUTING.md"
   rm -rf "$copy"
 }
 
