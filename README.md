@@ -163,9 +163,12 @@ In Claude Code:
 /plugin marketplace add tomas-rampas/agentic-framework
 /plugin install agentic-framework@agentic-framework
 /plugin install agentic-framework-mcp@agentic-framework  # if installed
+/reload-plugins
 ```
 
-Once re-registered, check for updates via the CLI (shown below):
+Restarting Claude Code has the same effect as `/reload-plugins`.
+
+To check for updates (whether or not you migrated):
 ```bash
 claude plugin marketplace update agentic-framework
 claude plugin update agentic-framework@agentic-framework
@@ -414,7 +417,7 @@ When Git Bash is not installed, the hook chain's `sh` command fails with a "not 
 See **Upgrading from a pre-rename install** under [Updating the Plugins](#updating-the-plugins) if you have a pre-rename registration — you must remove the old registration first.
 
 ```bash
-/plugin list                                                # Check installed plugins
+/plugin list                                            # Check installed plugins
 /plugin marketplace add tomas-rampas/agentic-framework  # Re-add to marketplace
 /plugin install agentic-framework@agentic-framework     # Re-install
 ```
