@@ -115,6 +115,14 @@ assert_json_field_matches() {
   fi
 }
 
+_desc_is_valid() {           # <manifest> -> 0 iff .description is a non-blank string
+  local f="$1" t d
+  t="$(jq -r '.description | type' "$f" 2>/dev/null)" || return 1
+  [[ "$t" == "string" ]] || return 1
+  d="$(jq -r '.description' "$f")"; d="${d//$'\r'/}"
+  [[ $d =~ [^[:space:]] ]]
+}
+
 section() { printf '\n%s%s%s\n' "$C_CYN" "$1" "$C_NC"; }
 
 # --- validator helper -------------------------------------------------------
@@ -239,6 +247,15 @@ export FRAMEWORK_ROOT
     _pass "marketplace.json plugin names match their plugin.json .name fields"
   else
     _fail "marketplace.json plugin names" "mp1=$mp_name_1 (expect $pj_name_1), mp2=$mp_name_2 (expect $pj_name_2)"
+  fi
+}
+
+# --- Assertion 6a: marketplace.json has a non-empty top-level description ---
+{
+  if _desc_is_valid "$copy/.claude-plugin/marketplace.json"; then
+    _pass "marketplace.json has a non-empty top-level .description"
+  else
+    _fail "marketplace.json has a non-empty top-level .description" "description is not a valid non-blank string"
   fi
 }
 
@@ -646,6 +663,46 @@ section "[RED-16] Remove dispatch.sh (should fail dispatch presence check)"
     _pass "RED-16: validator fails with missing-dispatch-sh when dispatch.sh is deleted"
   else
     _fail "RED-16: validator should fail with missing-dispatch-sh" "exit=$RUN_RC, output: $(printf '%s\n' "$RUN_OUT" | grep -E 'missing-dispatch-sh|check' || echo '(no matches)')"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 17: Empty marketplace description (should fail Assertion 6a)
+# ===========================================================================
+section "[RED-17] Empty marketplace description (should fail non-empty check)"
+{
+  copy="$(make_copy)"
+  jq '.description = ""' "$copy/.claude-plugin/marketplace.json" \
+    > "$copy/.claude-plugin/marketplace.json.tmp" \
+    && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
+
+  # Verify the helper catches empty description
+  if _desc_is_valid "$copy/.claude-plugin/marketplace.json"; then
+    _fail "RED-17: empty description should fail" "but helper returned success"
+  else
+    _pass "RED-17: empty description correctly fails the non-empty check"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 18: Non-string marketplace description (should fail type check)
+# ===========================================================================
+section "[RED-18] Non-string marketplace description (should fail type check)"
+{
+  copy="$(make_copy)"
+  jq '.description = 42' "$copy/.claude-plugin/marketplace.json" \
+    > "$copy/.claude-plugin/marketplace.json.tmp" \
+    && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
+
+  # Verify the helper catches non-string description
+  if _desc_is_valid "$copy/.claude-plugin/marketplace.json"; then
+    _fail "RED-18: numeric description should fail" "but helper returned success"
+  else
+    _pass "RED-18: numeric description correctly fails the type check"
   fi
 
   rm -rf "$copy"
