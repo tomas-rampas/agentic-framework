@@ -1,4 +1,4 @@
-# Claude Agentic Framework
+# Agentic Framework for Claude
 
 *A configuration framework that turns Claude Code CLI into a disciplined, 21-agent engineering team — with real, tested enforcement.*
 
@@ -310,15 +310,15 @@ sequenceDiagram
 **Modern plugin-based installation (4.0+):**
 
 ```
-/plugin marketplace add tomas-rampas/claude-agentic-framework
-/plugin install agentic-framework@claude-agentic-framework
+/plugin marketplace add tomas-rampas/agentic-framework
+/plugin install agentic-framework@agentic-framework
 /agentic-framework:validate-hooks
 /agentic-framework:analyze-framework
 ```
 
 Optional: install the MCP servers plugin:
 ```
-/plugin install agentic-framework-mcp@claude-agentic-framework
+/plugin install agentic-framework-mcp@agentic-framework
 /agentic-framework-mcp:setup
 ```
 

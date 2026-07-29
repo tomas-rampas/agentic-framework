@@ -121,7 +121,7 @@ The hook is automatically deployed when the agentic-framework plugin is updated 
 
 ```bash
 /plugin uninstall agentic-framework
-/plugin install agentic-framework@claude-agentic-framework
+/plugin install agentic-framework@agentic-framework
 # then restart Claude Code
 ```
 

@@ -659,9 +659,9 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
 # ── 6. NEXT STEPS ──────────────────────────────────────────────────────────────
 Write-Host ''
 Write-Host '== Next Steps =='
-Write-Host '  1. /plugin marketplace add tomas-rampas/claude-agentic-framework'
-Write-Host '  2. /plugin install agentic-framework@claude-agentic-framework'
-Write-Host '  3. (optional) /plugin install agentic-framework-mcp@claude-agentic-framework'
+Write-Host '  1. /plugin marketplace add tomas-rampas/agentic-framework'
+Write-Host '  2. /plugin install agentic-framework@agentic-framework'
+Write-Host '  3. (optional) /plugin install agentic-framework-mcp@agentic-framework'
 Write-Host '  4. (optional) /agentic-framework-mcp:setup'
 Write-Host '  5. Restart Claude Code'
 
