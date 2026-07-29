@@ -135,8 +135,8 @@
   `C:` directory instead of erroring. Since `.gitignore` is a `/*` blacklist with a
   whitelist, junk at repo root does not appear in `git status` — mistakes stay invisible
   unless looked for. Anything written into the repo must be a file the change intends to
-  ship. Test harnesses copy the tree per case, so stray directories directly slow the
-  suite (a 1.5 MB `covtest/` copy happened here).
+  ship. Test harnesses used to copy the tree per case, and stray directories directly
+  slowed the suite (a 1.5 MB `covtest/` copy happened before migration to `git ls-files`).
 - **Revising a document: hand over the exact text.** When asking an agent to extend or
   reword existing content, supply that content verbatim in the prompt and name the single
   change wanted. Asking an agent to reproduce a document from a summary silently drops
