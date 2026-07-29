@@ -3,12 +3,16 @@
 # (core plugin, mcp plugin, marketplace, hooks.json, mcp.json).
 #
 # ISOLATION CONTRACT (same as consistency.test.sh):
-#   Each test case operates on its own throwaway copy of the repo.
+#   Each test case operates on its own throwaway copy of the repo, created by
+#   streaming tracked files through git ls-files (NUL-delimited), piping through tar,
+#   and extracting to a fresh directory (avoiding .git).
 #   The real working tree is NEVER mutated.
 #
 # Usage:
 #   bash tests/plugin-manifests.test.sh
 #   echo "exit=$?"      # 0 = all cases passed, 1 = at least one failed
+#
+# Requirements: bash, jq, git, tar, mktemp, grep, basename, printf, sort, comm, tr.
 
 set -uo pipefail
 # NOTE: -e is intentionally NOT set — we run every case and aggregate results;
@@ -37,31 +41,65 @@ TESTS_RUN=0
 TESTS_PASS=0
 TESTS_FAIL=0
 
-declare -a __TMP_DIRS=()
+# Track every temp dir we create so the global trap can sweep them even if a
+# case dies unexpectedly. The real tree never appears in here.
+# Use a tracking file since array mutations inside subshells don't propagate to parent.
+__TMP_DIRS_FILE="$(mktemp "${TMPDIR:-/tmp}/plugin-manifests-test-dirs.XXXXXX")" || {
+  printf 'FATAL: mktemp for tracking file failed\n' >&2
+  exit 2
+}
 
 cleanup_all() {
   local d
-  for d in "${__TMP_DIRS[@]:-}"; do
+  [[ -f "$__TMP_DIRS_FILE" ]] || return 0
+  while IFS= read -r d; do
     [[ -n "${d:-}" && -d "$d" ]] && rm -rf "$d"
-  done
+  done < "$__TMP_DIRS_FILE"
+  rm -f "$__TMP_DIRS_FILE"
 }
-trap cleanup_all EXIT INT TERM
+# Handle EXIT normally; INT/TERM must terminate immediately, not resume.
+trap cleanup_all EXIT
+trap 'cleanup_all; exit 130' INT
+trap 'cleanup_all; exit 143' TERM
 
-# --- copy helper (identical to consistency.test.sh pattern) --------
+# --- copy helper -------------------------------------------------------
+# make_copy -> prints the path to a fresh, isolated, non-git copy of the repo.
+# The caller mutates and runs scripts against the returned path.
+#
+# Source: git ls-files piped through tar, streaming to minimize I/O and process
+# overhead (critical for performance on Windows where process creation is slow).
+#   * Lists only tracked files from the working tree's index, not committed content.
+#   * Immune to untracked junk (stray directories, backup files, etc).
+#   * Avoids copying .git — the copy is a detached, NON-git tree.
+#   * Preserves file permissions including executable bit on *.sh scripts.
+#   * Handles paths with spaces safely (NUL-delimited input to tar).
+#   * Single streaming pipeline: minimal process spawning.
+#
+# The copy will contain CURRENT WORKING TREE content (uncommitted changes), not
+# committed content—this is correct, as the test must exercise the actual files.
+#
+# NOTE: Requires `set -uo pipefail` so that tar pipeline failures cause exit 2.
 make_copy() {
-  local dst entry base
+  local dst
   dst="$(mktemp -d "${TMPDIR:-/tmp}/plugin-manifests-test.XXXXXX")" || {
     printf 'FATAL: mktemp failed\n' >&2
     exit 2
   }
-  __TMP_DIRS+=("$dst")
-  shopt -s dotglob nullglob
-  for entry in "$SRC_REPO"/*; do
-    base="$(basename "$entry")"
-    [[ "$base" == ".git" ]] && continue
-    cp -r "$entry" "$dst/"
-  done
-  shopt -u dotglob nullglob
+  # Record dir in tracking file so cleanup_all (outside subshell) can sweep it.
+  printf '%s\n' "$dst" >> "$__TMP_DIRS_FILE"
+
+  # Stream: read tracked files from git (NUL-delimited), pipe through tar to create
+  # the archive on stdout, then extract into the destination directory.
+  # tar with --null mode automatically creates parent directories and preserves
+  # file permissions and executable bits.
+  # With pipefail, a tar read error (e.g. git ls-files lists a deleted file that
+  # tar cannot stat) will fail the pipeline and exit 2 below.
+  ( cd "$SRC_REPO" && git ls-files -z | tar -c --null -T - -f - ) | \
+    ( cd "$dst" && tar -xf - ) || {
+    printf 'FATAL: tar pipeline failed (git ls-files or tar error)\n' >&2
+    exit 2
+  }
+
   printf '%s\n' "$dst"
 }
 
@@ -95,6 +133,14 @@ assert_file_not_exists() {
   local path="$1" label="$2"
   if [[ ! -f "$path" ]]; then _pass "$label"
   else _fail "$label" "file should not exist: $path"; fi
+}
+
+_verify_copy() {
+  local copy="$1"
+  if [[ -z "$copy" || ! -d "$copy" || ! -f "$copy/scripts/validate-consistency.sh" ]]; then
+    printf '%sFATAL%s copy directory invalid or empty\n' "$C_RED" "$C_NC" >&2
+    exit 2
+  fi
 }
 
 assert_json_field_matches() {
@@ -142,9 +188,32 @@ printf '%s  Plugin Manifest Test Harness%s\n' "$C_CYN" "$C_NC"
 printf '%s  source repo: %s%s\n' "$C_CYN" "$SRC_REPO" "$C_NC"
 printf '%s================================================%s\n' "$C_CYN" "$C_NC"
 
-# Preflight: check jq
+# --- preflight --------------------------------------------------------------
 if ! command -v jq >/dev/null 2>&1; then
   printf '%sFATAL%s jq is required but not installed.\n' "$C_RED" "$C_NC" >&2
+  exit 2
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  printf '%sFATAL%s git is required but not installed.\n' "$C_RED" "$C_NC" >&2
+  exit 2
+fi
+
+if ! command -v tar >/dev/null 2>&1; then
+  printf '%sFATAL%s tar is required but not installed.\n' "$C_RED" "$C_NC" >&2
+  exit 2
+fi
+
+if ! git -C "$SRC_REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  printf '%sFATAL%s %s is not a git checkout (required for harness operation).\n' "$C_RED" "$C_NC" "$SRC_REPO" >&2
+  exit 2
+fi
+
+# Verify no tracked files are deleted but not staged
+deleted_unstaged="$(git -C "$SRC_REPO" ls-files --deleted 2>/dev/null || true)"
+if [[ -n "$deleted_unstaged" ]]; then
+  printf '%sFATAL%s tracked files are deleted but not staged. Stage or restore them:\n' "$C_RED" "$C_NC" >&2
+  printf '%s\n' "$deleted_unstaged" | while IFS= read -r f; do printf '  %s\n' "$f" >&2; done
   exit 2
 fi
 
@@ -154,6 +223,7 @@ fi
 section "[GREEN] Plugin manifest validation — happy path"
 
 copy="$(make_copy)"
+_verify_copy "$copy"
 FRAMEWORK_ROOT="$copy"
 export FRAMEWORK_ROOT
 
@@ -394,7 +464,7 @@ export FRAMEWORK_ROOT
 
 # --- Assertion 10: No root .mcp.json exists ---
 {
-  assert_file_not_exists "$copy/.mcp.json" "no root .mcp.json exists"
+  assert_file_not_exists "$copy/.mcp.json" "no tracked root .mcp.json exists"
 }
 
 # --- Assertion 11: mcp-plugin/.mcp.json has exactly 5 server keys ---
@@ -455,6 +525,7 @@ rm -rf "$copy"
 section "[RED-6] Corrupt core plugin.json version (should fail version-sync check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   jq '.version = "9.9.9"' "$copy/.claude-plugin/plugin.json" > "$copy/.claude-plugin/plugin.json.tmp" \
     && mv "$copy/.claude-plugin/plugin.json.tmp" "$copy/.claude-plugin/plugin.json"
 
@@ -476,6 +547,7 @@ section "[RED-6] Corrupt core plugin.json version (should fail version-sync chec
 section "[RED-7] Add orphan hook script (should fail parity check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   printf '#Requires -Version 7.0\nexit 0\n' > "$copy/hooks/zzz-orphan-unregistered.ps1"
 
   # Check if the new file is NOT registered (using scan-based extraction)
@@ -494,6 +566,7 @@ section "[RED-7] Add orphan hook script (should fail parity check)"
 section "[RED-8] Remove a registered hook script (should fail parity check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   rm -f "$copy/hooks/stop-peer-review-gate.ps1"
 
   # Check if the removed file is still referenced (using scan-based extraction)
@@ -512,6 +585,7 @@ section "[RED-8] Remove a registered hook script (should fail parity check)"
 section "[RED-9] Create root .mcp.json (should fail no-root-mcp check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   printf '{"mcpServers":{}}\n' > "$copy/.mcp.json"
 
   if [[ -f "$copy/.mcp.json" ]]; then
@@ -529,6 +603,7 @@ section "[RED-9] Create root .mcp.json (should fail no-root-mcp check)"
 section "[RED-10] Replace context7 env with hardcoded token (should fail placeholder guard)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   fv=fake-tok-12345
   jq --arg v "$fv" '.mcpServers.context7.env.CONTEXT7_API_KEY = $v' \
     "$copy/mcp-plugin/.mcp.json" > "$copy/mcp-plugin/.mcp.json.tmp" \
@@ -550,6 +625,7 @@ section "[RED-10] Replace context7 env with hardcoded token (should fail placeho
 section "[RED-11] Plugin name with underscores (should fail kebab-case check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   bad_name=Agentic_Framework
   jq --arg name "$bad_name" '.name = $name' "$copy/.claude-plugin/plugin.json" \
     > "$copy/.claude-plugin/plugin.json.tmp" \
@@ -571,6 +647,7 @@ section "[RED-11] Plugin name with underscores (should fail kebab-case check)"
 section "[RED-12] Invalid hooks.json event name (should fail event-validity check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   bad_event=OnStop
   jq --arg event "$bad_event" '.hooks[$event] = [{"hooks": []}]' "$copy/hooks/hooks.json" \
     > "$copy/hooks/hooks.json.tmp" \
@@ -592,6 +669,7 @@ section "[RED-12] Invalid hooks.json event name (should fail event-validity chec
 section "[RED-13] Marketplace plugin source does not exist (should fail source-exists check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   nonexistent_path=./does-not-exist
   jq --arg path "$nonexistent_path" '.plugins[0].source = $path' "$copy/.claude-plugin/marketplace.json" \
     > "$copy/.claude-plugin/marketplace.json.tmp" \
@@ -614,6 +692,7 @@ section "[RED-13] Marketplace plugin source does not exist (should fail source-e
 section "[RED-14] Remove a .sh hook implementation (should fail parity check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   rm -f "$copy/hooks/session-start-context.sh"
 
   # Run the validator against the mutated copy
@@ -634,6 +713,7 @@ section "[RED-14] Remove a .sh hook implementation (should fail parity check)"
 section "[RED-15] Add orphan .sh hook script (should fail parity check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   printf '#!/bin/sh\nset -u\nexit 0\n' > "$copy/hooks/zzz-extra-unregistered.sh"
 
   # Run the validator against the mutated copy
@@ -654,6 +734,7 @@ section "[RED-15] Add orphan .sh hook script (should fail parity check)"
 section "[RED-16] Remove dispatch.sh (should fail dispatch presence check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   rm -f "$copy/hooks/dispatch.sh"
 
   # Run the validator against the mutated copy
@@ -674,6 +755,7 @@ section "[RED-16] Remove dispatch.sh (should fail dispatch presence check)"
 section "[RED-17] Empty marketplace description (should fail non-empty check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   jq '.description = ""' "$copy/.claude-plugin/marketplace.json" \
     > "$copy/.claude-plugin/marketplace.json.tmp" \
     && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
@@ -694,6 +776,7 @@ section "[RED-17] Empty marketplace description (should fail non-empty check)"
 section "[RED-18] Non-string marketplace description (should fail type check)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   jq '.description = 42' "$copy/.claude-plugin/marketplace.json" \
     > "$copy/.claude-plugin/marketplace.json.tmp" \
     && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"

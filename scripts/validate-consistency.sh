@@ -15,7 +15,7 @@
 #   bash scripts/validate-consistency.sh
 #   echo "exit=$?"
 #
-# Requirements: bash, jq. (YAML validity is best-effort via python3/ruby.)
+# Requirements: bash, jq, awk, grep, sed, sort, uniq, head, basename, paste, comm. YAML validity is best-effort via python3/ruby.
 
 set -uo pipefail
 # NOTE: -e is deliberately NOT set. We want to run every check and aggregate

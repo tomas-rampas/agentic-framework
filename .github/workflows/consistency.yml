@@ -114,8 +114,9 @@ jobs:
         run: bash tests/hooks.test.sh
 
       # tests/consistency.test.sh is deliberately NOT run here: it uses a GNU-only
-      # `sed -i` (no backup suffix) at line ~261, which BSD sed rejects; the
-      # portable form is already used elsewhere in that file (see ~line 454).
+      # `sed -i` without backup suffix (case 6b: sed -i 's/stop-peer-review-gate|record-subagent-run|/'),
+      # which BSD sed rejects. The portable form with .bak suffix is used elsewhere
+      # in the harness (case 14: sed -i.bak "s/^name: ${first_skill}\$/).
       - name: Cross-impl equivalence (sh only; pwsh unavailable on macOS)
         # tests/hooks-equivalence.test.sh self-skips if pwsh is unavailable;
         # running it here documents .sh-only equivalence and validates the self-skip

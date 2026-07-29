@@ -4,13 +4,15 @@
 # scripts/generate-docs.sh).
 #
 # WHY plain bash (not bats): this must run unmodified on the developer's Windows
-# machine (Cygwin/Git-bash) AND on ubuntu-latest CI with nothing but bash + jq.
+# machine (Cygwin/Git-bash) AND on ubuntu-latest CI with a git checkout + bash + jq.
 #
 # ISOLATION CONTRACT (the real working tree is NEVER mutated):
 #   Each test case operates on its own throwaway copy of the repo:
-#     1. `cp -r` every top-level entry EXCEPT .git into a fresh `mktemp -d` dir.
-#        The copy is therefore a detached, NON-git tree (a `cp -r` copy must be
-#        validated as such; .git is skipped both for correctness and speed).
+#     1. Stream tracked files from git via `git ls-files -z` (NUL-delimited file
+#        list), pipe through `tar` to create an archive on stdout, then extract into
+#        a fresh `mktemp -d` directory. The copy is therefore a detached, NON-git
+#        tree (avoids copying .git, both for correctness and speed). Preserves
+#        file permissions and handles paths with spaces safely.
 #     2. Mutate ONLY the copy (inject a defect, or leave it clean).
 #     3. Run the COPIED scripts/validate-consistency.sh / generate-docs.sh against
 #        the copy, with FRAMEWORK_ROOT pinned to the copy root.
@@ -27,7 +29,7 @@
 #   bash tests/consistency.test.sh
 #   echo "exit=$?"      # 0 = all cases passed, 1 = at least one failed
 #
-# Requirements: bash, jq, cp, mktemp, awk, grep.
+# Requirements: bash, jq, git, tar, mktemp, awk, grep, sed, cp, find, head, basename, cmp.
 
 set -uo pipefail
 # NOTE: -e is intentionally NOT set. We run every case and aggregate results; a
@@ -68,41 +70,65 @@ TESTS_FAIL=0
 
 # Track every temp dir we create so the global trap can sweep them even if a
 # case dies unexpectedly. The real tree never appears in here.
-declare -a __TMP_DIRS=()
+# Use a tracking file since array mutations inside subshells don't propagate to parent.
+__TMP_DIRS_FILE="$(mktemp "${TMPDIR:-/tmp}/consistency-test-dirs.XXXXXX")" || {
+  printf 'FATAL: mktemp for tracking file failed\n' >&2
+  exit 2
+}
 
 cleanup_all() {
   local d
-  for d in "${__TMP_DIRS[@]:-}"; do
+  [[ -f "$__TMP_DIRS_FILE" ]] || return 0
+  while IFS= read -r d; do
     [[ -n "${d:-}" && -d "$d" ]] && rm -rf "$d"
-  done
+  done < "$__TMP_DIRS_FILE"
+  rm -f "$__TMP_DIRS_FILE"
 }
-trap cleanup_all EXIT INT TERM
+# Handle EXIT normally; INT/TERM must terminate immediately, not resume.
+trap cleanup_all EXIT
+trap 'cleanup_all; exit 130' INT
+trap 'cleanup_all; exit 143' TERM
 
 # --- copy helper ------------------------------------------------------------
 # make_copy -> prints the path to a fresh, isolated, non-git copy of the repo.
 # The caller mutates and runs scripts against the returned path.
 #
-# We copy every top-level entry EXCEPT .git. Skipping .git is deliberate:
-#   * the copy must be a detached, NON-git tree (exercises facts.sh's non-git
-#     root-resolution fallback), so .git would be removed anyway;
-#   * copying .git (thousands of tiny objects) is by far the slowest part of a
-#     `cp -r` under Cygwin/Windows - excluding it keeps each case fast.
-# Dotfiles that matter (.gitattributes, .mcp.json, .claude/, etc.) ARE copied;
-# only .git (and the . / .. pseudo-entries) are skipped.
+# Source: git ls-files piped through tar, streaming to minimize I/O and process
+# overhead (critical for performance on Windows where process creation is slow).
+#   * Lists only tracked files from the working tree's index, not committed content.
+#   * Immune to untracked junk (stray directories, backup files, etc).
+#   * Avoids copying .git — the copy is a detached, NON-git tree (exercises
+#     facts.sh's non-git root-resolution fallback).
+#   * Preserves file permissions including executable bit on *.sh scripts.
+#   * Handles paths with spaces safely (NUL-delimited input to tar).
+#   * Single streaming pipeline: minimal process spawning.
+#
+# The copy will contain CURRENT WORKING TREE content (uncommitted changes), not
+# committed content—this is correct, as the test must exercise the actual files
+# a developer is about to validate, not a snapshot from HEAD.
+#
+# NOTE: Requires `set -uo pipefail` so that tar pipeline failures cause exit 2.
 make_copy() {
-  local dst entry base
+  local dst
   dst="$(mktemp -d "${TMPDIR:-/tmp}/consistency-test.XXXXXX")" || {
     printf 'FATAL: mktemp failed\n' >&2
     exit 2
   }
-  __TMP_DIRS+=("$dst")
-  shopt -s dotglob nullglob
-  for entry in "$SRC_REPO"/*; do
-    base="$(basename "$entry")"
-    [[ "$base" == ".git" ]] && continue
-    cp -r "$entry" "$dst/"
-  done
-  shopt -u dotglob nullglob
+  # Record dir in tracking file so cleanup_all (outside subshell) can sweep it.
+  printf '%s\n' "$dst" >> "$__TMP_DIRS_FILE"
+
+  # Stream: read tracked files from git (NUL-delimited), pipe through tar to create
+  # the archive on stdout, then extract into the destination directory.
+  # tar with --null mode automatically creates parent directories and preserves
+  # file permissions and executable bits.
+  # With pipefail, a tar read error (e.g. git ls-files lists a deleted file that
+  # tar cannot stat) will fail the pipeline and exit 2 below.
+  ( cd "$SRC_REPO" && git ls-files -z | tar -c --null -T - -f - ) | \
+    ( cd "$dst" && tar -xf - ) || {
+    printf 'FATAL: tar pipeline failed (git ls-files or tar error)\n' >&2
+    exit 2
+  }
+
   printf '%s\n' "$dst"
 }
 
@@ -131,6 +157,14 @@ _fail() {
   TESTS_RUN=$((TESTS_RUN + 1)); TESTS_FAIL=$((TESTS_FAIL + 1))
   printf '  %sFAIL%s  %s\n' "$C_RED" "$C_NC" "$1"
   [[ -n "${2:-}" ]] && printf '        %s\n' "$2"
+}
+
+_verify_copy() {
+  local copy="$1"
+  if [[ -z "$copy" || ! -d "$copy" || ! -f "$copy/scripts/validate-consistency.sh" ]]; then
+    printf '%sFATAL%s copy directory invalid or empty\n' "$C_RED" "$C_NC" >&2
+    exit 2
+  fi
 }
 
 assert_rc_zero() {
@@ -164,12 +198,36 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 2
 fi
 
+if ! command -v git >/dev/null 2>&1; then
+  printf '%sFATAL%s git is required but not installed.\n' "$C_RED" "$C_NC" >&2
+  exit 2
+fi
+
+if ! command -v tar >/dev/null 2>&1; then
+  printf '%sFATAL%s tar is required but not installed.\n' "$C_RED" "$C_NC" >&2
+  exit 2
+fi
+
+if ! git -C "$SRC_REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  printf '%sFATAL%s %s is not a git checkout (required for harness operation).\n' "$C_RED" "$C_NC" "$SRC_REPO" >&2
+  exit 2
+fi
+
+# Verify no tracked files are deleted but not staged
+deleted_unstaged="$(git -C "$SRC_REPO" ls-files --deleted 2>/dev/null || true)"
+if [[ -n "$deleted_unstaged" ]]; then
+  printf '%sFATAL%s tracked files are deleted but not staged. Stage or restore them:\n' "$C_RED" "$C_NC" >&2
+  printf '%s\n' "$deleted_unstaged" | while IFS= read -r f; do printf '  %s\n' "$f" >&2; done
+  exit 2
+fi
+
 # ===========================================================================
 # CASE 1 - Happy path: unmodified copy validates clean.
 # ===========================================================================
 section "[1] Happy path: unmodified copy -> validate-consistency.sh exits 0"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   run_validate "$copy"
   assert_rc_zero "unmodified copy passes validation"
   assert_out_contains "validator reports RESULT: PASS" "RESULT: PASS"
@@ -182,6 +240,7 @@ section "[1] Happy path: unmodified copy -> validate-consistency.sh exits 0"
 section "[2] Missing agent: delete agents/go-expert.md -> non-zero (registry parity)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   rm -f "$copy/agents/go-expert.md"
   run_validate "$copy"
   assert_rc_nonzero "validator fails when a registered agent has no .md"
@@ -195,6 +254,7 @@ section "[2] Missing agent: delete agents/go-expert.md -> non-zero (registry par
 section "[3] Orphan agent file: add agents/zzz-expert.md (unregistered) -> non-zero"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   printf -- '---\nname: zzz-expert\nmodel: opus\n---\nOrphan.\n' > "$copy/agents/zzz-expert.md"
   run_validate "$copy"
   assert_rc_nonzero "validator fails on an orphan agents/*.md"
@@ -208,6 +268,7 @@ section "[3] Orphan agent file: add agents/zzz-expert.md (unregistered) -> non-z
 section "[4] Category partition break: drop an agent from agent_categories -> non-zero"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   # Pick the first agent that is currently assigned to some category, then
   # remove it from every category list. The agent stays registered + has its
   # .md, so the ONLY break is the category partition (uncategorized agent).
@@ -228,6 +289,7 @@ section "[4] Category partition break: drop an agent from agent_categories -> no
 section "[5] Missing hook script: rm hooks/stop-peer-review-gate.ps1 -> non-zero (check 3)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   rm -f "$copy/hooks/stop-peer-review-gate.ps1"
   run_validate "$copy"
   assert_rc_nonzero "validator fails when a registered hook script is missing"
@@ -242,6 +304,7 @@ section "[5] Missing hook script: rm hooks/stop-peer-review-gate.ps1 -> non-zero
 section "[6] Orphan hook script: add unregistered hooks/zzz-orphan.ps1 -> non-zero (check 3)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   printf '#Requires -Version 7.0\nexit 0\n' > "$copy/hooks/zzz-orphan.ps1"
   run_validate "$copy"
   assert_rc_nonzero "validator fails on an unregistered hook script"
@@ -256,6 +319,7 @@ section "[6] Orphan hook script: add unregistered hooks/zzz-orphan.ps1 -> non-ze
 section "[6b] dispatch.sh allowlist incomplete: drop 'record-subagent-run' from case -> non-zero (check 3)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   # Remove 'record-subagent-run|' from the dispatch.sh case statement, leaving
   # stop-peer-review-gate|session-start-context|pretooluse-delegation-hint
   sed -i 's/stop-peer-review-gate|record-subagent-run|/stop-peer-review-gate|/' "$copy/hooks/dispatch.sh"
@@ -272,6 +336,7 @@ section "[6b] dispatch.sh allowlist incomplete: drop 'record-subagent-run' from 
 section "[6c] chain command mismatch: dispatch arg != .ps1 filename -> non-zero (check 3)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   # Mutate one chain: change the dispatch arg but leave the .ps1 filename unchanged
   # Original: sh "...dispatch.sh" record-subagent-run || pwsh -File ".../record-subagent-run.ps1"
   # Mutated:  sh "...dispatch.sh" record-subagent-runs || pwsh -File ".../record-subagent-run.ps1" (typo in dispatch arg)
@@ -290,6 +355,7 @@ section "[6c] chain command mismatch: dispatch arg != .ps1 filename -> non-zero 
 section "[7] Stale architecture description: claude.json set to '18-agent' -> non-zero"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   jq '.description = "Claude Code CLI with 18-agent specialized architecture"' \
     "$copy/claude.json" > "$copy/claude.json.tmp" \
     && mv "$copy/claude.json.tmp" "$copy/claude.json"
@@ -305,6 +371,7 @@ section "[7] Stale architecture description: claude.json set to '18-agent' -> no
 section "[8] Roster drift: delete an agent row from the CLAUDE.md table -> non-zero"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   # Remove the go-expert table row (shape: | **go-expert** | ... |). awk drops
   # exactly that line, leaving everything else byte-identical.
   awk '!/^\| \*\*go-expert\*\* \|/' "$copy/CLAUDE.md" > "$copy/CLAUDE.md.tmp" \
@@ -321,6 +388,7 @@ section "[8] Roster drift: delete an agent row from the CLAUDE.md table -> non-z
 section "[9] Generator staleness: mutate inside list-agents GENERATED region -> --check non-zero"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   la="$copy/commands/list-agents.md"
   # Corrupt a data line strictly between the BEGIN/END markers so the rendered
   # block no longer matches what's on disk. Change "total_agents": N -> 999.
@@ -345,6 +413,7 @@ section "[9] Generator staleness: mutate inside list-agents GENERATED region -> 
 section "[10] Idempotency: generate-docs.sh --write on a clean copy is a no-op"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   la="$copy/commands/list-agents.md"
   cp "$la" "$copy/.la.before"
   run_generate "$copy" --write
@@ -371,6 +440,7 @@ section "[11] Model parity: divergent tier + invalid shorthand -> non-zero (chec
   # .md is left untouched, so the ONLY break is the md<->claude.json model
   # mismatch (check 7 now blocking).
   copy="$(make_copy)"
+  _verify_copy "$copy"
   # Pick a real agent and a different (but still valid) shorthand than its
   # current md value, derived from the copy so the test stays roster-agnostic.
   victim="$(jq -r '.sub_agents | keys[0]' "$copy/claude.json")"
@@ -393,6 +463,7 @@ section "[11] Model parity: divergent tier + invalid shorthand -> non-zero (chec
   # --- 11b: set an INVALID shorthand (typo) in claude.json .model. It is not a
   # key in model_shorthand_map, so the map guard must fail it (blocking).
   copy="$(make_copy)"
+  _verify_copy "$copy"
   victim="$(jq -r '.sub_agents | keys[0]' "$copy/claude.json")"
   jq --arg a "$victim" '.sub_agents[$a].model = "sonnett"' \
     "$copy/claude.json" > "$copy/claude.json.tmp" \
@@ -410,6 +481,7 @@ section "[11] Model parity: divergent tier + invalid shorthand -> non-zero (chec
 section "[12] Generator staleness: mutate README framework-stats region -> --check non-zero"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   rm_md="$copy/README.md"
   awk '
     /<!-- BEGIN GENERATED: framework-stats -->/ { inside=1; print; next }
@@ -429,6 +501,7 @@ section "[12] Generator staleness: mutate README framework-stats region -> --che
 section "[13] Flat skill file: add skills/rogue.md -> non-zero (check 12)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   printf -- '---\nname: rogue\ndescription: not loadable\n---\nBody.\n' > "$copy/skills/rogue.md"
   run_validate "$copy"
   assert_rc_nonzero "validator fails on a flat skills/*.md file"
@@ -442,6 +515,7 @@ section "[13] Flat skill file: add skills/rogue.md -> non-zero (check 12)"
 section "[14] Broken skill dir: no SKILL.md, and name != dirname -> non-zero (check 12)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   mkdir -p "$copy/skills/broken"
   run_validate "$copy"
   assert_rc_nonzero "validator fails on a skill dir without SKILL.md"
@@ -449,6 +523,7 @@ section "[14] Broken skill dir: no SKILL.md, and name != dirname -> non-zero (ch
   rm -rf "$copy"
 
   copy="$(make_copy)"
+  _verify_copy "$copy"
   first_skill="$(basename "$(find "$copy/skills" -mindepth 1 -maxdepth 1 -type d | head -1)")"
   if [[ -n "$first_skill" ]]; then
     sed -i.bak "s/^name: ${first_skill}\$/name: wrong-name/" "$copy/skills/$first_skill/SKILL.md" \
@@ -469,6 +544,7 @@ section "[14] Broken skill dir: no SKILL.md, and name != dirname -> non-zero (ch
 section "[15] Plugin version mismatch (core): set .claude-plugin/plugin.json .version to 9.9.9 -> non-zero"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   jq '.version = "9.9.9"' "$copy/.claude-plugin/plugin.json" > "$copy/.claude-plugin/plugin.json.tmp" \
     && mv "$copy/.claude-plugin/plugin.json.tmp" "$copy/.claude-plugin/plugin.json"
   run_validate "$copy"
@@ -484,6 +560,7 @@ section "[15] Plugin version mismatch (core): set .claude-plugin/plugin.json .ve
 section "[16] Plugin version mismatch (mcp): set mcp-plugin/.claude-plugin/plugin.json .version to 9.9.9 -> non-zero"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   jq '.version = "9.9.9"' "$copy/mcp-plugin/.claude-plugin/plugin.json" > "$copy/mcp-plugin/.claude-plugin/plugin.json.tmp" \
     && mv "$copy/mcp-plugin/.claude-plugin/plugin.json.tmp" "$copy/mcp-plugin/.claude-plugin/plugin.json"
   run_validate "$copy"
@@ -499,6 +576,7 @@ section "[16] Plugin version mismatch (mcp): set mcp-plugin/.claude-plugin/plugi
 section "[17] Orphan hook (unregistered in hooks.json): add hooks/zzz-unregistered.ps1 -> non-zero (check 3)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   printf '#Requires -Version 7.0\nexit 0\n' > "$copy/hooks/zzz-unregistered.ps1"
   run_validate "$copy"
   assert_rc_nonzero "validator fails on an unregistered hook script"
@@ -513,6 +591,7 @@ section "[17] Orphan hook (unregistered in hooks.json): add hooks/zzz-unregister
 section "[18] Missing .sh hook implementation: rm hooks/session-start-context.sh -> non-zero (check 3)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   rm -f "$copy/hooks/session-start-context.sh"
   run_validate "$copy"
   assert_rc_nonzero "validator fails when a registered .sh hook is missing"
@@ -527,6 +606,7 @@ section "[18] Missing .sh hook implementation: rm hooks/session-start-context.sh
 section "[19] Orphan .sh hook script: add unregistered hooks/zzz-extra.sh -> non-zero (check 3)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   printf '#!/bin/sh\nset -u\nexit 0\n' > "$copy/hooks/zzz-extra.sh"
   run_validate "$copy"
   assert_rc_nonzero "validator fails on an unregistered .sh hook script"
@@ -541,6 +621,7 @@ section "[19] Orphan .sh hook script: add unregistered hooks/zzz-extra.sh -> non
 section "[20] Missing dispatch.sh: rm hooks/dispatch.sh -> non-zero (check 3)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   rm -f "$copy/hooks/dispatch.sh"
   run_validate "$copy"
   assert_rc_nonzero "validator fails when dispatch.sh is missing"
@@ -555,6 +636,7 @@ section "[20] Missing dispatch.sh: rm hooks/dispatch.sh -> non-zero (check 3)"
 section "[21] Drifted marketplace agent count: set to '99-agent' -> non-zero (check 8)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   jq '.plugins[0].description = (.plugins[0].description | sub("[0-9]+-agent"; "99-agent"))' \
     "$copy/.claude-plugin/marketplace.json" > "$copy/.claude-plugin/marketplace.json.tmp" \
     && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
@@ -571,6 +653,7 @@ section "[21] Drifted marketplace agent count: set to '99-agent' -> non-zero (ch
 section "[22] Drifted marketplace top-level description: set to '99 specialized agents' -> non-zero (check 8)"
 {
   copy="$(make_copy)"
+  _verify_copy "$copy"
   jq '.description = (.description | sub("[0-9]+ specialized"; "99 specialized"))' \
     "$copy/.claude-plugin/marketplace.json" > "$copy/.claude-plugin/marketplace.json.tmp" \
     && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
