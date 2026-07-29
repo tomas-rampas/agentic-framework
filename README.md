@@ -39,6 +39,9 @@ brew install --cask claude-code
 # Linux / WSL
 curl -fsSL https://anthropic.com/install-claude.sh | sh
 
+# Windows / Powershell
+irm https://claude.ai/install.ps1 | iex
+
 # Verify
 claude --version
 ```
