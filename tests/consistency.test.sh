@@ -138,8 +138,15 @@ make_copy() {
 RUN_OUT=""
 RUN_RC=0
 run_validate() {
-  local root="$1"
-  RUN_OUT="$(FRAMEWORK_ROOT="$root" "$BASH_BIN" "$root/scripts/validate-consistency.sh" 2>&1)"
+  # $2 (optional): VALIDATE_CHECKS filter — run only the named check(s).
+  # Red-path cases pass the single check they target: the full battery costs
+  # ~10x more per run (all 14 checks incl. the generate-docs pass), and a
+  # filtered failure assertion is sharper — it proves the TARGET check fires,
+  # not merely that the mutation broke something somewhere. Case 1 (happy
+  # path) and case 25 (filter sanity) pin the full-battery and filter
+  # semantics respectively.
+  local root="$1" checks="${2:-}"
+  RUN_OUT="$(FRAMEWORK_ROOT="$root" VALIDATE_CHECKS="$checks" "$BASH_BIN" "$root/scripts/validate-consistency.sh" 2>&1)"
   RUN_RC=$?
 }
 # run_generate <copy-root> <mode...> -> runs the COPIED generator against the copy.
@@ -242,7 +249,7 @@ section "[2] Missing agent: delete agents/go-expert.md -> non-zero (registry par
   copy="$(make_copy)"
   _verify_copy "$copy"
   rm -f "$copy/agents/go-expert.md"
-  run_validate "$copy"
+  run_validate "$copy" 1
   assert_rc_nonzero "validator fails when a registered agent has no .md"
   assert_out_contains "reports missing-md for go-expert" "missing-md: go-expert"
   rm -rf "$copy"
@@ -256,7 +263,7 @@ section "[3] Orphan agent file: add agents/zzz-expert.md (unregistered) -> non-z
   copy="$(make_copy)"
   _verify_copy "$copy"
   printf -- '---\nname: zzz-expert\nmodel: opus\n---\nOrphan.\n' > "$copy/agents/zzz-expert.md"
-  run_validate "$copy"
+  run_validate "$copy" 1
   assert_rc_nonzero "validator fails on an orphan agents/*.md"
   assert_out_contains "reports orphan-md for zzz-expert" "orphan-md: zzz-expert"
   rm -rf "$copy"
@@ -276,7 +283,7 @@ section "[4] Category partition break: drop an agent from agent_categories -> no
   jq --arg v "$victim" '
     .agent_categories |= with_entries(.value |= map(select(. != $v)))
   ' "$copy/claude.json" > "$copy/claude.json.tmp" && mv "$copy/claude.json.tmp" "$copy/claude.json"
-  run_validate "$copy"
+  run_validate "$copy" 2
   assert_rc_nonzero "validator fails when an agent is in no category"
   assert_out_contains "reports uncategorized agent ($victim)" "uncategorized: $victim"
   rm -rf "$copy"
@@ -291,7 +298,7 @@ section "[5] Missing hook script: rm hooks/stop-peer-review-gate.ps1 -> non-zero
   copy="$(make_copy)"
   _verify_copy "$copy"
   rm -f "$copy/hooks/stop-peer-review-gate.ps1"
-  run_validate "$copy"
+  run_validate "$copy" 3
   assert_rc_nonzero "validator fails when a registered hook script is missing"
   assert_out_contains "reports missing-hook-script" "missing-hook-script: stop-peer-review-gate.ps1"
   rm -rf "$copy"
@@ -306,7 +313,7 @@ section "[6] Orphan hook script: add unregistered hooks/zzz-orphan.ps1 -> non-ze
   copy="$(make_copy)"
   _verify_copy "$copy"
   printf '#Requires -Version 7.0\nexit 0\n' > "$copy/hooks/zzz-orphan.ps1"
-  run_validate "$copy"
+  run_validate "$copy" 3
   assert_rc_nonzero "validator fails on an unregistered hook script"
   assert_out_contains "reports orphan-hook-script" "orphan-hook-script: zzz-orphan.ps1"
   rm -rf "$copy"
@@ -323,7 +330,7 @@ section "[6b] dispatch.sh allowlist incomplete: drop 'record-subagent-run' from 
   # Remove 'record-subagent-run|' from the dispatch.sh case statement, leaving
   # stop-peer-review-gate|session-start-context|pretooluse-delegation-hint
   sed -i 's/stop-peer-review-gate|record-subagent-run|/stop-peer-review-gate|/' "$copy/hooks/dispatch.sh"
-  run_validate "$copy"
+  run_validate "$copy" 3
   assert_rc_nonzero "validator fails when dispatch.sh allowlist is incomplete"
   assert_out_contains "reports missing-dispatch-allowlist for record-subagent-run" "missing-dispatch-allowlist: record-subagent-run"
   rm -rf "$copy"
@@ -343,7 +350,7 @@ section "[6c] chain command mismatch: dispatch arg != .ps1 filename -> non-zero 
   jq '.hooks.PostToolUse[0].hooks[0].command = "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" record-subagent-runs || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/record-subagent-run.ps1\""' \
     "$copy/hooks/hooks.json" > "$copy/hooks/hooks.json.tmp" \
     && mv "$copy/hooks/hooks.json.tmp" "$copy/hooks/hooks.json"
-  run_validate "$copy"
+  run_validate "$copy" 3
   assert_rc_nonzero "validator fails on chain command mismatch"
   assert_out_contains "reports chain-name-mismatch" "chain-name-mismatch"
   rm -rf "$copy"
@@ -359,7 +366,7 @@ section "[7] Stale architecture description: claude.json set to '18-agent' -> no
   jq '.description = "Claude Code CLI with 18-agent specialized architecture"' \
     "$copy/claude.json" > "$copy/claude.json.tmp" \
     && mv "$copy/claude.json.tmp" "$copy/claude.json"
-  run_validate "$copy"
+  run_validate "$copy" 6
   assert_rc_nonzero "validator fails on a stale claude.json description"
   assert_out_contains "reports claude.json missing N-agent" "claude.json .description missing"
   rm -rf "$copy"
@@ -376,7 +383,7 @@ section "[8] Roster drift: delete an agent row from the CLAUDE.md table -> non-z
   # exactly that line, leaving everything else byte-identical.
   awk '!/^\| \*\*go-expert\*\* \|/' "$copy/CLAUDE.md" > "$copy/CLAUDE.md.tmp" \
     && mv "$copy/CLAUDE.md.tmp" "$copy/CLAUDE.md"
-  run_validate "$copy"
+  run_validate "$copy" 9
   assert_rc_nonzero "validator fails when an agent row is missing from CLAUDE.md table"
   assert_out_contains "reports missing-row for go-expert" "missing-row: go-expert"
   rm -rf "$copy"
@@ -401,8 +408,8 @@ section "[9] Generator staleness: mutate inside list-agents GENERATED region -> 
   run_generate "$copy" --check
   assert_rc_nonzero "generate-docs.sh --check fails on a stale generated block"
   assert_out_contains "reports STALE for list-agents-summary" "STALE"
-  # And the full validator (check 11 wires in --check) must also fail.
-  run_validate "$copy"
+  # And the validator (check 11 wires in --check) must also fail.
+  run_validate "$copy" 11
   assert_rc_nonzero "validator (check 11) also fails on the stale block"
   rm -rf "$copy"
 }
@@ -455,7 +462,7 @@ section "[11] Model parity: divergent tier + invalid shorthand -> non-zero (chec
   jq --arg a "$victim" --arg m "$other" '.sub_agents[$a].model = $m' \
     "$copy/claude.json" > "$copy/claude.json.tmp" \
     && mv "$copy/claude.json.tmp" "$copy/claude.json"
-  run_validate "$copy"
+  run_validate "$copy" 7
   assert_rc_nonzero "validator fails when an agent's md/claude.json models diverge"
   assert_out_contains "reports a model mismatch for $victim" "$victim: model mismatch"
   rm -rf "$copy"
@@ -468,7 +475,7 @@ section "[11] Model parity: divergent tier + invalid shorthand -> non-zero (chec
   jq --arg a "$victim" '.sub_agents[$a].model = "sonnett"' \
     "$copy/claude.json" > "$copy/claude.json.tmp" \
     && mv "$copy/claude.json.tmp" "$copy/claude.json"
-  run_validate "$copy"
+  run_validate "$copy" 7
   assert_rc_nonzero "validator fails on an invalid model shorthand in claude.json"
   assert_out_contains "reports invalid shorthand 'sonnett' for $victim" "is not a key in consistency.model_shorthand_map"
   rm -rf "$copy"
@@ -503,7 +510,7 @@ section "[13] Flat skill file: add skills/rogue.md -> non-zero (check 12)"
   copy="$(make_copy)"
   _verify_copy "$copy"
   printf -- '---\nname: rogue\ndescription: not loadable\n---\nBody.\n' > "$copy/skills/rogue.md"
-  run_validate "$copy"
+  run_validate "$copy" 12
   assert_rc_nonzero "validator fails on a flat skills/*.md file"
   assert_out_contains "reports flat-skill-file" "flat-skill-file: rogue.md"
   rm -rf "$copy"
@@ -517,7 +524,7 @@ section "[14] Broken skill dir: no SKILL.md, and name != dirname -> non-zero (ch
   copy="$(make_copy)"
   _verify_copy "$copy"
   mkdir -p "$copy/skills/broken"
-  run_validate "$copy"
+  run_validate "$copy" 12
   assert_rc_nonzero "validator fails on a skill dir without SKILL.md"
   assert_out_contains "reports missing-skill-md" "missing-skill-md: broken"
   rm -rf "$copy"
@@ -528,7 +535,7 @@ section "[14] Broken skill dir: no SKILL.md, and name != dirname -> non-zero (ch
   if [[ -n "$first_skill" ]]; then
     sed -i.bak "s/^name: ${first_skill}\$/name: wrong-name/" "$copy/skills/$first_skill/SKILL.md" \
       && rm -f "$copy/skills/$first_skill/SKILL.md.bak"
-    run_validate "$copy"
+    run_validate "$copy" 12
     assert_rc_nonzero "validator fails on frontmatter name != dirname"
     assert_out_contains "reports skill-name-mismatch" "skill-name-mismatch: $first_skill"
   else
@@ -547,7 +554,7 @@ section "[15] Plugin version mismatch (core): set .claude-plugin/plugin.json .ve
   _verify_copy "$copy"
   jq '.version = "9.9.9"' "$copy/.claude-plugin/plugin.json" > "$copy/.claude-plugin/plugin.json.tmp" \
     && mv "$copy/.claude-plugin/plugin.json.tmp" "$copy/.claude-plugin/plugin.json"
-  run_validate "$copy"
+  run_validate "$copy" 13
   assert_rc_nonzero "validator fails on core plugin version mismatch"
   assert_out_contains "reports version mismatch for core plugin" "version mismatch"
   rm -rf "$copy"
@@ -563,7 +570,7 @@ section "[16] Plugin version mismatch (mcp): set mcp-plugin/.claude-plugin/plugi
   _verify_copy "$copy"
   jq '.version = "9.9.9"' "$copy/mcp-plugin/.claude-plugin/plugin.json" > "$copy/mcp-plugin/.claude-plugin/plugin.json.tmp" \
     && mv "$copy/mcp-plugin/.claude-plugin/plugin.json.tmp" "$copy/mcp-plugin/.claude-plugin/plugin.json"
-  run_validate "$copy"
+  run_validate "$copy" 13
   assert_rc_nonzero "validator fails on mcp plugin version mismatch"
   assert_out_contains "reports version mismatch for mcp plugin" "version mismatch"
   rm -rf "$copy"
@@ -578,7 +585,7 @@ section "[17] Orphan hook (unregistered in hooks.json): add hooks/zzz-unregister
   copy="$(make_copy)"
   _verify_copy "$copy"
   printf '#Requires -Version 7.0\nexit 0\n' > "$copy/hooks/zzz-unregistered.ps1"
-  run_validate "$copy"
+  run_validate "$copy" 3
   assert_rc_nonzero "validator fails on an unregistered hook script"
   assert_out_contains "reports orphan-hook-script for zzz-unregistered.ps1" "orphan-hook-script: zzz-unregistered.ps1"
   rm -rf "$copy"
@@ -593,7 +600,7 @@ section "[18] Missing .sh hook implementation: rm hooks/session-start-context.sh
   copy="$(make_copy)"
   _verify_copy "$copy"
   rm -f "$copy/hooks/session-start-context.sh"
-  run_validate "$copy"
+  run_validate "$copy" 3
   assert_rc_nonzero "validator fails when a registered .sh hook is missing"
   assert_out_contains "reports missing-sh-impl" "missing-sh-impl: session-start-context.sh"
   rm -rf "$copy"
@@ -608,7 +615,7 @@ section "[19] Orphan .sh hook script: add unregistered hooks/zzz-extra.sh -> non
   copy="$(make_copy)"
   _verify_copy "$copy"
   printf '#!/bin/sh\nset -u\nexit 0\n' > "$copy/hooks/zzz-extra.sh"
-  run_validate "$copy"
+  run_validate "$copy" 3
   assert_rc_nonzero "validator fails on an unregistered .sh hook script"
   assert_out_contains "reports orphan-sh-script for zzz-extra.sh" "orphan-sh-script: zzz-extra.sh"
   rm -rf "$copy"
@@ -623,7 +630,7 @@ section "[20] Missing dispatch.sh: rm hooks/dispatch.sh -> non-zero (check 3)"
   copy="$(make_copy)"
   _verify_copy "$copy"
   rm -f "$copy/hooks/dispatch.sh"
-  run_validate "$copy"
+  run_validate "$copy" 3
   assert_rc_nonzero "validator fails when dispatch.sh is missing"
   assert_out_contains "reports missing-dispatch-sh" "missing-dispatch-sh: dispatch.sh"
   rm -rf "$copy"
@@ -640,7 +647,7 @@ section "[21] Drifted marketplace agent count: set to '99-agent' -> non-zero (ch
   jq '.plugins[0].description = (.plugins[0].description | sub("[0-9]+-agent"; "99-agent"))' \
     "$copy/.claude-plugin/marketplace.json" > "$copy/.claude-plugin/marketplace.json.tmp" \
     && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
-  run_validate "$copy"
+  run_validate "$copy" 8
   assert_rc_nonzero "validator fails when marketplace.json agent count drifts"
   assert_out_contains "reports N-agent count mismatch in marketplace.json" "N-agent count: stated '99' != derived"
   rm -rf "$copy"
@@ -657,7 +664,7 @@ section "[22] Drifted marketplace top-level description: set to '99 specialized 
   jq '.description = (.description | sub("[0-9]+ specialized"; "99 specialized"))' \
     "$copy/.claude-plugin/marketplace.json" > "$copy/.claude-plugin/marketplace.json.tmp" \
     && mv "$copy/.claude-plugin/marketplace.json.tmp" "$copy/.claude-plugin/marketplace.json"
-  run_validate "$copy"
+  run_validate "$copy" 8
   assert_rc_nonzero "validator fails when marketplace.json top-level description agent count drifts"
   assert_out_contains "reports agent count mismatch in marketplace.json" "agent count: stated '99' != derived"
   rm -rf "$copy"
@@ -673,7 +680,7 @@ section "[23] Policy re-broadening: inject 'delegate all shell execution' into C
   copy="$(make_copy)"
   _verify_copy "$copy"
   printf '\nAgents should delegate all shell execution to the executor agents.\n' >> "$copy/CLAUDE.md"
-  run_validate "$copy"
+  run_validate "$copy" 14
   assert_rc_nonzero "validator fails when a re-broadening phrase appears in CLAUDE.md"
   assert_out_contains "reports the re-broadening phrase with its location" "policy re-broadening phrase in CLAUDE.md"
   rm -rf "$copy"
@@ -690,9 +697,32 @@ section "[24] Policy statement removed: strip '(selective)' header from CLAUDE.m
   _verify_copy "$copy"
   sed -i.bak 's/Command-line Execution Policy (selective)/Command-line Execution Policy/' "$copy/CLAUDE.md" \
     && rm -f "$copy/CLAUDE.md.bak"
-  run_validate "$copy"
+  run_validate "$copy" 14
   assert_rc_nonzero "validator fails when the selective policy header is gone"
   assert_out_contains "reports the missing required statement" "missing from CLAUDE.md"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 25 - VALIDATE_CHECKS filter sanity: the filter this suite relies on
+#           must actually filter. On a copy broken ONLY in check 13 (version
+#           mismatch), a run filtered to check 1 must pass and be labeled
+#           FILTERED, and a run filtered to check 13 must fail. Guards
+#           against the filter silently running everything (suite slow again)
+#           or silently skipping the targeted check (vacuous red paths).
+# ===========================================================================
+section "[25] Filter sanity: check-13 break invisible to VALIDATE_CHECKS=1, caught by VALIDATE_CHECKS=13"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  jq '.version = "9.9.9"' "$copy/.claude-plugin/plugin.json" > "$copy/.claude-plugin/plugin.json.tmp" \
+    && mv "$copy/.claude-plugin/plugin.json.tmp" "$copy/.claude-plugin/plugin.json"
+  run_validate "$copy" 1
+  assert_rc_zero "filtered run (check 1) passes despite the check-13 break"
+  assert_out_contains "filtered run is labeled as partial" "RESULT: PASS (FILTERED)"
+  run_validate "$copy" 13
+  assert_rc_nonzero "filtered run (check 13) catches the break"
+  assert_out_contains "reports the version mismatch" "version mismatch"
   rm -rf "$copy"
 }
 
