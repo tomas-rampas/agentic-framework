@@ -8,11 +8,13 @@
 #
 # ISOLATION CONTRACT (the real working tree is NEVER mutated):
 #   Each test case operates on its own throwaway copy of the repo:
-#     1. Stream tracked files from git via `git ls-files -z` (NUL-delimited file
-#        list), pipe through `tar` to create an archive on stdout, then extract into
-#        a fresh `mktemp -d` directory. The copy is therefore a detached, NON-git
-#        tree (avoids copying .git, both for correctness and speed). Preserves
-#        file permissions and handles paths with spaces safely.
+#     1. ONCE per run, stream tracked files from git via `git ls-files -z`
+#        (NUL-delimited file list) through `tar -c` into a cached archive; each
+#        case then extracts that archive into a fresh `mktemp -d` directory —
+#        paying the git+tar-create cost once instead of per case (a real saving
+#        on Windows, where process creation dominates). The copy is a detached,
+#        NON-git tree (avoids copying .git, both for correctness and speed).
+#        Preserves file permissions and handles paths with spaces safely.
 #     2. Mutate ONLY the copy (inject a defect, or leave it clean).
 #     3. Run the COPIED scripts/validate-consistency.sh / generate-docs.sh against
 #        the copy, with FRAMEWORK_ROOT pinned to the copy root.
@@ -80,7 +82,9 @@ cleanup_all() {
   local d
   [[ -f "$__TMP_DIRS_FILE" ]] || return 0
   while IFS= read -r d; do
-    [[ -n "${d:-}" && -d "$d" ]] && rm -rf "$d"
+    # -e, not -d: the tracking file holds copy DIRECTORIES and the cached
+    # source ARCHIVE (a regular file) — both must be swept.
+    [[ -n "${d:-}" && -e "$d" ]] && rm -rf "$d"
   done < "$__TMP_DIRS_FILE"
   rm -f "$__TMP_DIRS_FILE"
 }
@@ -89,25 +93,43 @@ trap cleanup_all EXIT
 trap 'cleanup_all; exit 130' INT
 trap 'cleanup_all; exit 143' TERM
 
+# --- source archive cache ---------------------------------------------------
+# Created ONCE per run; every make_copy extracts from it. Input is identical
+# to the previous per-case pipeline (git ls-files -z | tar -c --null -T -),
+# so the copies are byte-identical to before — the git+tar-create side of the
+# pipe just runs once instead of per case. The archive captures CURRENT
+# WORKING TREE content at suite start; nothing mutates the source tree during
+# a run (isolation contract), so the cache cannot go stale mid-run.
+__SRC_TAR="$(mktemp "${TMPDIR:-/tmp}/consistency-test-src.XXXXXX")" || {
+  printf 'FATAL: mktemp for source archive failed\n' >&2
+  exit 2
+}
+printf '%s\n' "$__SRC_TAR" >> "$__TMP_DIRS_FILE"
+( cd "$SRC_REPO" && git ls-files -z | tar -c --null -T - -f - ) > "$__SRC_TAR" || {
+  printf 'FATAL: source archive creation failed (git ls-files or tar error)\n' >&2
+  exit 2
+}
+
 # --- copy helper ------------------------------------------------------------
 # make_copy -> prints the path to a fresh, isolated, non-git copy of the repo.
 # The caller mutates and runs scripts against the returned path.
 #
-# Source: git ls-files piped through tar, streaming to minimize I/O and process
-# overhead (critical for performance on Windows where process creation is slow).
+# Source: the cached archive built once at suite start from git ls-files | tar
+# (critical for performance on Windows where process creation is slow — the
+# git+tar-create side runs once per run, extraction once per case).
 #   * Lists only tracked files from the working tree's index, not committed content.
 #   * Immune to untracked junk (stray directories, backup files, etc).
 #   * Avoids copying .git — the copy is a detached, NON-git tree (exercises
 #     facts.sh's non-git root-resolution fallback).
 #   * Preserves file permissions including executable bit on *.sh scripts.
 #   * Handles paths with spaces safely (NUL-delimited input to tar).
-#   * Single streaming pipeline: minimal process spawning.
 #
-# The copy will contain CURRENT WORKING TREE content (uncommitted changes), not
-# committed content—this is correct, as the test must exercise the actual files
-# a developer is about to validate, not a snapshot from HEAD.
+# The copy will contain CURRENT WORKING TREE content (uncommitted changes) as
+# captured at suite start, not committed content—this is correct, as the test
+# must exercise the actual files a developer is about to validate, not a
+# snapshot from HEAD.
 #
-# NOTE: Requires `set -uo pipefail` so that tar pipeline failures cause exit 2.
+# NOTE: Requires `set -uo pipefail` so that archive-creation failures cause exit 2.
 make_copy() {
   local dst
   dst="$(mktemp -d "${TMPDIR:-/tmp}/consistency-test.XXXXXX")" || {
@@ -117,15 +139,10 @@ make_copy() {
   # Record dir in tracking file so cleanup_all (outside subshell) can sweep it.
   printf '%s\n' "$dst" >> "$__TMP_DIRS_FILE"
 
-  # Stream: read tracked files from git (NUL-delimited), pipe through tar to create
-  # the archive on stdout, then extract into the destination directory.
-  # tar with --null mode automatically creates parent directories and preserves
-  # file permissions and executable bits.
-  # With pipefail, a tar read error (e.g. git ls-files lists a deleted file that
-  # tar cannot stat) will fail the pipeline and exit 2 below.
-  ( cd "$SRC_REPO" && git ls-files -z | tar -c --null -T - -f - ) | \
-    ( cd "$dst" && tar -xf - ) || {
-    printf 'FATAL: tar pipeline failed (git ls-files or tar error)\n' >&2
+  # Extract the cached source archive (created once at suite start, above).
+  # tar preserves parent directories, file permissions, and executable bits.
+  ( cd "$dst" && tar -xf "$__SRC_TAR" ) || {
+    printf 'FATAL: extraction from cached source archive failed\n' >&2
     exit 2
   }
 
