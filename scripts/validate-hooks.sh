@@ -10,7 +10,9 @@
 #   - every registered event is a real Claude Code hook event
 #   - every .ps1 hook script pins PowerShell 7 ('#Requires -Version 7.0')
 #   - every .sh hook script has #!/bin/sh shebang and 'set -u' line
-# Plus a local deprecated-name scan over the hook scripts.
+# Plus a local deprecated-name scan over the hook scripts, and a WARN-only scan
+# of the user's settings.json for legacy (pre-plugin) duplicate registrations
+# of the same hooks — those make every hook fire twice.
 
 set -uo pipefail
 export LC_ALL=C
@@ -79,10 +81,45 @@ if [[ "$DEP_FOUND" -eq 0 ]]; then
   echo "OK: no deprecated agent references found (checked ${ndep} names)"
 fi
 
+# ---------------------------------------------------------------------------
+# 3. Legacy double-registration scan (WARN-only: environment-dependent, so it
+#    never fails the run — repo validation must stay deterministic)
+# ---------------------------------------------------------------------------
+echo ""
+echo "Checking user settings for legacy duplicate hook registrations..."
+echo ""
+
+# Since v4 the plugin registers hooks via hooks/hooks.json. A pre-v4 install
+# also registered them in ~/.claude/settings.json; if that entry survived
+# migration, every hook fires twice (two process spawns per event).
+SETTINGS_FILE="${CLAUDE_SETTINGS_FILE:-$HOME/.claude/settings.json}"
+DUP_FOUND=0
+if [[ -f "$SETTINGS_FILE" ]] && _facts_jq empty "$SETTINGS_FILE" 2>/dev/null; then
+  while IFS= read -r hook_sh; do
+    [[ -z "$hook_sh" || "$hook_sh" == "dispatch.sh" ]] && continue
+    hook_name="${hook_sh%.sh}"
+    if _facts_jq -e --arg n "$hook_name" \
+        '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | map(select(contains($n))) | length > 0' \
+        "$SETTINGS_FILE" >/dev/null 2>&1; then
+      echo "WARN: '$hook_name' is also registered in $SETTINGS_FILE — the plugin already registers it via hooks/hooks.json, so it fires TWICE per event. Remove the legacy entry (/agentic-framework:migrate-legacy automates this)."
+      DUP_FOUND=$((DUP_FOUND + 1))
+    fi
+  done < <(fact_hook_sh_impl_files)
+  if [[ "$DUP_FOUND" -eq 0 ]]; then
+    echo "OK: no legacy duplicate hook registrations in user settings"
+  fi
+else
+  echo "OK: no readable user settings file at $SETTINGS_FILE (nothing can double-fire)"
+fi
+
 echo ""
 echo "================================"
 if [[ "$ERRORS" -eq 0 ]]; then
-  echo "Hook validation passed"
+  if [[ "$DUP_FOUND" -gt 0 ]]; then
+    echo "Hook validation passed with $DUP_FOUND warning(s)"
+  else
+    echo "Hook validation passed"
+  fi
   exit 0
 else
   echo "Found $ERRORS error(s)"

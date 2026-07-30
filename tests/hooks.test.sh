@@ -171,23 +171,40 @@ section "[DISPATCH-C1] platform-aware routing: MSYS arm vs Linux sh arm"
     platform_name=$(uname -s 2>/dev/null || echo "Unknown")
     case "$platform_name" in
       MINGW*|MSYS*|CYGWIN*)
-        # Windows with MSYS family: expect pwsh arm
+        # Windows with MSYS family: jq present -> sh fast path; jq absent -> pwsh arm.
+        # Both fakes exist so the test exercises whichever arm dispatch actually picks.
         cat > "$workdir/hooks/session-start-context.ps1" << 'PSFAKE'
 $in = [Console]::In.ReadToEnd()
 Write-Output "LEN=$($in.Length)"
 PSFAKE
+        cat > "$workdir/hooks/session-start-context.sh" << 'SHFAKE'
+#!/bin/sh
+in=$(cat)
+printf 'SH_LEN=%s\n' "${#in}"
+SHFAKE
+        chmod +x "$workdir/hooks/session-start-context.sh"
 
         test_payload='{"session_id":"test_c1"}'
         payload_len=${#test_payload}
 
         run_dispatch "$workdir/hooks/dispatch.sh" "session-start-context" "$test_payload"
-        len_value=$(printf '%s' "$RUN_OUT" | grep -o 'LEN=[0-9]*' | head -1 | cut -d= -f2)
 
-        assert_rc_zero "pwsh-arm dispatch exits 0 (Windows)"
-        if [ "$len_value" = "$payload_len" ]; then
-          _pass "stdin payload passed through to pwsh (LEN=$len_value) on MSYS"
+        if command -v jq >/dev/null 2>&1; then
+          sh_len_value=$(printf '%s' "$RUN_OUT" | grep -o 'SH_LEN=[0-9]*' | head -1 | cut -d= -f2)
+          assert_rc_zero "sh fast-path dispatch exits 0 (Windows, jq present)"
+          if [ "$sh_len_value" = "$payload_len" ]; then
+            _pass "jq present: dispatch fast-paths to .sh with stdin intact (SH_LEN=$sh_len_value) on MSYS"
+          else
+            _fail "sh fast path on MSYS" "expected SH_LEN=$payload_len, got: $RUN_OUT"
+          fi
         else
-          _fail "stdin passthrough to pwsh" "expected LEN=$payload_len, got LEN=$len_value"
+          len_value=$(printf '%s' "$RUN_OUT" | grep -o 'LEN=[0-9]*' | head -1 | cut -d= -f2)
+          assert_rc_zero "pwsh-arm dispatch exits 0 (Windows, no jq)"
+          if [ "$len_value" = "$payload_len" ]; then
+            _pass "stdin payload passed through to pwsh (LEN=$len_value) on MSYS"
+          else
+            _fail "stdin passthrough to pwsh" "expected LEN=$payload_len, got LEN=$len_value"
+          fi
         fi
         ;;
       *)

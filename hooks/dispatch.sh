@@ -7,7 +7,9 @@
 #   sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <hook> \
 #     || pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/hooks/<hook>.ps1"
 # POSIX -> runs hooks/<hook>.sh (pwsh NOT required).
-# Windows Git Bash (MSYS/MINGW/CYGWIN) -> runs hooks/<hook>.ps1 via pwsh.
+# Windows Git Bash (MSYS/MINGW/CYGWIN) -> runs hooks/<hook>.sh directly when jq
+#   (the .sh implementations' only non-bundled dependency) is on PATH — skipping
+#   a pwsh cold start (~1-2 s) on every hook fire; falls back to pwsh otherwise.
 # Windows without Git Bash -> sh not found -> the "|| pwsh" arm is reached instead.
 # ALWAYS exits 0 so the "|| pwsh" arm is reached only when sh cannot spawn.
 # SECURITY: Chain safety relies on CLAUDE_PLUGIN_ROOT never containing double-quotes, backticks, or $( — guaranteed by CI-enforced kebab-case names, not platform contract.
@@ -25,7 +27,13 @@ case "$0" in
 esac
 
 case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) pwsh -NoProfile -File "$dir/$hook.ps1" ;;
-  *)                    sh "$dir/$hook.sh" ;;
+  MINGW*|MSYS*|CYGWIN*)
+    if command -v jq >/dev/null 2>&1 && [ -f "$dir/$hook.sh" ]; then
+      sh "$dir/$hook.sh"
+    else
+      pwsh -NoProfile -File "$dir/$hook.ps1"
+    fi
+    ;;
+  *) sh "$dir/$hook.sh" ;;
 esac
 exit 0

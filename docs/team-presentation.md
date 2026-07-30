@@ -166,7 +166,7 @@ mindmap
 
 ### 3.3 Hooks — the enforcement layer (4)
 
-The only component that can **say no**: hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. POSIX systems run .sh; Windows runs .ps1.
+The only component that can **say no**: hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. POSIX systems run .sh; Windows runs .ps1, or the .sh directly under Git Bash when jq is available.
 
 | Hook (.ps1/.sh pair) | Event | Guards |
 |---|---|---|

@@ -13,7 +13,13 @@
 #
 # Usage:
 #   bash scripts/validate-consistency.sh
+#   VALIDATE_CHECKS=3 bash scripts/validate-consistency.sh   # run only check 3
 #   echo "exit=$?"
+#
+# VALIDATE_CHECKS (optional): comma/space-separated check numbers to run;
+# unset/empty runs all. A filtered run's summary is labeled FILTERED and is
+# not a full battery. Primary consumer: tests/consistency.test.sh, whose
+# red-path cases each target exactly one check.
 #
 # Requirements: bash, jq, awk, grep, sed, sort, uniq, head, basename, paste, comm. YAML validity is best-effort via python3/ruby.
 
@@ -79,6 +85,31 @@ _esc_ere() {
   printf '%s' "$out"
 }
 
+# --- check filter ------------------------------------------------------------
+# VALIDATE_CHECKS: optional comma/space-separated list of check numbers to run
+# (e.g. VALIDATE_CHECKS=3, or VALIDATE_CHECKS="1,14"). Unset or empty runs the
+# full battery — the default for CI and interactive use. The test harness
+# (tests/consistency.test.sh) sets it so each red-path case runs only the check
+# it targets instead of all 14 (a ~14x cut in per-case process spawns; on
+# Windows that took the suite from ~27 minutes to low single digits).
+# A filtered run is NOT a full battery: the summary labels it FILTERED, and a
+# filter matching no check fails loudly instead of vacuously passing.
+CHECKS_RUN=0
+_check_on() {
+  if [[ -z "${VALIDATE_CHECKS:-}" ]]; then
+    CHECKS_RUN=$((CHECKS_RUN + 1))
+    return 0
+  fi
+  local n
+  for n in ${VALIDATE_CHECKS//,/ }; do
+    if [[ "$n" == "$1" ]]; then
+      CHECKS_RUN=$((CHECKS_RUN + 1))
+      return 0
+    fi
+  done
+  return 1
+}
+
 # --- preflight --------------------------------------------------------------
 if ! command -v jq >/dev/null 2>&1; then
   printf '%sERROR%s jq is required but not installed.\n' "$C_RED" "$C_NC" >&2
@@ -97,8 +128,8 @@ AGENT_FILES_SORTED="$(fact_agent_files)"
 # ===========================================================================
 # CHECK 1 - Registry <-> filesystem parity
 # ===========================================================================
+_check_on 1 && {
 section "[1] Registry <-> filesystem parity (claude.json .sub_agents == agents/*.md)"
-{
   missing_in_registry="$(comm -13 <(printf '%s\n' "$AGENTS_SORTED") <(printf '%s\n' "$AGENT_FILES_SORTED"))"
   orphan_md="$missing_in_registry"           # .md present, not registered
   missing_md="$(comm -23 <(printf '%s\n' "$AGENTS_SORTED") <(printf '%s\n' "$AGENT_FILES_SORTED"))"
@@ -123,8 +154,8 @@ section "[1] Registry <-> filesystem parity (claude.json .sub_agents == agents/*
 # ===========================================================================
 # CHECK 2 - Category partition
 # ===========================================================================
+_check_on 2 && {
 section "[2] Category partition (.agent_categories partitions all agents)"
-{
   # Flatten category -> agent pairs.
   cat_pairs="$(fact_categories)"            # category<TAB>agent
   cat_agents_all="$(printf '%s\n' "$cat_pairs" | awk -F'\t' 'NF{print $2}')"
@@ -175,8 +206,8 @@ section "[2] Category partition (.agent_categories partitions all agents)"
 # registered script exists, every script is registered (no dead code), every
 # event name is a real Claude Code event, and every script pins PowerShell 7.
 # Shared logic lives in scripts/lib/hookcheck.sh (also used by validate-hooks.sh).
+_check_on 3 && {
 section "[3] Hook registration parity (hooks/hooks.json <-> hooks/*.ps1)"
-{
   problems="$(hookcheck_problems)"
   if [[ -n "$problems" ]]; then
     while IFS=$'\t' read -r ptype subject; do
@@ -219,8 +250,8 @@ section "[3] Hook registration parity (hooks/hooks.json <-> hooks/*.ps1)"
 # ===========================================================================
 # CHECK 4 - JSON validity (+ best-effort YAML validity)
 # ===========================================================================
+_check_on 4 && {
 section "[4] JSON validity (claude.json, settings.template.json, plugin manifests, hooks/hooks.json) + YAML best-effort"
-{
   json_bad=0 json_total=0
   # Collect target json files.
   json_files=()
@@ -296,8 +327,8 @@ section "[4] JSON validity (claude.json, settings.template.json, plugin manifest
 # ===========================================================================
 # CHECK 5 - Deprecated agent names
 # ===========================================================================
+_check_on 5 && {
 section "[5] Deprecated agent names (no live references in config or active doc refs)"
-{
   # Scope (per spec): hooks/*.json, claude.json, commands/*.md, skills/*.md.
   #
   # IMPORTANT - false-positive avoidance:
@@ -383,8 +414,8 @@ section "[5] Deprecated agent names (no live references in config or active doc 
 # ===========================================================================
 # CHECK 6 - Architecture / description strings
 # ===========================================================================
+_check_on 6 && {
 section "[6] Architecture description strings match derived agent count + rosters"
-{
   n_agents="$(printf '%s\n' "$AGENTS_SORTED" | grep -c .)"
   ok=1
 
@@ -407,8 +438,8 @@ section "[6] Architecture description strings match derived agent count + roster
 # CHECK 8 - Stated-count scan (curated, high-signal, blocking)
 #   (Numbered 8 to match the spec; model parity is check 7 below.)
 # ===========================================================================
+_check_on 8 && {
 section "[8] Stated-count scan (README/docs headline counts == derived values)"
-{
   n_agents="$(fact_count agents)"
   n_hooks="$(fact_count hooks)"      # DISTINCT registered hook scripts (the docs headline unit)
   n_skills="$(fact_count skills)"
@@ -524,8 +555,8 @@ section "[8] Stated-count scan (README/docs headline counts == derived values)"
 # trip), and additionally guard that every model value seen - on either side -
 # is a declared key in .consistency.model_shorthand_map. An unknown/typo value
 # (e.g. "sonnett") or any md<->claude.json divergence is a BLOCKING failure.
+_check_on 7 && {
 section "[7] Model parity (agents/<a>.md frontmatter model: == claude.json model, both shorthand)"
-{
   ok=1 checked=0
 
   # Known shorthand keys from the map (the only legal model values).
@@ -591,8 +622,8 @@ section "[7] Model parity (agents/<a>.md frontmatter model: == claude.json model
 #       the actual number of agents listed beneath that header.
 # This catches the missing-row / wrong-header-count drift without generating
 # the prose.
+_check_on 9 && {
 section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents roster/categories)"
-{
   ok=1
 
   # _roster_compare <label> <newline-list-of-agents-extracted>
@@ -747,8 +778,8 @@ section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents ros
 # Guard the prose against drift: every agent's README Focus cell must match the
 # canonical focus field byte-for-byte, the README must list every agent exactly
 # once, and contain no unknown agent rows.
+_check_on 10 && {
 section "[10] README focus-text parity (.sub_agents[a].focus == README Focus cell)"
-{
   readme="$ROOT/README.md"
   ok=1
   if [[ ! -f "$readme" ]]; then
@@ -817,8 +848,8 @@ section "[10] README focus-text parity (.sub_agents[a].focus == README Focus cel
 # the list-agents JSON summary) fails the same gate as everything else. Kept as
 # a separate script per the phase design; this is the single call site that lets
 # one `validate-consistency.sh` run cover both validation AND generation drift.
+_check_on 11 && {
 section "[11] Generated documentation blocks are up to date (generate-docs.sh --check)"
-{
   gen="$SCRIPT_DIR/generate-docs.sh"
   if [[ ! -f "$gen" ]]; then
     fail "generate-docs.sh not found at $gen"
@@ -841,8 +872,8 @@ section "[11] Generated documentation blocks are up to date (generate-docs.sh --
 # files are silently ignored by the runtime, so their presence is always a
 # defect. Each SKILL.md must carry frontmatter with name == its directory and
 # a non-empty single-line description.
+_check_on 12 && {
 section "[12] Skills layout (skills/<name>/SKILL.md only; frontmatter name == dirname)"
-{
   ok=1
   skills_dir="$FACTS_SKILLS_DIR"
   if [[ -d "$skills_dir" ]]; then
@@ -900,8 +931,8 @@ section "[12] Skills layout (skills/<name>/SKILL.md only; frontmatter name == di
 #   - .claude-plugin/plugin.json .version
 #   - mcp-plugin/.claude-plugin/plugin.json .version
 # All three must be identical non-empty strings; any drift is a defect.
+_check_on 13 && {
 section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/.claude-plugin/plugin.json)"
-{
   ok=1
   versions=()
   files=("$ROOT/claude.json" "$ROOT/.claude-plugin/plugin.json" "$ROOT/mcp-plugin/.claude-plugin/plugin.json")
@@ -941,11 +972,81 @@ section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/
 }
 
 # ===========================================================================
+# CHECK 14 - Execution-policy drift guard (BLOCKING)
+# ===========================================================================
+# The Jul 2026 performance regression traced to the execution policy silently
+# broadening until every shell command routed through an executor subagent
+# (40k-100k tokens of fixed overhead per call). This check pins the selective
+# policy on the operative surfaces:
+#   (a) phrases that re-broaden the policy must not appear in CLAUDE.md,
+#       README.md, or any *.md/*.json/*.sh/*.ps1 under agents/, commands/,
+#       skills/, or hooks/ — hook scripts carry prose comments that could
+#       re-teach the policy just as well as docs can. docs/ is exempt
+#       (historical records may quote the old policy); tests/ is exempt
+#       (red-path fixtures inject these very phrases); scripts/ is exempt
+#       (this check names them).
+#   (b) the governing statements must remain present: CLAUDE.md carries the
+#       selective section header and the inline-by-default principle, and
+#       both executor agents advertise the compresses-to-a-small-conclusion
+#       delegation trigger in their descriptions.
+_check_on 14 && {
+section "[14] Execution-policy drift guard (selective policy pinned on operative surfaces)"
+  # (a) forbidden re-broadening phrases (case-insensitive ERE)
+  POLICY_FORBIDDEN='blanket|delegate (all|every) shell|all shell (work|execution)|every shell command|any shell command|short commands included'
+  policy_files=()
+  while IFS= read -r f; do policy_files+=("$f"); done < <(
+    {
+      printf '%s\n' "$ROOT/CLAUDE.md" "$ROOT/README.md"
+      find "$ROOT/agents" "$ROOT/commands" "$ROOT/skills" "$ROOT/hooks" \
+        -type f \( -name '*.md' -o -name '*.json' -o -name '*.sh' -o -name '*.ps1' \) 2>/dev/null
+    } | LC_ALL=C sort
+  )
+  policy_hits=0
+  for f in "${policy_files[@]}"; do
+    [[ -f "$f" ]] || continue
+    m="$(grep -niE "$POLICY_FORBIDDEN" "$f" 2>/dev/null || true)"
+    [[ -z "$m" ]] && continue
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      fail "policy re-broadening phrase in ${f#"$ROOT"/}: $line"
+      policy_hits=$((policy_hits + 1))
+    done <<< "$m"
+  done
+  if [[ "$policy_hits" -eq 0 ]]; then
+    pass "no re-broadening phrases across ${#policy_files[@]} operative file(s)"
+  fi
+
+  # (b) required principle statements (fixed-string, so wording drift is loud)
+  _policy_require() {
+    local file="$1" needle="$2" label="$3"
+    if [[ -f "$ROOT/$file" ]] && grep -qF "$needle" "$ROOT/$file" 2>/dev/null; then
+      pass "$label"
+    else
+      fail "$label — literal '$needle' missing from $file"
+    fi
+  }
+  _policy_require "CLAUDE.md" "Command-line Execution Policy (selective)" "CLAUDE.md keeps the selective policy section"
+  _policy_require "CLAUDE.md" "Run it yourself by default" "CLAUDE.md keeps inline-by-default as the governing principle"
+  _policy_require "agents/bash-expert.md" "compresses to a small conclusion" "bash-expert advertises the selective delegation trigger"
+  _policy_require "agents/powershell-expert.md" "compresses to a small conclusion" "powershell-expert advertises the selective delegation trigger"
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"
-if [[ "$BLOCKING_FAILURES" -eq 0 ]]; then
-  printf '%s  RESULT: PASS%s  (blocking failures: 0, warnings: %s)\n' "$C_GRN" "$C_NC" "$WARNINGS"
+if [[ -n "${VALIDATE_CHECKS:-}" && "$CHECKS_RUN" -eq 0 ]]; then
+  # A filter that matches nothing must not vacuously pass.
+  printf '%s  RESULT: FAIL%s  (VALIDATE_CHECKS='"'"'%s'"'"' matched no check)\n' "$C_RED" "$C_NC" "$VALIDATE_CHECKS"
+  printf '%s================================================%s\n' "$C_CYN" "$C_NC"
+  exit 1
+elif [[ "$BLOCKING_FAILURES" -eq 0 ]]; then
+  if [[ -n "${VALIDATE_CHECKS:-}" ]]; then
+    printf '%s  RESULT: PASS (FILTERED)%s  (ran %s check(s): %s — NOT a full battery; blocking failures: 0, warnings: %s)\n' \
+      "$C_GRN" "$C_NC" "$CHECKS_RUN" "$VALIDATE_CHECKS" "$WARNINGS"
+  else
+    printf '%s  RESULT: PASS%s  (blocking failures: 0, warnings: %s)\n' "$C_GRN" "$C_NC" "$WARNINGS"
+  fi
   printf '%s================================================%s\n' "$C_CYN" "$C_NC"
   exit 0
 else
