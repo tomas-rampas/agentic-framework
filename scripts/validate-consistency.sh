@@ -979,7 +979,9 @@ section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/
 # (40k-100k tokens of fixed overhead per call). This check pins the selective
 # policy on the operative surfaces:
 #   (a) phrases that re-broaden the policy must not appear in CLAUDE.md,
-#       README.md, agents/, commands/, skills/, or hooks/. docs/ is exempt
+#       README.md, or any *.md/*.json/*.sh/*.ps1 under agents/, commands/,
+#       skills/, or hooks/ — hook scripts carry prose comments that could
+#       re-teach the policy just as well as docs can. docs/ is exempt
 #       (historical records may quote the old policy); tests/ is exempt
 #       (red-path fixtures inject these very phrases); scripts/ is exempt
 #       (this check names them).
@@ -996,7 +998,7 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
     {
       printf '%s\n' "$ROOT/CLAUDE.md" "$ROOT/README.md"
       find "$ROOT/agents" "$ROOT/commands" "$ROOT/skills" "$ROOT/hooks" \
-        -type f \( -name '*.md' -o -name '*.json' \) 2>/dev/null
+        -type f \( -name '*.md' -o -name '*.json' -o -name '*.sh' -o -name '*.ps1' \) 2>/dev/null
     } | LC_ALL=C sort
   )
   policy_hits=0

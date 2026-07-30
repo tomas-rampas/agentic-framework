@@ -701,6 +701,16 @@ section "[23] Policy re-broadening: inject 'delegate all shell execution' into C
   assert_rc_nonzero "validator fails when a re-broadening phrase appears in CLAUDE.md"
   assert_out_contains "reports the re-broadening phrase with its location" "policy re-broadening phrase in CLAUDE.md"
   rm -rf "$copy"
+
+  # Hook scripts are in scope too (they carry prose comments that could
+  # re-teach the policy) — a phrase hidden in a .sh comment must be caught.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  printf '\n# Callers route all shell work here under the blanket policy.\n' >> "$copy/hooks/dispatch.sh"
+  run_validate "$copy" 14
+  assert_rc_nonzero "validator fails when a re-broadening phrase appears in a hook script"
+  assert_out_contains "reports the phrase in hooks/dispatch.sh" "policy re-broadening phrase in hooks/dispatch.sh"
+  rm -rf "$copy"
 }
 
 # ===========================================================================
