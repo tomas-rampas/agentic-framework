@@ -3,7 +3,7 @@
 #
 # Reports the branch / unreviewed-commit state so the model knows whether the
 # peer-review final gate (Stop hook) is armed, plus a one-line routing reminder.
-# Fail-open: any error => exit 0 with no output.
+# Fail-open: always exit 0. Prints jq warning if jq is missing.
 #
 # Ported from session-start-context.ps1 to POSIX sh.
 

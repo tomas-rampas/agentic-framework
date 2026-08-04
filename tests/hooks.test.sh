@@ -423,14 +423,7 @@ section "[SESSION-START-CONTEXT] jq not installed: preflight warning and exit 0"
   workdir="$(make_work_dir)" || exit 2
   mkdir -p "$workdir/bin" "$workdir/test_repo"
   testgit="$workdir/test_repo"
-
-  # Build test repo
-  git -C "$testgit" init -q -b main
-  git -C "$testgit" config user.email 'test@test.local'
-  git -C "$testgit" config user.name 'hooks-test'
-  printf 'one\n' > "$testgit/a.txt"
-  git -C "$testgit" add -A
-  git -C "$testgit" commit -q -m 'init'
+  make_test_repo "$testgit"
 
   # Create stub bin directory with symlinks/wrappers for tools the hook uses (cat, git),
   # but intentionally WITHOUT jq. This simulates an environment where jq is missing.
