@@ -866,6 +866,33 @@ section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared too
     _fail "found an agent with an mcpServers: key" "no agents/*.md declares mcpServers:"
   fi
   rm -rf "$copy"
+
+  # --- 26g: RED — block-style tools: (key present, same line empty) -------
+  # Mirrors 26f. A block list would otherwise skip rules (c)/(d) entirely,
+  # which is how the origin defect (serena tools without the bootstrap pair)
+  # escaped detection in the first place.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^tools:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    awk '
+      /^tools:/ && !done {
+        line=$0; sub(/^tools:[ \t]*/, "", line)
+        print "tools:"
+        n=split(line, t, /,[ \t]*/)
+        for (i=1; i<=n; i++) if (t[i] != "") print "  - " t[i]
+        done=1; next
+      }
+      { print }
+    ' "$victim_md" > "$victim_md.tmp" && mv "$victim_md.tmp" "$victim_md"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on a block-style tools list"
+    assert_out_contains "reports unparseable-tools for $victim" "unparseable-tools: $victim"
+  else
+    _fail "found an agent with a tools: key" "no agents/*.md declares tools:"
+  fi
+  rm -rf "$copy"
 }
 
 # ===========================================================================
