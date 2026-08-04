@@ -1149,17 +1149,17 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     # whose single-line value yields no tokens (e.g. a block-style list) is not
     # — it would silently skip rules (c)/(d), which is exactly how the origin
     # defect (missing serena bootstrap) escaped.
-    tool_tokens=""
-    [[ -n "$fm_tools" ]] && tool_tokens="$(_fm_list "$fm_tools")"
-    if _fm_has_key "$md" tools && [[ -z "$tool_tokens" ]]; then
+    tool_entries=""
+    [[ -n "$fm_tools" ]] && tool_entries="$(_fm_list "$fm_tools")"
+    if _fm_has_key "$md" tools && [[ -z "$tool_entries" ]]; then
       ok=0
       fail "$agent: agents/$agent.md tools value is empty or not a single-line list"
       detail "unparseable-tools: $agent (must be a single-line list)"
     fi
-    [[ -n "$tool_tokens" ]] || continue
+    [[ -n "$tool_entries" ]] || continue
 
     # mcp__<server>__<tool> tokens used in the tools allowlist.
-    tool_servers="$(printf '%s\n' "$tool_tokens" | grep -oE '^mcp__[A-Za-z0-9_-]+__' \
+    tool_servers="$(printf '%s\n' "$tool_entries" | grep -oE '^mcp__[A-Za-z0-9_-]+__' \
                     | sed -E 's/^mcp__//; s/__$//' | LC_ALL=C sort -u)"
 
     # --- (c) every server used by tools is declared in mcpServers ----------
@@ -1175,9 +1175,9 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     fi
 
     # --- (d) serena tools require both bootstrap tools ---------------------
-    if printf '%s\n' "$tool_tokens" | grep -q '^mcp__serena__'; then
+    if printf '%s\n' "$tool_entries" | grep -q '^mcp__serena__'; then
       for boot in $SERENA_BOOTSTRAP; do
-        if ! printf '%s\n' "$tool_tokens" | grep -qxF -- "$boot"; then
+        if ! printf '%s\n' "$tool_entries" | grep -qxF -- "$boot"; then
           ok=0
           fail "$agent: tools include mcp__serena__* but omit the bootstrap tool $boot"
           detail "missing-serena-bootstrap: $agent -> $boot"
