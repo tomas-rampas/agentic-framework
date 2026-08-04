@@ -111,7 +111,7 @@ command -v jq && jq --version
 Common causes, in order of likelihood:
 - Plugin not installed or not enabled: run `/plugin install agentic-framework@agentic-framework` and verify with `/plugin list`.
 - The session predates the plugin install: hooks load at session start, so restart Claude Code after installing.
-- On Linux/macOS, `jq` missing from PATH — hooks load and fire (visible in transcript), but silently exit without enforcing anything. The `SessionStart` hook prints a `[session-context]` warning when jq is absent, which confirms the symptom. Fix: install jq (`apt-get install jq` on Debian/Ubuntu; `brew install jq` on macOS), then restart Claude Code.
+- On Linux/macOS, `jq` missing from PATH — hooks load and fire (visible in transcript), but enforcement is disarmed. The `SessionStart` hook prints a `[session-context]` warning when jq is absent, confirming the symptom. Fix: install jq (`apt-get install jq` on Debian/Ubuntu; `brew install jq` on macOS), then restart Claude Code.
 - Matcher mismatch: `record-subagent-run` fires on PostToolUse `Task|Agent` and on SubagentStop; `pretooluse-delegation-hint` on PreToolUse `Write|Edit` (each name = its `.ps1`/`.sh` pair). An event without a matching tool never fires.
 - Plugin cache stale: try `/plugin uninstall agentic-framework` and then `/plugin install agentic-framework@agentic-framework`.
 

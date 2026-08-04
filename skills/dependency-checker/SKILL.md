@@ -21,7 +21,7 @@ Verify that every external tool this framework actually depends on is installed,
 |------|-------------|
 | git | Hard requirement; the Stop-gate hook's branch-vs-base checks; all repo workflows |
 | bash (Git Bash on Windows) | `scripts/validate-consistency.sh`, `scripts/validate-hooks.sh`, `scripts/validate-framework.sh`, `scripts/generate-docs.sh`, `tests/consistency.test.sh` |
-| jq | The bash validators (`validate-consistency.sh` aborts without it); parsing the registry (`claude.json`) and config files. The POSIX hook implementations (hooks/*.sh) parse their event JSON payload with `jq`; without jq on Linux/macOS, hooks fire but silently exit without enforcing anything — including the peer-review Stop gate |
+| jq | The bash validators (`validate-consistency.sh` aborts without it); parsing the registry (`claude.json`) and config files. The POSIX hook implementations (hooks/*.sh) parse their event JSON payload with `jq`; without jq on Linux/macOS, enforcement is disarmed — hooks fire without enforcing anything, including the peer-review Stop gate |
 | gh (GitHub CLI) | The command-line executor agents (bash-expert, powershell-expert): PR/issue/run queries, log grinding, `gh api` reads; must be authenticated |
 | yq (mikefarah v4) | The executor agents: YAML processing and agent-frontmatter extraction (`yq --front-matter=extract`) |
 | PowerShell 7+ (`pwsh`) | **Windows**: installer scripts require pwsh 7, and the hook chain falls back to it (hooks/dispatch.sh runs the POSIX .sh directly when jq is on PATH in Git Bash; .ps1 via pwsh otherwise). **Linux/macOS**: optional — hooks run as POSIX shell; pwsh only needed for the optional .ps1 test suite (`tests/hooks.test.ps1`). |

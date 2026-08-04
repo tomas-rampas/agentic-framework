@@ -24,7 +24,7 @@ This framework extends Claude Code CLI with:
 | **[Claude Code CLI](https://docs.claude.com/en/docs/claude-code)** | Agent execution platform (required) |
 | **Git** | Version control |
 | **PowerShell 7+ (`pwsh`)** | Windows: runs hooks and installer scripts (7.0+ for hooks, 7.3+ for installer); Linux/macOS: optional (hooks run as POSIX shell; pwsh needed only for the optional .ps1 test suites) |
-| **bash + jq** | Validation and doc-generation tooling (Git Bash works on Windows). On Linux/macOS, `sh` + `jq` + `git` are the complete hook runtime — nothing else needed. If `jq` is missing on POSIX hosts, hooks fire but silently exit without enforcing anything, including the peer-review Stop gate |
+| **bash + jq** | Validation and doc-generation tooling (Git Bash works on Windows). On Linux/macOS, `sh` + `jq` + `git` are the complete hook runtime — nothing else needed. If `jq` is missing on POSIX hosts, enforcement is disarmed — hooks fire without enforcing anything, including the peer-review Stop gate |
 | **gh + yq** | Command-line executor agents (bash-expert / powershell-expert): GitHub CLI queries and YAML processing; run `gh auth login` once. yq is mikefarah v4 |
 | **Node.js/npm** | filesystem, context7, sequential-thinking MCP servers via `npx` |
 | **uv (`uvx`)** | serena + fetch MCP servers |
@@ -415,7 +415,7 @@ claude mcp list                                          # What Claude Code sees
 ```
 
 **Hooks fire but nothing is enforced (peer-review gate not blocking):**
-On Linux/macOS, if `jq` is missing from PATH, the hook scripts will load and fire (you will see them in the transcript), but silently exit without enforcing anything — including the peer-review Stop gate. **Cause:** the POSIX hook implementations depend on `jq` to validate the hook JSON payload; when `jq` is absent, this check fails silently and no enforcement occurs. **Fix:** install `jq` with your system package manager (`apt-get install jq` on Debian/Ubuntu; `brew install jq` on macOS), then restart Claude Code. When `jq` is absent, the `SessionStart` hook prints a `[session-context]` warning line at session start — this confirms the symptom is active.
+On Linux/macOS, if `jq` is missing from PATH, the hook scripts load and fire (visible in the transcript), but enforcement is disarmed — nothing gets enforced, including the peer-review Stop gate. **Cause:** the POSIX hook implementations depend on `jq` to validate the hook JSON payload; without it, hooks skip enforcement. **Fix:** install `jq` with your system package manager (`apt-get install jq` on Debian/Ubuntu; `brew install jq` on macOS), then restart Claude Code. When `jq` is absent, the `SessionStart` hook prints a `[session-context]` warning line at session start — this confirms the symptom is active.
 
 **Harmless "sh: not found" stderr on Windows without Git Bash:**
 When Git Bash is not installed, the hook chain's `sh` command fails with a "not found" error line in the transcript. This is harmless — the `||` arm runs the PowerShell `.ps1` script directly. (Installing Git Bash removes the noise and speeds hooks up: `sh` then exists and `dispatch.sh` detects MINGW*/MSYS*/CYGWIN*, running the POSIX `.sh` implementation directly when `jq` is on PATH — which skips a pwsh cold start of roughly 1–2 seconds on every hook fire — and routing to the same PowerShell script otherwise.)
