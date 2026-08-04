@@ -3,11 +3,17 @@
 #
 # Reports the branch / unreviewed-commit state so the model knows whether the
 # peer-review final gate (Stop hook) is armed, plus a one-line routing reminder.
-# Fail-open: any error => exit 0 with no output.
+# Fail-open: always exit 0. Prints jq warning if jq is missing.
 #
 # Ported from session-start-context.ps1 to POSIX sh.
 
 set -u
+
+# Preflight: check if jq is available on PATH
+if ! command -v jq >/dev/null 2>&1; then
+  printf "[session-context] jq not installed; POSIX hooks including peer-review Stop gate will exit without enforcing anything. Install jq and restart the session.\n"
+  exit 0
+fi
 
 # Read JSON payload from stdin
 payload=$(cat 2>/dev/null)
