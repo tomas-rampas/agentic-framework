@@ -40,7 +40,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/claude.json` and extract all agent entries from the 
 
 For each agent in `${CLAUDE_PLUGIN_ROOT}/claude.json`, check:
 - Agent markdown file exists: `${CLAUDE_PLUGIN_ROOT}/agents/{agent-name}.md`
-- Agent frontmatter contains required fields: `name`, `description` (plus optional `model`, `color`)
+- Agent frontmatter contains required fields: `name`, `description` (plus optional `model`, `color`, `effort`, `mcpServers`, `tools`)
 - Model in frontmatter matches the tier in `claude.json` (validator check 7)
 
 ### 3. Report Status
@@ -50,8 +50,8 @@ Display a summary table:
 ```
 Agent                    | Model   | File | Status
 -------------------------|---------|------|-------
-rust-expert              | sonnet  | ✓    | Ready
-csharp-expert            | sonnet  | ✓    | Ready
+rust-expert              | opus    | ✓    | Ready
+csharp-expert            | opus    | ✓    | Ready
 ...
 ```
 
