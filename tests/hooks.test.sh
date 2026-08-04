@@ -418,6 +418,94 @@ section "[SESSION-START-CONTEXT] fail-open on malformed stdin"
   assert_out_empty "malformed-stdin produces no output"
 }
 
+section "[SESSION-START-CONTEXT] jq not installed: preflight warning and exit 0"
+{
+  workdir="$(make_work_dir)" || exit 2
+  mkdir -p "$workdir/bin" "$workdir/test_repo"
+  testgit="$workdir/test_repo"
+
+  # Build test repo
+  git -C "$testgit" init -q -b main
+  git -C "$testgit" config user.email 'test@test.local'
+  git -C "$testgit" config user.name 'hooks-test'
+  printf 'one\n' > "$testgit/a.txt"
+  git -C "$testgit" add -A
+  git -C "$testgit" commit -q -m 'init'
+
+  # Create stub bin directory with symlinks/wrappers for tools the hook uses (cat, git),
+  # but intentionally WITHOUT jq. This simulates an environment where jq is missing.
+  # We use symlinks where possible, with wrapper-script fallback for Git Bash compatibility
+  # (where symlinks may not be reliable). This mechanism is chosen because it works
+  # consistently across both Linux and Git Bash without requiring knowledge of
+  # system-specific binary paths.
+  for tool in cat git; do
+    real="$(command -v "$tool" 2>/dev/null)"
+    [ -z "$real" ] && continue
+    # Try symlink first; fallback to wrapper script if symlink fails (Git Bash)
+    ln -s "$real" "$workdir/bin/$tool" 2>/dev/null || {
+      printf '#!/bin/sh\nexec %s "$@"\n' "$real" > "$workdir/bin/$tool"
+      chmod +x "$workdir/bin/$tool"
+    }
+  done
+  # Crucially: do NOT create $workdir/bin/jq, so command -v jq will fail with our restricted PATH
+
+  # Run hook with restricted PATH that is ONLY the stub bin directory. This ensures
+  # jq cannot be found even if it exists in /usr/bin or other system paths (as on CI).
+  # Capture the sh interpreter's path before restricting PATH, so we can invoke it directly.
+  test_payload="{\"session_id\":\"no_jq\",\"cwd\":\"$testgit\"}"
+  real_sh="$(command -v sh)"
+
+  # Use a subshell with stub-only PATH; redirect output to a file for capture
+  (
+    PATH="$workdir/bin"
+    export PATH
+    printf '%s' "$test_payload" | "$real_sh" "$SRC_REPO/hooks/session-start-context.sh" 2>&1
+  ) > "$workdir/output.txt"
+  RUN_RC=$?
+  RUN_OUT="$(cat "$workdir/output.txt" 2>/dev/null)"
+
+  assert_rc_zero "jq-missing hook exits 0"
+  assert_out_contains "jq-missing hook prints jq warning" "jq not installed"
+
+  rm -rf "$workdir"
+}
+
+section "[SESSION-START-CONTEXT] jq installed: no preflight warning, normal behavior"
+{
+  workdir="$(make_work_dir)" || exit 2
+  mkdir -p "$workdir/test_repo"
+  testgit="$workdir/test_repo"
+
+  # Build test repo with feature branch ahead of main
+  git -C "$testgit" init -q -b main
+  git -C "$testgit" config user.email 'test@test.local'
+  git -C "$testgit" config user.name 'hooks-test'
+  printf 'one\n' > "$testgit/a.txt"
+  git -C "$testgit" add -A
+  git -C "$testgit" commit -q -m 'init'
+  git -C "$testgit" checkout -q -b feature/w
+  printf 'two\n' > "$testgit/b.txt"
+  git -C "$testgit" add -A
+  git -C "$testgit" commit -q -m 'feature work'
+
+  # Run with normal PATH where jq is available (system default)
+  test_payload="{\"session_id\":\"with_jq\",\"cwd\":\"$testgit\"}"
+  RUN_OUT="$(printf '%s' "$test_payload" | sh "$SRC_REPO/hooks/session-start-context.sh" 2>&1)"
+  RUN_RC=$?
+
+  assert_rc_zero "normal hook exits 0"
+  # Verify no jq warning when jq is present
+  if printf '%s' "$RUN_OUT" | grep -qF 'jq not installed'; then
+    _fail "no jq warning when jq present" "unexpected jq warning in: $RUN_OUT"
+  else
+    _pass "no jq warning when jq present"
+  fi
+  # Verify normal behavior: ahead-of-base message appears
+  assert_out_contains "normal ahead-of-base message appears" "ahead of"
+
+  rm -rf "$workdir"
+}
+
 section "[PRETOOLUSE-DELEGATION-HINT] suggests rust-expert for .rs file"
 {
   workdir="$(make_work_dir)" || exit 2

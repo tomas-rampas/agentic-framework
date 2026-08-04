@@ -9,6 +9,12 @@
 
 set -u
 
+# Preflight: check if jq is available on PATH
+if ! command -v jq >/dev/null 2>&1; then
+  printf "[session-context] jq not installed; POSIX hooks including peer-review Stop gate will exit without enforcing anything. Install jq and restart the session.\n"
+  exit 0
+fi
+
 # Read JSON payload from stdin
 payload=$(cat 2>/dev/null)
 if [ -z "$payload" ]; then
