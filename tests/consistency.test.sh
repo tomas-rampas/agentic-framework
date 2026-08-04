@@ -827,6 +827,45 @@ section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared too
     _fail "found an agent allowlisting mcp__serena__activate_project" "no suitable agents/*.md victim"
   fi
   rm -rf "$copy"
+
+  # --- 26e: GREEN regression guard — flow-list `tools:` spelling ----------
+  # Both YAML spellings of tools: must normalise identically. A flow list used
+  # to leave its LAST token wearing a ']', which made the serena bootstrap rule
+  # emit a false failure for a tool that is actually present.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^tools:.*mcp__serena__' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    # Same tokens, flow-list spelling: tools: a, b, c -> tools: [a, b, c]
+    sed -i.bak -E 's/^tools: (.*)$/tools: [\1]/' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_zero "flow-list tools: spelling still passes check 15 ($victim)"
+    assert_out_contains "check 15 reports PASS on the flow-list spelling" "RESULT: PASS (FILTERED)"
+  else
+    _fail "found an agent with serena tools to reformat" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+
+  # --- 26f: RED — block-style mcpServers (key present, same line empty) ---
+  # The value lives on following lines, so the single-line parser sees nothing.
+  # That must FAIL loudly, not silently no-op rules (b)/(c).
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^mcpServers:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    awk '
+      /^mcpServers:/ && !done { print "mcpServers:"; print "  - serena"; done=1; next }
+      { print }
+    ' "$victim_md" > "$victim_md.tmp" && mv "$victim_md.tmp" "$victim_md"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on a block-style mcpServers list"
+    assert_out_contains "reports unparseable-mcpservers for $victim" "unparseable-mcpservers: $victim"
+  else
+    _fail "found an agent with an mcpServers: key" "no agents/*.md declares mcpServers:"
+  fi
+  rm -rf "$copy"
 }
 
 # ===========================================================================

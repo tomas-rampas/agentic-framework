@@ -1047,13 +1047,41 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
 #       declared in that agent's mcpServers (no undeclared server dependency).
 #   (d) tools: any mcp__serena__* tool implies BOTH serena bootstrap tools
 #       (activate_project + initial_instructions) are allowlisted too.
-# Parsing follows check 7's convention: grep -m1 the single physical line.
+# Parsing follows check 7's convention: grep -m1 the single physical line, with
+# any trailing YAML comment stripped (`effort: xhigh  # deliberate` -> xhigh).
+# Both `tools:` spellings are accepted and normalised identically: a bare
+# comma-separated list and a YAML flow list `[a, b, c]`.
+#
+# OUT OF SCOPE (deliberate): whether a tool NAME exists in the runtime. Check 15
+# validates RELATIONSHIPS between frontmatter keys (tier membership, server
+# declaration, tool/server parity, bootstrap completeness) — not tool spelling,
+# which has no local source of truth to check against.
 _check_on 15 && {
 section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   ok=1 fm_checked=0
 
   VALID_EFFORTS="low medium high xhigh max"
   SERENA_BOOTSTRAP="mcp__serena__activate_project mcp__serena__initial_instructions"
+
+  # _fm_value <file> <key> - the single-line frontmatter value for <key>, with
+  # any trailing YAML comment and surrounding whitespace/quotes removed.
+  # Prints nothing when the key is absent OR present with an empty value; use
+  # _fm_has_key to tell those two apart.
+  _fm_value() {
+    grep -m1 -E "^$2:[[:space:]]*" "$1" \
+      | sed -E "s/^$2:[[:space:]]*//; s/[[:space:]]*#.*\$//; s/[[:space:]]+\$//; s/^[\"']//; s/[\"']\$//"
+  }
+  # _fm_has_key <file> <key> - 0 if the key line is present at all.
+  _fm_has_key() { grep -qE "^$2:" "$1"; }
+
+  # _fm_list <value> - normalise a single-line list value (bare comma-separated
+  # OR YAML flow list) into one token per line. Applied to BOTH mcpServers and
+  # tools so the two spellings can never diverge (a flow-list `tools:` used to
+  # leave its last token wearing a ']' and break rules (c)/(d)).
+  _fm_list() {
+    printf '%s' "${1-}" | tr -d '[]"'\''' | tr ',' '\n' \
+      | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -v '^$'
+  }
 
   mcp_json="$ROOT/mcp-plugin/.mcp.json"
   known_servers=""
@@ -1070,9 +1098,9 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     agent="$(basename "$md" .md)"
     fm_checked=$((fm_checked + 1))
 
-    fm_effort="$(grep -m1 -E '^effort:[[:space:]]*' "$md" | sed -E 's/^effort:[[:space:]]*//; s/[[:space:]]+$//; s/^["'\'']//; s/["'\'']$//')"
-    fm_mcp="$(grep -m1 -E '^mcpServers:[[:space:]]*' "$md" | sed -E 's/^mcpServers:[[:space:]]*//; s/[[:space:]]+$//')"
-    fm_tools="$(grep -m1 -E '^tools:[[:space:]]*' "$md" | sed -E 's/^tools:[[:space:]]*//; s/[[:space:]]+$//')"
+    fm_effort="$(_fm_value "$md" effort)"
+    fm_mcp="$(_fm_value "$md" mcpServers)"
+    fm_tools="$(_fm_value "$md" tools)"
 
     # --- (a) effort tier ---------------------------------------------------
     if [[ -n "$fm_effort" ]]; then
@@ -1084,11 +1112,18 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     fi
 
     # --- normalise the mcpServers flow list to one entry per line ----------
+    # An ABSENT mcpServers key is legal (rules (b)/(c) simply do not apply).
+    # A PRESENT key with an empty/unparseable same-line value (e.g. a block-style
+    # list continued on following lines) is NOT: it would silently no-op both
+    # rules. Fail loudly instead of degrading to a vacuous pass.
     declared_servers=""
     if [[ -n "$fm_mcp" ]]; then
-      declared_servers="$(printf '%s' "$fm_mcp" \
-        | tr -d '[]"'\''' | tr ',' '\n' \
-        | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -v '^$')"
+      declared_servers="$(_fm_list "$fm_mcp")"
+    fi
+    if _fm_has_key "$md" mcpServers && [[ -z "$declared_servers" ]]; then
+      ok=0
+      fail "$agent: agents/$agent.md mcpServers value is empty or not a single-line flow list"
+      detail "unparseable-mcpservers: $agent (must be a single-line flow list)"
     fi
 
     # --- (b) every declared server exists in .mcp.json ---------------------
@@ -1105,8 +1140,12 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
 
     [[ -n "$fm_tools" ]] || continue
 
+    # Normalise tools with the SAME parser as mcpServers, so a flow-list
+    # spelling `tools: [a, b, c]` yields identical tokens to the bare list.
+    tool_tokens="$(_fm_list "$fm_tools")"
+
     # mcp__<server>__<tool> tokens used in the tools allowlist.
-    tool_servers="$(printf '%s\n' "$fm_tools" | grep -oE 'mcp__[A-Za-z0-9_-]+__' \
+    tool_servers="$(printf '%s\n' "$tool_tokens" | grep -oE '^mcp__[A-Za-z0-9_-]+__' \
                     | sed -E 's/^mcp__//; s/__$//' | LC_ALL=C sort -u)"
 
     # --- (c) every server used by tools is declared in mcpServers ----------
@@ -1122,9 +1161,9 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     fi
 
     # --- (d) serena tools require both bootstrap tools ---------------------
-    if printf '%s' "$fm_tools" | grep -q 'mcp__serena__'; then
+    if printf '%s\n' "$tool_tokens" | grep -q '^mcp__serena__'; then
       for boot in $SERENA_BOOTSTRAP; do
-        if ! printf '%s\n' "$fm_tools" | grep -qE "(^|[[:space:],])$boot([[:space:],]|\$)"; then
+        if ! printf '%s\n' "$tool_tokens" | grep -qxF -- "$boot"; then
           ok=0
           fail "$agent: tools include mcp__serena__* but omit the bootstrap tool $boot"
           detail "missing-serena-bootstrap: $agent -> $boot"
