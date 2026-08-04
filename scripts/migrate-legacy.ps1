@@ -195,23 +195,25 @@ Write-Host "Claude config  : $claudeJsonPath"
 Write-Host "Mode           : $(if ($Apply) { 'APPLY (making changes)' } else { 'DRY-RUN (reporting only)' })"
 Write-Host ''
 
-# ── 0. PRE-FLIGHT CHECKOUT SNAPSHOT ────────────────────────────────────────────
-# Capture whether ~/.claude was ALREADY dirty before this script mutates anything.
-# Section 5's -Apply safety guard must judge pre-existing dirt only: the hook-file
-# deletions performed by Section 3 would otherwise dirty a tracked checkout and
-# make the guard abort on damage this very run caused.
+# Paths (repo-relative, forward-slash) that THIS run created or deleted. Section 5's
+# dirtiness guard excludes them so it never aborts on damage this script itself caused,
+# while still detecting genuine pre-existing or concurrent modifications.
 $exitCode = 0
-$preExistingDirty = $false
-$preflightGitDir = Join-Path $claudeHome '.git'
-$preflightClaudeJson = Join-Path $claudeHome 'claude.json'
-if ((Test-Path $preflightGitDir) -and (Test-Path $preflightClaudeJson)) {
-    try {
-        $preflightStatus = git -C $claudeHome status --porcelain 2>$null
-        if ($LASTEXITCODE -eq 0 -and $preflightStatus) { $preExistingDirty = $true }
-    } catch {
-        # Git unavailable/failed: treat as clean; Section 5 has further guards.
-        $preExistingDirty = $false
+$selfTouchedPaths = [System.Collections.Generic.HashSet[string]]::new()
+
+function Add-SelfTouchedPath([string]$fullPath) {
+    $rel = [System.IO.Path]::GetRelativePath($claudeHome, $fullPath)
+    [void]$selfTouchedPaths.Add(($rel -replace '\\', '/').ToLowerInvariant())
+}
+
+# Shared matcher: is a repo-relative path inside the protected set?
+function Test-ProtectedPath([string]$relPath) {
+    foreach ($protected in $protectedPaths) {
+        if ($relPath -ieq $protected -or $relPath -imatch "^$([regex]::Escape($protected))[/\\]") {
+            return $true
+        }
     }
+    return $false
 }
 
 # ── 1. BACKUPS ─────────────────────────────────────────────────────────────────
@@ -223,6 +225,7 @@ if ($Apply) {
     if (Test-Path $settingsPath) {
         $backup = "$settingsPath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Copy-Item $settingsPath $backup -Force
+        Add-SelfTouchedPath $backup
         Write-Host "  settings.json: $backup"
         $backupsCreated++
     }
@@ -409,6 +412,7 @@ foreach ($hookName in $frameworkHookNames) {
     if (Test-Path $hookPath) {
         if ($Apply) {
             Remove-Item $hookPath -Force
+            Add-SelfTouchedPath $hookPath
             Write-Host "  deleted: $hookName"
         } else {
             Write-Host "  (dry-run: would delete $hookName)"
@@ -583,11 +587,32 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
         $checkoutAbortReason = ''
 
         if ($Apply) {
-            # Check for uncommitted changes that existed BEFORE this run (Section 0
-            # snapshot); changes this script itself made must not trigger the abort.
-            if ($preExistingDirty) {
-                $checkoutCanProceed = $false
-                $checkoutAbortReason = 'uncommitted changes'
+            # Live dirtiness check, filtered before evaluation. Two classes of noise are
+            # excluded so they never abort the run:
+            #   (a) protected paths - cleanup never touches them, so dirt there is harmless
+            #       (a locally-modified CLAUDE.md is the common personalization);
+            #   (b) paths this run itself created or deleted (tracked in $selfTouchedPaths).
+            # Anything left is genuine pre-existing or concurrent modification -> abort.
+            $statusOutput = @(git -C $claudeHome status --porcelain 2>$null)
+            if ($LASTEXITCODE -eq 0 -and $statusOutput) {
+                $genuineDirt = @()
+                foreach ($line in $statusOutput) {
+                    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                    # Porcelain v1: "XY <path>" ; renames/copies: "XY <old> -> <new>"
+                    $entry = if ($line.Length -gt 3) { $line.Substring(3) } else { '' }
+                    if ($entry -match '\s->\s') { $entry = ($entry -split '\s->\s', 2)[-1] }
+                    $entry = $entry.Trim().Trim('"')
+                    if (-not $entry) { continue }
+                    $norm = ($entry -replace '\\', '/').TrimEnd('/')
+                    if (Test-ProtectedPath $norm) { continue }
+                    if ($selfTouchedPaths.Contains($norm.ToLowerInvariant())) { continue }
+                    $genuineDirt += $norm
+                }
+                if ($genuineDirt.Count -gt 0) {
+                    $checkoutCanProceed = $false
+                    $checkoutAbortReason = 'uncommitted changes'
+                    Write-Host "  dirty (unexpected): $(($genuineDirt | Select-Object -First 5) -join ', ')"
+                }
             }
 
             # Check for unpushed commits
