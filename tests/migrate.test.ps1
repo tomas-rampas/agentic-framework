@@ -428,6 +428,8 @@ git -C $claudeHome commit -m "initial" 2>$null | Out-Null
 $r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply')
 
 Assert 'dirty checkout aborts with message' ($r.Out -imatch 'ABORT.*uncommitted|dirty')
+Assert 'pre-dirty checkout exits non-zero in -Apply' ($r.Code -ne 0)
+Assert 'pre-dirty checkout warns that migration is incomplete' ($r.Out -imatch 'INCOMPLETE')
 Assert 'settings.json was still modified' (-not (Get-Content (Join-Path $claudeHome 'settings.json') -Raw | ConvertFrom-Json -AsHashtable).hooks.Stop)
 Assert 'framework hook files deleted despite abort' (-not (Test-Path (Join-Path $claudeHome 'hooks' 'stop-peer-review-gate.ps1')))
 Assert '.git still exists after abort' ((Test-Path (Join-Path $claudeHome '.git')))
@@ -642,6 +644,82 @@ Assert 'no orphan groups remain after migration' (Assert-NoOrphans $settingsAfte
 # Verify framework hook files are deleted
 Assert 'framework hook files deleted' (-not (Test-Path (Join-Path $claudeHome 'hooks' 'record-subagent-run.ps1')))
 Assert 'foreign hook file preserved' ((Test-Path (Join-Path $claudeHome 'hooks' 'my-foreign-logger.ps1')))
+
+# ── Test 12: CLONE THAT TRACKS HOOK SCRIPTS (real topology) ────────────────────
+# Regression: Section 3 deletes tracked hooks/*.ps1, dirtying the checkout. Section 5's
+# -Apply guard must judge PRE-EXISTING dirt only, or it aborts on damage this run caused.
+# Also: CLAUDE.md is tracked but protected - user memory must survive byte-exact.
+Write-Host 'clone tracking hook scripts: cleanup completes, CLAUDE.md preserved'
+
+Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
+$workRoot   = Join-Path ([IO.Path]::GetTempPath()) ("migrate-test-" + [guid]::NewGuid().ToString('N'))
+$sandboxDir = Join-Path $workRoot 'home'
+$claudeHome = Join-Path $sandboxDir '.claude'
+$claudeJson = Join-Path $sandboxDir '.claude.json'
+New-Item -ItemType Directory -Force -Path $claudeHome | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $claudeHome 'hooks') | Out-Null
+
+$settings = @{}
+$settings | ConvertTo-Json -Depth 16 | Set-Content (Join-Path $claudeHome 'settings.json') -NoNewline
+'{"test":"data"}' | Set-Content (Join-Path $claudeHome 'claude.json') -NoNewline
+'{"mcpServers":{}}' | Set-Content $claudeJson -NoNewline
+
+# Tracked framework hook scripts (the real topology the old Test 6 never built)
+'# framework hook' | Set-Content (Join-Path $claudeHome 'hooks' 'stop-peer-review-gate.ps1') -NoNewline
+'# framework hook' | Set-Content (Join-Path $claudeHome 'hooks' 'record-subagent-run.ps1') -NoNewline
+'# framework hook' | Set-Content (Join-Path $claudeHome 'hooks' 'session-start-context.ps1') -NoNewline
+'# framework hook' | Set-Content (Join-Path $claudeHome 'hooks' 'pretooluse-delegation-hint.ps1') -NoNewline
+
+# Tracked framework payload that SHOULD be removed
+$trackFile = Join-Path $claudeHome 'agents' 'dummy.md'
+New-Item -ItemType Directory -Force -Path (Split-Path $trackFile -Parent) | Out-Null
+'agent' | Set-Content $trackFile -NoNewline
+
+# CLAUDE.md: tracked, but carries the user's personal additions - must survive intact
+$claudeMdPath = Join-Path $claudeHome 'CLAUDE.md'
+$sentinel = "# Global memory`nSENTINEL-USER-CONTENT-DO-NOT-DELETE-9f3a`n"
+$sentinel | Set-Content $claudeMdPath -NoNewline
+
+# Protected runtime paths
+New-Item -ItemType Directory -Force -Path (Join-Path $claudeHome '.state') | Out-Null
+'protected' | Set-Content (Join-Path $claudeHome '.state' 'marker.txt') -NoNewline
+'local' | Set-Content (Join-Path $claudeHome 'settings.local.json') -NoNewline
+
+git -C $claudeHome init 2>$null | Out-Null
+git -C $claudeHome config user.email "test@test.local" 2>$null
+git -C $claudeHome config user.name "Test" 2>$null
+git -C $claudeHome config core.safecrlf false 2>$null
+'*.bak-*' | Set-Content (Join-Path $claudeHome '.gitignore') -NoNewline
+git -C $claudeHome add -A 2>$null
+git -C $claudeHome commit -m "clone with tracked hooks" 2>$null | Out-Null
+
+# Push so the commits are not "unpushed"
+$remoteDir = Join-Path $workRoot 'remote.git'
+git init --bare $remoteDir 2>$null | Out-Null
+git -C $claudeHome remote add origin $remoteDir 2>$null
+$branch = git -C $claudeHome rev-parse --abbrev-ref HEAD 2>$null
+git -C $claudeHome push -u origin $branch 2>$null | Out-Null
+
+# Sanity: the clone is clean before migration
+$preStatus = git -C $claudeHome status --porcelain 2>$null
+Assert 'fixture clone is clean before migration' ([string]::IsNullOrWhiteSpace([string]($preStatus -join '')))
+Assert 'fixture tracks hook scripts' (@(git -C $claudeHome ls-files) -contains 'hooks/stop-peer-review-gate.ps1')
+Assert 'fixture tracks CLAUDE.md' (@(git -C $claudeHome ls-files) -contains 'CLAUDE.md')
+
+$r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply')
+
+Assert 'tracked-hooks clone -Apply exits 0' ($r.Code -eq 0)
+Assert 'tracked-hooks clone does NOT abort' (-not ($r.Out -imatch 'ABORT'))
+Assert 'checkout summary row present (no abort)' ($r.Out -match 'checkout:\s+\d+\s+tracked file\(s\),\s+\.git')
+Assert 'framework hook files removed' (-not (Test-Path (Join-Path $claudeHome 'hooks' 'stop-peer-review-gate.ps1')))
+Assert 'tracked framework payload removed' (-not (Test-Path $trackFile))
+Assert 'claude.json removed' (-not (Test-Path (Join-Path $claudeHome 'claude.json')))
+Assert '.git directory removed' (-not (Test-Path (Join-Path $claudeHome '.git')))
+Assert 'CLAUDE.md preserved' ((Test-Path $claudeMdPath))
+Assert 'CLAUDE.md content byte-exact' ((Test-Path $claudeMdPath) -and ((Get-Content $claudeMdPath -Raw) -eq $sentinel))
+Assert '.state preserved' ((Test-Path (Join-Path $claudeHome '.state' 'marker.txt')))
+Assert 'settings.local.json preserved' ((Test-Path (Join-Path $claudeHome 'settings.local.json')))
+Assert 'settings.json preserved' ((Test-Path (Join-Path $claudeHome 'settings.json')))
 
 # ── Teardown ───────────────────────────────────────────────────────────────────
 Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue

@@ -78,6 +78,7 @@ $frameworkMcpNames = @(
 
 # Protected runtime paths (never delete these)
 $protectedPaths = @(
+    'CLAUDE.md',
     '.state',
     'settings.local.json',
     '.credentials.json',
@@ -193,6 +194,25 @@ Write-Host "Claude home    : $claudeHome"
 Write-Host "Claude config  : $claudeJsonPath"
 Write-Host "Mode           : $(if ($Apply) { 'APPLY (making changes)' } else { 'DRY-RUN (reporting only)' })"
 Write-Host ''
+
+# ── 0. PRE-FLIGHT CHECKOUT SNAPSHOT ────────────────────────────────────────────
+# Capture whether ~/.claude was ALREADY dirty before this script mutates anything.
+# Section 5's -Apply safety guard must judge pre-existing dirt only: the hook-file
+# deletions performed by Section 3 would otherwise dirty a tracked checkout and
+# make the guard abort on damage this very run caused.
+$exitCode = 0
+$preExistingDirty = $false
+$preflightGitDir = Join-Path $claudeHome '.git'
+$preflightClaudeJson = Join-Path $claudeHome 'claude.json'
+if ((Test-Path $preflightGitDir) -and (Test-Path $preflightClaudeJson)) {
+    try {
+        $preflightStatus = git -C $claudeHome status --porcelain 2>$null
+        if ($LASTEXITCODE -eq 0 -and $preflightStatus) { $preExistingDirty = $true }
+    } catch {
+        # Git unavailable/failed: treat as clean; Section 5 has further guards.
+        $preExistingDirty = $false
+    }
+}
 
 # ── 1. BACKUPS ─────────────────────────────────────────────────────────────────
 if ($Apply) {
@@ -563,9 +583,9 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
         $checkoutAbortReason = ''
 
         if ($Apply) {
-            # Check for uncommitted changes
-            $statusOutput = git -C $claudeHome status --porcelain 2>$null
-            if ($LASTEXITCODE -eq 0 -and $statusOutput) {
+            # Check for uncommitted changes that existed BEFORE this run (Section 0
+            # snapshot); changes this script itself made must not trigger the abort.
+            if ($preExistingDirty) {
                 $checkoutCanProceed = $false
                 $checkoutAbortReason = 'uncommitted changes'
             }
@@ -582,7 +602,9 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
             if (-not $checkoutCanProceed) {
                 Write-Host "  ABORT: Cannot proceed - $checkoutAbortReason in ~/.claude"
                 Write-Host "  Please commit or stash your work, and push any pending commits before running migration again."
+                Write-Warning "Checkout cleanup was SKIPPED ($checkoutAbortReason in $claudeHome). Migration is INCOMPLETE - exiting with code 2."
                 $summary['checkout'] = "aborted ($checkoutAbortReason)"
+                $exitCode = 2
             }
         }
 
@@ -670,5 +692,10 @@ Write-Host ''
 Write-Host '== Summary =='
 foreach ($k in $summary.Keys) { Write-Host ("  {0,-15} {1}" -f "$($k):", $summary[$k]) }
 Write-Host ''
-Write-Host 'Migration complete.'
+if ($exitCode -eq 0) {
+    Write-Host 'Migration complete.'
+} else {
+    Write-Host 'Migration INCOMPLETE - see warnings above.'
+}
 Write-Host ''
+exit $exitCode
