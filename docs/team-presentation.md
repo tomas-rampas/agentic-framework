@@ -338,7 +338,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Skills | 9 loadable knowledge modules |
 | Commands | 10 management commands |
 | MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
-| Validator checks | 13, all derived at runtime |
+| Validator checks | 14, all derived at runtime |
 | Test assertions | 40+ (consistency) + 44 (hook behavior) |
 | CI jobs | 3, including a Windows leg |
 
