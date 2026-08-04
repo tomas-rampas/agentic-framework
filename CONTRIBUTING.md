@@ -31,7 +31,7 @@ name: <agent-name>
 description: <one-paragraph summary + examples>
 model: <tier-shorthand>            # opus | sonnet | haiku (must match claude.json, see check 7)
 color: <color-name>
-effort: <reasoning-effort>         # optional: low | medium | high | xhigh
+effort: <reasoning-effort>         # optional: low | medium | high | xhigh | max
 mcpServers: [<server-name>, ...]   # optional: MCP servers available to the agent
 tools: <tool1>,<tool2>,...         # optional: comma-separated explicit tool allowlist
 ---
@@ -48,10 +48,10 @@ value; strict YAML parsers only accept the quoted form when colons appear.
 
 `model` must equal the tier shorthand registered for this agent in `claude.json`
 (validator check 7) — `opus`, `sonnet`, or `haiku`, never a full model id.
-`effort` sets the reasoning effort the agent runs at (`low`/`medium`/`high`/`xhigh`).
-`mcpServers` lists MCP servers the agent should have available; it is ignored by
-Claude Code for plugin-shipped agents. `tools` gives an explicit comma-separated
-tool allowlist, overriding the default full tool access for that agent.
+`effort` sets the reasoning effort the agent runs at (`low`/`medium`/`high`/`xhigh`/`max`).
+Per Claude Code's documentation, `mcpServers` is not applied to plugin-shipped agents;
+treat it as effective only for user-scope agent files. `tools` gives an explicit
+comma-separated tool allowlist, overriding the default full tool access for that agent.
 
 ### 2. Register in `claude.json`
 

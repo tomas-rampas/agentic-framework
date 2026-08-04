@@ -145,8 +145,8 @@ mindmap
       technical-docs-writer
 ```
 
-- **Model tiers scale with stakes**: `opus` = architecture, implementation & review · `sonnet` = coordination & analysis · `haiku` = scripting & docs.
-- **peer-review-critic has a deliberately read-only toolset** — the final reviewer *cannot* modify the code it reviews. Independence enforced by tool access, not by asking nicely.
+- **Model tiers scale with stakes**: `opus` = language implementation, security, architecture & review · `sonnet` = domain specialists, analysis & planning · `haiku` = executors, docs & UI/UX.
+- **peer-review-critic runs a curated toolset** (no Write/Edit/Agent) that narrows its default surface; its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
 ### 3.2 Commands — the operations console (10)
@@ -339,7 +339,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Commands | 10 management commands |
 | MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
 | Validator checks | 15, all derived at runtime |
-| Test assertions | 40+ (consistency) + 44 (hook behavior) |
+| Test assertions | 72 (consistency) + 44+ (hook behavior) + 92 (migration) |
 | CI jobs | 3, including a Windows leg |
 
 **Takeaway:** agents write the code · hooks make quality non-negotiable · the consistency system keeps the whole thing honest.

@@ -85,7 +85,7 @@ When `-Apply` is used and `~/.claude` is detected as a git clone, the migration 
 
 This ensures you don't lose work accidentally. Commit and push any pending changes, then run migration again.
 
-Exit codes: 0 = migration complete (or dry-run), 2 = checkout cleanup aborted on genuine uncommitted changes; hook/MCP removals from the earlier steps have already been applied by then (partially migrated, not untouched).
+Exit codes: 0 = migration complete (or dry-run), 2 = checkout cleanup aborted (genuine uncommitted changes or unpushed commits); hook/MCP removals from the earlier steps have already been applied by then.
 
 ## Protected paths
 
