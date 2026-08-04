@@ -145,7 +145,7 @@ mindmap
       technical-docs-writer
 ```
 
-- **Model tiers scale with stakes**: `opus` = architecture & final review · `sonnet` = implementation · `haiku` = scripting & docs.
+- **Model tiers scale with stakes**: `opus` = architecture, implementation & review · `sonnet` = coordination & analysis · `haiku` = scripting & docs.
 - **peer-review-critic has a deliberately read-only toolset** — the final reviewer *cannot* modify the code it reviews. Independence enforced by tool access, not by asking nicely.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
@@ -286,9 +286,9 @@ sequenceDiagram
     participant SOT as claude.json + filesystem
 
     PR->>CI: commit lands
-    CI->>V: run the 12-check battery
+    CI->>V: run the 15-check battery
     V->>SOT: derive all truth at runtime (no hardcoded lists)
-    SOT-->>V: registry · rosters · hooks · skills · counts (13 checks)
+    SOT-->>V: registry · rosters · hooks · skills · counts (15 checks)
     V->>V: compare docs & generated blocks against derived truth
     alt any drift found
         V-->>CI: FAIL (names the exact file & line)
@@ -338,7 +338,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Skills | 9 loadable knowledge modules |
 | Commands | 10 management commands |
 | MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
-| Validator checks | 14, all derived at runtime |
+| Validator checks | 15, all derived at runtime |
 | Test assertions | 40+ (consistency) + 44 (hook behavior) |
 | CI jobs | 3, including a Windows leg |
 

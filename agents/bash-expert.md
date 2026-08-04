@@ -37,7 +37,7 @@ If you did not read all output, state `NOTE: read first <N> of <M> lines`.
 
 **Bad:** "I ran the validator and it mostly passed. A couple of things looked out of date but the rest was fine. Here's the full output: [380 lines]"
 
-**Good:** "Result: validate-consistency.sh FAILED — 1 of 12 checks failed (check 11, generated blocks stale). Command: bash scripts/validate-consistency.sh Exit: 1 Evidence: [FAIL] check 11: generate-docs.sh --check reported stale/invalid blocks."
+**Good:** "Result: validate-consistency.sh FAILED — 1 of 15 checks failed (check 11, generated blocks stale). Command: bash scripts/validate-consistency.sh Exit: 1 Evidence: [FAIL] check 11: generate-docs.sh --check reported stale/invalid blocks."
 
 ## Environment Detection
 

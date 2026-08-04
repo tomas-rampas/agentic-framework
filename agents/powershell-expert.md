@@ -125,7 +125,7 @@ This is the single most important section for the caller:
 Example of good output:
 
 ```
-Result:  validate-consistency.sh FAILED — 11 of 12 checks passed; check [7]
+Result:  validate-consistency.sh FAILED — 14 of 15 checks passed; check [7]
          (model parity) failed for go-expert.
 Command: bash scripts/validate-consistency.sh   (via Git Bash, repo root)
 Exit:    1

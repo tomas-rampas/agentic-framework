@@ -153,7 +153,7 @@ If you have this framework cloned into `~/.claude`, migrate to the plugin distri
 /agentic-framework:migrate-legacy -Apply
 ```
 
-**Note**: Do not run the migration on dirty working trees or unpushed commits — it will refuse to proceed.
+**Note**: Do not run the migration on dirty working trees or unpushed commits — it will refuse to proceed. Exit codes: 0 = migration complete (or dry-run), 2 = checkout cleanup aborted on genuine uncommitted changes (hook/MCP removals from earlier steps have already been applied by then, so the clone is partially migrated, not untouched).
 
 ---
 
