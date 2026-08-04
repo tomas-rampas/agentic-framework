@@ -87,10 +87,11 @@ _esc_ere() {
 
 # --- check filter ------------------------------------------------------------
 # VALIDATE_CHECKS: optional comma/space-separated list of check numbers to run
-# (e.g. VALIDATE_CHECKS=3, or VALIDATE_CHECKS="1,14"). Unset or empty runs the
+# (e.g. VALIDATE_CHECKS=3, or VALIDATE_CHECKS="1,15"). Valid check numbers are
+# 1-15 (note: check 8 is physically defined before check 7). Unset or empty runs the
 # full battery — the default for CI and interactive use. The test harness
 # (tests/consistency.test.sh) sets it so each red-path case runs only the check
-# it targets instead of all 14 (a ~14x cut in per-case process spawns; on
+# it targets instead of all 15 (a ~15x cut in per-case process spawns; on
 # Windows that took the suite from ~27 minutes to low single digits).
 # A filtered run is NOT a full battery: the summary labels it FILTERED, and a
 # filter matching no check fails loudly instead of vacuously passing.
@@ -1029,6 +1030,113 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
   _policy_require "CLAUDE.md" "Run it yourself by default" "CLAUDE.md keeps inline-by-default as the governing principle"
   _policy_require "agents/bash-expert.md" "compresses to a small conclusion" "bash-expert advertises the selective delegation trigger"
   _policy_require "agents/powershell-expert.md" "compresses to a small conclusion" "powershell-expert advertises the selective delegation trigger"
+}
+
+# ===========================================================================
+# CHECK 15 - Agent frontmatter key validation (BLOCKING)
+# ===========================================================================
+# agents/*.md frontmatter carries three single-line keys that the runtime acts
+# on but nothing validated until now: `effort:`, `mcpServers:` (a YAML flow
+# list) and `tools:` (a comma-separated allowlist). A real defect shipped —
+# serena tools allowlisted without serena's two bootstrap tools — precisely
+# because no gate could catch it. Rules (all blocking, all conditional on the
+# key being present, so an agent that omits a key is never penalised):
+#   (a) effort:     value must be one of the declared tiers.
+#   (b) mcpServers: every entry must be a key of mcp-plugin/.mcp.json .mcpServers.
+#   (c) tools + mcpServers: every mcp__<server>__* tool must have <server>
+#       declared in that agent's mcpServers (no undeclared server dependency).
+#   (d) tools: any mcp__serena__* tool implies BOTH serena bootstrap tools
+#       (activate_project + initial_instructions) are allowlisted too.
+# Parsing follows check 7's convention: grep -m1 the single physical line.
+_check_on 15 && {
+section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
+  ok=1 fm_checked=0
+
+  VALID_EFFORTS="low medium high xhigh max"
+  SERENA_BOOTSTRAP="mcp__serena__activate_project mcp__serena__initial_instructions"
+
+  mcp_json="$ROOT/mcp-plugin/.mcp.json"
+  known_servers=""
+  if [[ -f "$mcp_json" ]]; then
+    known_servers="$(_facts_jq -r '.mcpServers // {} | keys[]' "$mcp_json" 2>/dev/null | LC_ALL=C sort)"
+  fi
+  if [[ -z "$known_servers" ]]; then
+    ok=0
+    fail "agent frontmatter: mcp-plugin/.mcp.json has no .mcpServers keys (cannot validate mcpServers declarations)"
+  fi
+
+  shopt -s nullglob
+  for md in "$FACTS_AGENTS_DIR"/*.md; do
+    agent="$(basename "$md" .md)"
+    fm_checked=$((fm_checked + 1))
+
+    fm_effort="$(grep -m1 -E '^effort:[[:space:]]*' "$md" | sed -E 's/^effort:[[:space:]]*//; s/[[:space:]]+$//; s/^["'\'']//; s/["'\'']$//')"
+    fm_mcp="$(grep -m1 -E '^mcpServers:[[:space:]]*' "$md" | sed -E 's/^mcpServers:[[:space:]]*//; s/[[:space:]]+$//')"
+    fm_tools="$(grep -m1 -E '^tools:[[:space:]]*' "$md" | sed -E 's/^tools:[[:space:]]*//; s/[[:space:]]+$//')"
+
+    # --- (a) effort tier ---------------------------------------------------
+    if [[ -n "$fm_effort" ]]; then
+      if ! printf '%s\n' $VALID_EFFORTS | grep -qxF -- "$fm_effort"; then
+        ok=0
+        fail "$agent: agents/$agent.md effort '$fm_effort' is not one of: ${VALID_EFFORTS// /, }"
+        detail "invalid-effort: $agent"
+      fi
+    fi
+
+    # --- normalise the mcpServers flow list to one entry per line ----------
+    declared_servers=""
+    if [[ -n "$fm_mcp" ]]; then
+      declared_servers="$(printf '%s' "$fm_mcp" \
+        | tr -d '[]"'\''' | tr ',' '\n' \
+        | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -v '^$')"
+    fi
+
+    # --- (b) every declared server exists in .mcp.json ---------------------
+    if [[ -n "$declared_servers" && -n "$known_servers" ]]; then
+      while IFS= read -r srv; do
+        [[ -z "$srv" ]] && continue
+        if ! printf '%s\n' "$known_servers" | grep -qxF -- "$srv"; then
+          ok=0
+          fail "$agent: mcpServers entry '$srv' is not a server in mcp-plugin/.mcp.json"
+          detail "unknown-mcp-server: $agent -> $srv"
+        fi
+      done <<< "$declared_servers"
+    fi
+
+    [[ -n "$fm_tools" ]] || continue
+
+    # mcp__<server>__<tool> tokens used in the tools allowlist.
+    tool_servers="$(printf '%s\n' "$fm_tools" | grep -oE 'mcp__[A-Za-z0-9_-]+__' \
+                    | sed -E 's/^mcp__//; s/__$//' | LC_ALL=C sort -u)"
+
+    # --- (c) every server used by tools is declared in mcpServers ----------
+    if [[ -n "$tool_servers" && -n "$fm_mcp" ]]; then
+      while IFS= read -r srv; do
+        [[ -z "$srv" ]] && continue
+        if ! printf '%s\n' "$declared_servers" | grep -qxF -- "$srv"; then
+          ok=0
+          fail "$agent: tools use mcp__${srv}__* but '$srv' is not declared in mcpServers"
+          detail "undeclared-tool-server: $agent -> $srv"
+        fi
+      done <<< "$tool_servers"
+    fi
+
+    # --- (d) serena tools require both bootstrap tools ---------------------
+    if printf '%s' "$fm_tools" | grep -q 'mcp__serena__'; then
+      for boot in $SERENA_BOOTSTRAP; do
+        if ! printf '%s\n' "$fm_tools" | grep -qE "(^|[[:space:],])$boot([[:space:],]|\$)"; then
+          ok=0
+          fail "$agent: tools include mcp__serena__* but omit the bootstrap tool $boot"
+          detail "missing-serena-bootstrap: $agent -> $boot"
+        fi
+      done
+    fi
+  done
+  shopt -u nullglob
+
+  if [[ "$ok" -eq 1 ]]; then
+    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity, serena bootstrap present)"
+  fi
 }
 
 # ===========================================================================

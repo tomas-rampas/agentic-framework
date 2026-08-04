@@ -754,6 +754,82 @@ section "[25] Filter sanity: check-13 break invisible to VALIDATE_CHECKS=1, caug
 }
 
 # ===========================================================================
+# CASE 26 - Agent frontmatter keys (check 15, blocking). Four defects, each
+#           injected into a copy and each targeting one rule of check 15.
+#           Victims are DERIVED from the copy (first agent carrying the key),
+#           so the cases stay roster- and value-agnostic.
+# ===========================================================================
+section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared tool server / missing serena bootstrap -> non-zero (check 15)"
+{
+  # --- 26a: invalid effort tier -------------------------------------------
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^effort:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    sed -i.bak -E 's/^effort:.*$/effort: turbo/' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on an invalid effort tier"
+    assert_out_contains "reports invalid-effort for $victim" "invalid-effort: $victim"
+  else
+    _fail "found an agent with an effort: key" "no agents/*.md declares effort:"
+  fi
+  rm -rf "$copy"
+
+  # --- 26b: mcpServers entry naming a server absent from .mcp.json ---------
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^mcpServers:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    sed -i.bak -E 's/^mcpServers: \[/mcpServers: [zzz-nonexistent, /' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on an mcpServers entry with no server in .mcp.json"
+    assert_out_contains "reports unknown-mcp-server for $victim" "unknown-mcp-server: $victim -> zzz-nonexistent"
+  else
+    _fail "found an agent with an mcpServers: key" "no agents/*.md declares mcpServers:"
+  fi
+  rm -rf "$copy"
+
+  # --- 26c: tools use an mcp server the agent never declared --------------
+  # The server IS real (a key of .mcp.json), so ONLY rule (c) can fire: the
+  # agent's own mcpServers list does not declare it.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^mcpServers:' "$copy"/agents/*.md \
+               | while IFS= read -r f; do
+                   grep -qE '^tools:' "$f" && ! grep -qE '^mcpServers:.*\bfetch\b' "$f" && printf '%s\n' "$f"
+                 done | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    sed -i.bak -E 's/^(tools: .*)$/\1, mcp__fetch__fetch/' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails when tools reference an undeclared mcp server"
+    assert_out_contains "reports undeclared-tool-server for $victim" "undeclared-tool-server: $victim -> fetch"
+  else
+    _fail "found an agent with tools: + mcpServers: lacking fetch" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+
+  # --- 26d: serena tools without the bootstrap pair ------------------------
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^tools:.*mcp__serena__activate_project' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    # Drop ONLY the activate_project token (other serena tools remain, so the
+    # bootstrap rule is the sole break).
+    sed -i.bak -E 's/, ?mcp__serena__activate_project//' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails when serena tools omit a bootstrap tool"
+    assert_out_contains "reports missing-serena-bootstrap for $victim" "missing-serena-bootstrap: $victim -> mcp__serena__activate_project"
+  else
+    _fail "found an agent allowlisting mcp__serena__activate_project" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"
