@@ -1085,7 +1085,7 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   # last token wearing a ']', and a space-separated list used to produce one
   # giant token, either of which silently defeated rules (c)/(d).
   _fm_list() {
-    printf '%s' "${1-}" | tr -d '[]"'\''' | tr ',[:space:]' '\n\n' | grep -v '^$'
+    printf '%s' "${1-}" | tr -d '[]"'\''' | tr ',[:space:]' '\n' | grep -v '^$'
   }
 
   mcp_json="$ROOT/mcp-plugin/.mcp.json"
@@ -1127,8 +1127,8 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     fi
     if _fm_has_key "$md" mcpServers && [[ -z "$declared_servers" ]]; then
       ok=0
-      fail "$agent: agents/$agent.md mcpServers value is empty or not a single-line flow list"
-      detail "unparseable-mcpservers: $agent (must be a single-line flow list)"
+      fail "$agent: agents/$agent.md mcpServers value is empty or not a single-line list"
+      detail "unparseable-mcpservers: $agent (must be a single-line list)"
     fi
 
     # --- (b) every declared server exists in .mcp.json ---------------------

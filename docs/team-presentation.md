@@ -339,7 +339,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Commands | 10 management commands |
 | MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
 | Validator checks | 15, all derived at runtime |
-| Test assertions | 76 (consistency) + 44+ (hook behavior) + 103 (migration) |
-| CI jobs | 3, including a Windows leg |
+| Test assertions | 80 (consistency) + 44+ (hook behavior) + 103 (migration) |
+| CI jobs | 4, including Windows and macOS legs |
 
 **Takeaway:** agents write the code · hooks make quality non-negotiable · the consistency system keeps the whole thing honest.

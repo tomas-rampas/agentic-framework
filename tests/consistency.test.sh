@@ -893,6 +893,28 @@ section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared too
     _fail "found an agent with a tools: key" "no agents/*.md declares tools:"
   fi
   rm -rf "$copy"
+
+  # --- 26h: RED — 26d's defect in a SPACE-separated tools: line -----------
+  # This is the only spelling that distinguishes the whitespace-aware token
+  # splitter from a comma-only one: under a comma-only _fm_list the whole line
+  # collapses into a single token, rule (d) silently matches nothing, and the
+  # missing bootstrap tool ships. 26e/26f/26g all stay green under that revert,
+  # so this case is the regression guard for it.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^tools:.*mcp__serena__activate_project' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    sed -i.bak -E 's/, ?mcp__serena__activate_project//' "$victim_md" \
+      && sed -i.bak -E '/^tools: /s/, / /g' "$victim_md" \
+      && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on a space-separated tools list missing a serena bootstrap tool"
+    assert_out_contains "reports missing-serena-bootstrap for $victim (space-separated)" "missing-serena-bootstrap: $victim -> mcp__serena__activate_project"
+  else
+    _fail "found an agent allowlisting mcp__serena__activate_project" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
 }
 
 # ===========================================================================
