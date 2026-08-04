@@ -823,6 +823,61 @@ $rDry = Invoke-Migrator $claudeHome
 Assert 'dry-run over dirty clone exits 0' ($rDry.Code -eq 0)
 Assert 'dry-run over dirty clone leaves .git intact' ((Test-Path (Join-Path $claudeHome '.git')))
 
+# ── Test 15: UNPUSHED COMMITS ABORT WITH EXIT 2 ────────────────────────────────
+# The exit-2 path has two triggers; this covers the second one. Working tree is clean,
+# but a commit exists that no remote has - cleanup would destroy unpushed work.
+Write-Host 'unpushed commits: aborts with exit 2, .git left intact'
+
+Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
+$workRoot   = Join-Path ([IO.Path]::GetTempPath()) ("migrate-test-" + [guid]::NewGuid().ToString('N'))
+$sandboxDir = Join-Path $workRoot 'home'
+$claudeHome = Join-Path $sandboxDir '.claude'
+$claudeJson = Join-Path $sandboxDir '.claude.json'
+New-Item -ItemType Directory -Force -Path $claudeHome | Out-Null
+
+@{} | ConvertTo-Json -Depth 16 | Set-Content (Join-Path $claudeHome 'settings.json') -NoNewline
+'{"test":"data"}' | Set-Content (Join-Path $claudeHome 'claude.json') -NoNewline
+'{"mcpServers":{}}' | Set-Content $claudeJson -NoNewline
+$trackFile = Join-Path $claudeHome 'agents' 'dummy.md'
+New-Item -ItemType Directory -Force -Path (Split-Path $trackFile -Parent) | Out-Null
+'agent' | Set-Content $trackFile -NoNewline
+
+git -C $claudeHome init 2>$null | Out-Null
+git -C $claudeHome config user.email "test@test.local" 2>$null
+git -C $claudeHome config user.name "Test" 2>$null
+git -C $claudeHome config core.safecrlf false 2>$null
+git -C $claudeHome config core.autocrlf false 2>$null
+git -C $claudeHome add -A 2>$null
+git -C $claudeHome commit -m "clone" 2>$null | Out-Null
+$remoteDir = Join-Path $workRoot 'remote.git'
+git init --bare $remoteDir 2>$null | Out-Null
+git -C $claudeHome remote add origin $remoteDir 2>$null
+$branch = git -C $claudeHome rev-parse --abbrev-ref HEAD 2>$null
+git -C $claudeHome push -u origin $branch 2>$null | Out-Null
+
+# Local work that was COMMITTED but never pushed; working tree left clean
+'agent v2' | Set-Content $trackFile -NoNewline
+git -C $claudeHome add -A 2>$null
+git -C $claudeHome commit -m "local unpushed work" 2>$null | Out-Null
+
+$statusNow = @(git -C $claudeHome status --porcelain 2>$null)
+Assert 'unpushed fixture has a clean working tree' (@($statusNow).Count -eq 0)
+Assert 'unpushed fixture really has an unpushed commit' (@(git -C $claudeHome log --branches --not --remotes --oneline 2>$null).Count -ge 1)
+
+$r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply')
+
+Assert 'unpushed commits abort' ($r.Out -imatch 'ABORT')
+Assert 'unpushed commits named in output' ($r.Out -imatch 'unpushed')
+Assert 'unpushed commits exit 2' ($r.Code -eq 2)
+Assert 'unpushed commits warn INCOMPLETE' ($r.Out -imatch 'INCOMPLETE')
+Assert 'unpushed commits leave .git intact' ((Test-Path (Join-Path $claudeHome '.git')))
+Assert 'unpushed commits leave tracked file intact' ((Test-Path $trackFile))
+
+$rDry = Invoke-Migrator $claudeHome
+Assert 'dry-run over unpushed clone exits 0' ($rDry.Code -eq 0)
+Assert 'dry-run over unpushed clone leaves .git intact' ((Test-Path (Join-Path $claudeHome '.git')))
+Assert 'dry-run over unpushed clone leaves tracked file intact' ((Test-Path $trackFile))
+
 # ── Teardown ───────────────────────────────────────────────────────────────────
 Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
 

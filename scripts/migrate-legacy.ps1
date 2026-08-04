@@ -201,6 +201,10 @@ Write-Host ''
 $exitCode = 0
 $selfTouchedPaths = [System.Collections.Generic.HashSet[string]]::new()
 
+# COUPLING: this is called only at mutation sites whose target is NOT already protected
+# (protected paths are excluded from the dirt filter anyway, so registering them is moot).
+# Any future code that creates or deletes a NON-protected path under $claudeHome before
+# Section 5 runs MUST register it here, or the guard will abort on its own handiwork.
 function Add-SelfTouchedPath([string]$fullPath) {
     $rel = [System.IO.Path]::GetRelativePath($claudeHome, $fullPath)
     [void]$selfTouchedPaths.Add(($rel -replace '\\', '/').ToLowerInvariant())
@@ -593,7 +597,9 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
             #       (a locally-modified CLAUDE.md is the common personalization);
             #   (b) paths this run itself created or deleted (tracked in $selfTouchedPaths).
             # Anything left is genuine pre-existing or concurrent modification -> abort.
-            $statusOutput = @(git -C $claudeHome status --porcelain 2>$null)
+            # -c core.quotepath=false: emit non-ASCII paths literally instead of octal-escaped,
+            # so path matching below cannot be bypassed by encoding.
+            $statusOutput = @(git -C $claudeHome -c core.quotepath=false status --porcelain 2>$null)
             if ($LASTEXITCODE -eq 0 -and $statusOutput) {
                 $genuineDirt = @()
                 foreach ($line in $statusOutput) {
@@ -633,17 +639,13 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
             }
         }
 
-        # Filter out protected paths
+        # Filter out protected paths. Same matcher as the dirt filter above: the guard is
+        # only sound while {paths the dirt filter ignores} is a subset of {paths this
+        # filter protects}, so both must go through Test-ProtectedPath.
+        # git ls-files emits forward-slashed, repo-relative paths already.
         $filesToDelete = @()
         foreach ($file in $trackedFiles) {
-            $isProtected = $false
-            foreach ($protected in $protectedPaths) {
-                if ($file -ieq $protected -or $file -imatch "^$([regex]::Escape($protected))[/\\]") {
-                    $isProtected = $true
-                    break
-                }
-            }
-            if (-not $isProtected) {
+            if (-not (Test-ProtectedPath (($file -replace '\\', '/').TrimEnd('/')))) {
                 $filesToDelete += $file
             }
         }
@@ -662,14 +664,11 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
                 Where-Object { -not $_.Attributes.HasFlag([System.IO.FileAttributes]::ReparsePoint) } |
                 Sort-Object -Property FullName -Descending
             foreach ($dir in $dirs) {
-                $isProtected = $false
+                # GetRelativePath returns backslashed segments on Windows; normalize to the
+                # forward-slash convention Test-ProtectedPath is fed everywhere else.
                 $relPath = [System.IO.Path]::GetRelativePath($claudeHome, $dir.FullName)
-                foreach ($protected in $protectedPaths) {
-                    if ($relPath -ieq $protected -or $relPath -imatch "^$([regex]::Escape($protected))[/\\]") {
-                        $isProtected = $true
-                        break
-                    }
-                }
+                $relPath = ($relPath -replace '\\', '/').TrimEnd('/')
+                $isProtected = Test-ProtectedPath $relPath
                 if (-not $isProtected -and (Test-Path $dir) -and @(Get-ChildItem $dir -ErrorAction SilentlyContinue).Count -eq 0) {
                     Remove-Item $dir -Force -ErrorAction SilentlyContinue
                 }
