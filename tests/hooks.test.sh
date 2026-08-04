@@ -443,7 +443,7 @@ section "[SESSION-START-CONTEXT] jq not installed: preflight warning and exit 0"
     [ -z "$real" ] && continue
     # Try symlink first; fallback to wrapper script if symlink fails (Git Bash)
     ln -s "$real" "$workdir/bin/$tool" 2>/dev/null || {
-      printf '#!/bin/sh\nexec %s "$@"\n' "$real" > "$workdir/bin/$tool"
+      printf '#!/bin/sh\nexec "%s" "$@"\n' "$real" > "$workdir/bin/$tool"
       chmod +x "$workdir/bin/$tool"
     }
   done
@@ -473,20 +473,9 @@ section "[SESSION-START-CONTEXT] jq not installed: preflight warning and exit 0"
 section "[SESSION-START-CONTEXT] jq installed: no preflight warning, normal behavior"
 {
   workdir="$(make_work_dir)" || exit 2
-  mkdir -p "$workdir/test_repo"
   testgit="$workdir/test_repo"
-
-  # Build test repo with feature branch ahead of main
-  git -C "$testgit" init -q -b main
-  git -C "$testgit" config user.email 'test@test.local'
-  git -C "$testgit" config user.name 'hooks-test'
-  printf 'one\n' > "$testgit/a.txt"
-  git -C "$testgit" add -A
-  git -C "$testgit" commit -q -m 'init'
-  git -C "$testgit" checkout -q -b feature/w
-  printf 'two\n' > "$testgit/b.txt"
-  git -C "$testgit" add -A
-  git -C "$testgit" commit -q -m 'feature work'
+  mkdir -p "$testgit"
+  make_test_repo "$testgit"
 
   # Run with normal PATH where jq is available (system default)
   test_payload="{\"session_id\":\"with_jq\",\"cwd\":\"$testgit\"}"
