@@ -754,6 +754,170 @@ section "[25] Filter sanity: check-13 break invisible to VALIDATE_CHECKS=1, caug
 }
 
 # ===========================================================================
+# CASE 26 - Agent frontmatter keys (check 15, blocking). Four defects, each
+#           injected into a copy and each targeting one rule of check 15.
+#           Victims are DERIVED from the copy (first agent carrying the key),
+#           so the cases stay roster- and value-agnostic.
+# ===========================================================================
+section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared tool server / missing serena bootstrap -> non-zero (check 15)"
+{
+  # --- 26a: invalid effort tier -------------------------------------------
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^effort:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    sed -i.bak -E 's/^effort:.*$/effort: turbo/' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on an invalid effort tier"
+    assert_out_contains "reports invalid-effort for $victim" "invalid-effort: $victim"
+  else
+    _fail "found an agent with an effort: key" "no agents/*.md declares effort:"
+  fi
+  rm -rf "$copy"
+
+  # --- 26b: mcpServers entry naming a server absent from .mcp.json ---------
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^mcpServers:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    sed -i.bak -E 's/^mcpServers: \[/mcpServers: [zzz-nonexistent, /' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on an mcpServers entry with no server in .mcp.json"
+    assert_out_contains "reports unknown-mcp-server for $victim" "unknown-mcp-server: $victim -> zzz-nonexistent"
+  else
+    _fail "found an agent with an mcpServers: key" "no agents/*.md declares mcpServers:"
+  fi
+  rm -rf "$copy"
+
+  # --- 26c: tools use an mcp server the agent never declared --------------
+  # The server IS real (a key of .mcp.json), so ONLY rule (c) can fire: the
+  # agent's own mcpServers list does not declare it.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^mcpServers:' "$copy"/agents/*.md \
+               | while IFS= read -r f; do
+                   grep -qE '^tools:' "$f" && ! grep -qE '^mcpServers:.*\bfetch\b' "$f" && printf '%s\n' "$f"
+                 done | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    sed -i.bak -E 's/^(tools: .*)$/\1, mcp__fetch__fetch/' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails when tools reference an undeclared mcp server"
+    assert_out_contains "reports undeclared-tool-server for $victim" "undeclared-tool-server: $victim -> fetch"
+  else
+    _fail "found an agent with tools: + mcpServers: lacking fetch" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+
+  # --- 26d: serena tools without the bootstrap pair ------------------------
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^tools:.*mcp__serena__activate_project' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    # Drop ONLY the activate_project token (other serena tools remain, so the
+    # bootstrap rule is the sole break).
+    sed -i.bak -E 's/, ?mcp__serena__activate_project//' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails when serena tools omit a bootstrap tool"
+    assert_out_contains "reports missing-serena-bootstrap for $victim" "missing-serena-bootstrap: $victim -> mcp__serena__activate_project"
+  else
+    _fail "found an agent allowlisting mcp__serena__activate_project" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+
+  # --- 26e: GREEN regression guard — flow-list `tools:` spelling ----------
+  # Both YAML spellings of tools: must normalise identically. A flow list used
+  # to leave its LAST token wearing a ']', which made the serena bootstrap rule
+  # emit a false failure for a tool that is actually present.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^tools:.*mcp__serena__' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    # Same tokens, flow-list spelling: tools: a, b, c -> tools: [a, b, c]
+    sed -i.bak -E 's/^tools: (.*)$/tools: [\1]/' "$victim_md" && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_zero "flow-list tools: spelling still passes check 15 ($victim)"
+    assert_out_contains "check 15 reports PASS on the flow-list spelling" "RESULT: PASS (FILTERED)"
+  else
+    _fail "found an agent with serena tools to reformat" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+
+  # --- 26f: RED — block-style mcpServers (key present, same line empty) ---
+  # The value lives on following lines, so the single-line parser sees nothing.
+  # That must FAIL loudly, not silently no-op rules (b)/(c).
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^mcpServers:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    awk '
+      /^mcpServers:/ && !done { print "mcpServers:"; print "  - serena"; done=1; next }
+      { print }
+    ' "$victim_md" > "$victim_md.tmp" && mv "$victim_md.tmp" "$victim_md"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on a block-style mcpServers list"
+    assert_out_contains "reports unparseable-mcpservers for $victim" "unparseable-mcpservers: $victim"
+  else
+    _fail "found an agent with an mcpServers: key" "no agents/*.md declares mcpServers:"
+  fi
+  rm -rf "$copy"
+
+  # --- 26g: RED — block-style tools: (key present, same line empty) -------
+  # Mirrors 26f. A block list would otherwise skip rules (c)/(d) entirely,
+  # which is how the origin defect (serena tools without the bootstrap pair)
+  # escaped detection in the first place.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^tools:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    awk '
+      /^tools:/ && !done {
+        line=$0; sub(/^tools:[ \t]*/, "", line)
+        print "tools:"
+        n=split(line, t, /,[ \t]*/)
+        for (i=1; i<=n; i++) if (t[i] != "") print "  - " t[i]
+        done=1; next
+      }
+      { print }
+    ' "$victim_md" > "$victim_md.tmp" && mv "$victim_md.tmp" "$victim_md"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on a block-style tools list"
+    assert_out_contains "reports unparseable-tools for $victim" "unparseable-tools: $victim"
+  else
+    _fail "found an agent with a tools: key" "no agents/*.md declares tools:"
+  fi
+  rm -rf "$copy"
+
+  # --- 26h: RED — 26d's defect in a SPACE-separated tools: line -----------
+  # This is the only spelling that distinguishes the whitespace-aware token
+  # splitter from a comma-only one: under a comma-only _fm_list the whole line
+  # collapses into a single token, rule (d) silently matches nothing, and the
+  # missing bootstrap tool ships. 26e/26f/26g all stay green under that revert,
+  # so this case is the regression guard for it.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^tools:.*mcp__serena__activate_project' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    sed -i.bak -E 's/, ?mcp__serena__activate_project//' "$victim_md" \
+      && sed -i.bak -E '/^tools: /s/, / /g' "$victim_md" \
+      && rm -f "$victim_md.bak"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on a space-separated tools list missing a serena bootstrap tool"
+    assert_out_contains "reports missing-serena-bootstrap for $victim (space-separated)" "missing-serena-bootstrap: $victim -> mcp__serena__activate_project"
+  else
+    _fail "found an agent allowlisting mcp__serena__activate_project" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"

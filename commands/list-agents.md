@@ -37,18 +37,18 @@ Display comprehensive information about all 21 specialized agents in the framewo
 ┌──────────────────────────┬─────────────────┬───────────┬────────────┐
 │ Agent                    │ Category        │ Model     │ Status     │
 ├──────────────────────────┼─────────────────┼───────────┼────────────┤
-│ rust-expert              │ Language        │ Sonnet    │ Ready      │
-│ csharp-expert            │ Language        │ Sonnet    │ Ready      │
-│ go-expert                │ Language        │ Sonnet    │ Ready      │
-│ java-expert              │ Language        │ Sonnet    │ Ready      │
-│ python-expert            │ Language        │ Sonnet    │ Ready      │
-│ typescript-expert        │ Language        │ Sonnet    │ Ready      │
+│ rust-expert              │ Language        │ Opus      │ Ready      │
+│ csharp-expert            │ Language        │ Opus      │ Ready      │
+│ go-expert                │ Language        │ Opus      │ Ready      │
+│ java-expert              │ Language        │ Opus      │ Ready      │
+│ python-expert            │ Language        │ Opus      │ Ready      │
+│ typescript-expert        │ Language        │ Opus      │ Ready      │
 │ mql-trading-dev          │ Language        │ Opus      │ Ready      │
 │ bash-expert              │ Automation      │ Haiku     │ Ready      │
 │ powershell-expert        │ Automation      │ Haiku     │ Ready      │
 │ database-specialist      │ Domain          │ Sonnet    │ Ready      │
 │ frontend-specialist      │ Domain          │ Sonnet    │ Ready      │
-│ security-specialist      │ Domain          │ Sonnet    │ Ready      │
+│ security-specialist      │ Domain          │ Opus      │ Ready      │
 │ uiux-specialist          │ Domain          │ Haiku     │ Ready      │
 │ devops-orchestrator      │ Infrastructure  │ Sonnet    │ Ready      │
 │ system-architect         │ Architecture    │ Opus      │ Ready      │
@@ -56,7 +56,7 @@ Display comprehensive information about all 21 specialized agents in the framewo
 │ comprehensive-analyst    │ Analysis        │ Sonnet    │ Ready      │
 │ code-review-gatekeeper   │ Quality         │ Opus      │ Ready      │
 │ peer-review-critic       │ Quality         │ Opus      │ Ready      │
-│ spec-compliance-reviewer │ Quality         │ Sonnet    │ Ready      │
+│ spec-compliance-reviewer │ Quality         │ Opus      │ Ready      │
 │ technical-docs-writer    │ Documentation   │ Haiku     │ Ready      │
 └──────────────────────────┴─────────────────┴───────────┴────────────┘
 
@@ -94,7 +94,7 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
 📋 BASIC INFORMATION
   • Name: rust-expert
   • Category: Language Expert
-  • Model: sonnet (resolves to claude-sonnet-4-6)
+  • Model: opus (resolves to claude-opus-4-8)
   • Specialization: rust_development_systems_programming
   • File: ${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md
   • Configuration: ${CLAUDE_PLUGIN_ROOT}/claude.json ✓
@@ -131,7 +131,7 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
     {
       "name": "rust-expert",
       "category": "language_expert",
-      "model": "sonnet",
+      "model": "opus",
       "specialization": "rust_development_systems_programming",
       "file_path": "${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md",
       "status": "ready",

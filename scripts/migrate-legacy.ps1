@@ -78,6 +78,7 @@ $frameworkMcpNames = @(
 
 # Protected runtime paths (never delete these)
 $protectedPaths = @(
+    'CLAUDE.md',
     '.state',
     'settings.local.json',
     '.credentials.json',
@@ -194,6 +195,31 @@ Write-Host "Claude config  : $claudeJsonPath"
 Write-Host "Mode           : $(if ($Apply) { 'APPLY (making changes)' } else { 'DRY-RUN (reporting only)' })"
 Write-Host ''
 
+# Paths (repo-relative, forward-slash) that THIS run created or deleted. Section 5's
+# dirtiness guard excludes them so it never aborts on damage this script itself caused,
+# while still detecting genuine pre-existing or concurrent modifications.
+$exitCode = 0
+$selfTouchedPaths = [System.Collections.Generic.HashSet[string]]::new()
+
+# COUPLING: this is called only at mutation sites whose target is NOT already protected
+# (protected paths are excluded from the dirt filter anyway, so registering them is moot).
+# Any future code that creates or deletes a NON-protected path under $claudeHome before
+# Section 5 runs MUST register it here, or the guard will abort on its own handiwork.
+function Add-SelfTouchedPath([string]$fullPath) {
+    $rel = [System.IO.Path]::GetRelativePath($claudeHome, $fullPath)
+    [void]$selfTouchedPaths.Add(($rel -replace '\\', '/').ToLowerInvariant())
+}
+
+# Shared matcher: is a repo-relative path inside the protected set?
+function Test-ProtectedPath([string]$relPath) {
+    foreach ($protected in $protectedPaths) {
+        if ($relPath -ieq $protected -or $relPath -imatch "^$([regex]::Escape($protected))[/\\]") {
+            return $true
+        }
+    }
+    return $false
+}
+
 # ── 1. BACKUPS ─────────────────────────────────────────────────────────────────
 if ($Apply) {
     Write-Host '== Backups =='
@@ -203,6 +229,7 @@ if ($Apply) {
     if (Test-Path $settingsPath) {
         $backup = "$settingsPath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Copy-Item $settingsPath $backup -Force
+        Add-SelfTouchedPath $backup
         Write-Host "  settings.json: $backup"
         $backupsCreated++
     }
@@ -389,6 +416,7 @@ foreach ($hookName in $frameworkHookNames) {
     if (Test-Path $hookPath) {
         if ($Apply) {
             Remove-Item $hookPath -Force
+            Add-SelfTouchedPath $hookPath
             Write-Host "  deleted: $hookName"
         } else {
             Write-Host "  (dry-run: would delete $hookName)"
@@ -563,11 +591,34 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
         $checkoutAbortReason = ''
 
         if ($Apply) {
-            # Check for uncommitted changes
-            $statusOutput = git -C $claudeHome status --porcelain 2>$null
+            # Live dirtiness check, filtered before evaluation. Two classes of noise are
+            # excluded so they never abort the run:
+            #   (a) protected paths - cleanup never touches them, so dirt there is harmless
+            #       (a locally-modified CLAUDE.md is the common personalization);
+            #   (b) paths this run itself created or deleted (tracked in $selfTouchedPaths).
+            # Anything left is genuine pre-existing or concurrent modification -> abort.
+            # -c core.quotepath=false: emit non-ASCII paths literally instead of octal-escaped,
+            # so path matching below cannot be bypassed by encoding.
+            $statusOutput = @(git -C $claudeHome -c core.quotepath=false status --porcelain 2>$null)
             if ($LASTEXITCODE -eq 0 -and $statusOutput) {
-                $checkoutCanProceed = $false
-                $checkoutAbortReason = 'uncommitted changes'
+                $genuineDirt = @()
+                foreach ($line in $statusOutput) {
+                    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                    # Porcelain v1: "XY <path>" ; renames/copies: "XY <old> -> <new>"
+                    $entry = if ($line.Length -gt 3) { $line.Substring(3) } else { '' }
+                    if ($entry -match '\s->\s') { $entry = ($entry -split '\s->\s', 2)[-1] }
+                    $entry = $entry.Trim().Trim('"')
+                    if (-not $entry) { continue }
+                    $norm = ($entry -replace '\\', '/').TrimEnd('/')
+                    if (Test-ProtectedPath $norm) { continue }
+                    if ($selfTouchedPaths.Contains($norm.ToLowerInvariant())) { continue }
+                    $genuineDirt += $norm
+                }
+                if ($genuineDirt.Count -gt 0) {
+                    $checkoutCanProceed = $false
+                    $checkoutAbortReason = 'uncommitted changes'
+                    Write-Host "  dirty (unexpected): $(($genuineDirt | Select-Object -First 5) -join ', ')"
+                }
             }
 
             # Check for unpushed commits
@@ -582,21 +633,19 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
             if (-not $checkoutCanProceed) {
                 Write-Host "  ABORT: Cannot proceed - $checkoutAbortReason in ~/.claude"
                 Write-Host "  Please commit or stash your work, and push any pending commits before running migration again."
+                Write-Warning "Checkout cleanup was SKIPPED ($checkoutAbortReason in $claudeHome). Migration is INCOMPLETE - exiting with code 2."
                 $summary['checkout'] = "aborted ($checkoutAbortReason)"
+                $exitCode = 2
             }
         }
 
-        # Filter out protected paths
+        # Filter out protected paths. Same matcher as the dirt filter above: the guard is
+        # only sound while {paths the dirt filter ignores} is a subset of {paths this
+        # filter protects}, so both must go through Test-ProtectedPath.
+        # git ls-files emits forward-slashed, repo-relative paths already.
         $filesToDelete = @()
         foreach ($file in $trackedFiles) {
-            $isProtected = $false
-            foreach ($protected in $protectedPaths) {
-                if ($file -ieq $protected -or $file -imatch "^$([regex]::Escape($protected))[/\\]") {
-                    $isProtected = $true
-                    break
-                }
-            }
-            if (-not $isProtected) {
+            if (-not (Test-ProtectedPath (($file -replace '\\', '/').TrimEnd('/')))) {
                 $filesToDelete += $file
             }
         }
@@ -615,14 +664,11 @@ if ((Test-Path $gitDir) -and (Test-Path $claudeJsonInHome)) {
                 Where-Object { -not $_.Attributes.HasFlag([System.IO.FileAttributes]::ReparsePoint) } |
                 Sort-Object -Property FullName -Descending
             foreach ($dir in $dirs) {
-                $isProtected = $false
+                # GetRelativePath returns backslashed segments on Windows; normalize to the
+                # forward-slash convention Test-ProtectedPath is fed everywhere else.
                 $relPath = [System.IO.Path]::GetRelativePath($claudeHome, $dir.FullName)
-                foreach ($protected in $protectedPaths) {
-                    if ($relPath -ieq $protected -or $relPath -imatch "^$([regex]::Escape($protected))[/\\]") {
-                        $isProtected = $true
-                        break
-                    }
-                }
+                $relPath = ($relPath -replace '\\', '/').TrimEnd('/')
+                $isProtected = Test-ProtectedPath $relPath
                 if (-not $isProtected -and (Test-Path $dir) -and @(Get-ChildItem $dir -ErrorAction SilentlyContinue).Count -eq 0) {
                     Remove-Item $dir -Force -ErrorAction SilentlyContinue
                 }
@@ -670,5 +716,10 @@ Write-Host ''
 Write-Host '== Summary =='
 foreach ($k in $summary.Keys) { Write-Host ("  {0,-15} {1}" -f "$($k):", $summary[$k]) }
 Write-Host ''
-Write-Host 'Migration complete.'
+if ($exitCode -eq 0) {
+    Write-Host 'Migration complete.'
+} else {
+    Write-Host 'Migration INCOMPLETE - see warnings above.'
+}
 Write-Host ''
+exit $exitCode

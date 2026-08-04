@@ -11,7 +11,7 @@ Systematic diagnosis of agent configuration problems in this framework. Every ch
 
 Configuration lives in the **agentic-framework plugin** (typically at `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/`) and is overridden by user-scope copies in `~/.claude/agents/`, `~/.claude/commands/`, and `~/.claude/skills/`:
 
-- `agents/<name>.md` — agent definition. YAML frontmatter carries `name` (must equal the filename), `description` (the routing trigger text Claude Code matches tasks against), `model` (tier shorthand, e.g. `sonnet`), and `color`. The body is the agent's system prompt.
+- `agents/<name>.md` — agent definition. YAML frontmatter carries `name` (must equal the filename), `description` (the routing trigger text Claude Code matches tasks against), `model` (tier shorthand, e.g. `sonnet`), `color`, and the optional `effort` (reasoning effort: low|medium|high|xhigh|max), `mcpServers` (list of MCP servers available to the agent; per Claude Code's documentation, not applied to plugin-shipped agents), and `tools` (comma-separated explicit tool allowlist). The body is the agent's system prompt.
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/agents/<name>.md`
   - **Override location** (if present): `~/.claude/agents/<name>.md` (takes priority)
 - `claude.json` — the registry. `.sub_agents` maps each agent to its config (including `model` shorthand and `focus`); `.agent_categories` partitions the roster into the canonical categories; `.consistency.model_shorthand_map` defines the only legal model values; `.consistency.deprecated_agent_names` lists dead names that must never be referenced.

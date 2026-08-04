@@ -24,7 +24,7 @@ The migration script:
 1. **De-registers framework hooks** from `settings.json` (framework hook registrations only; your custom hooks are preserved)
 2. **Removes framework hook script files** from `~/.claude/hooks/`
 3. **Optionally removes framework MCP servers** from user-scope `.claude.json` (requires explicit `-RemoveMcp` consent)
-4. **Cleans up git-tracked files** if `~/.claude` is this repo clone (protected runtime paths like `.state`, `settings.local.json`, `projects`, `todos`, `memory`, `plugins` are always preserved)
+4. **Cleans up git-tracked files** if `~/.claude` is this repo clone (protected runtime paths like `.state`, `settings.local.json`, `CLAUDE.md`, `projects`, `todos`, `memory`, `plugins` are always preserved)
 5. **Reports next steps** for plugin installation
 
 ## Recommended workflow
@@ -85,13 +85,15 @@ When `-Apply` is used and `~/.claude` is detected as a git clone, the migration 
 
 This ensures you don't lose work accidentally. Commit and push any pending changes, then run migration again.
 
+Exit codes: 0 = migration complete (or dry-run), 2 = checkout cleanup aborted (genuine uncommitted changes or unpushed commits); hook/MCP removals from the earlier steps have already been applied by then.
+
 ## Protected paths
 
 These paths are NEVER deleted, even if they're git-tracked in `~/.claude`:
 
 ```
 .state, settings.local.json, .credentials.json, settings.json, .claude.json,
-projects, todos, memory, statsig, ide, shell-snapshots, plugins, backup
+CLAUDE.md, projects, todos, memory, statsig, ide, shell-snapshots, plugins, backup
 ```
 
 ## Examples

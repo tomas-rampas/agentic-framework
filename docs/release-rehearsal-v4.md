@@ -8,6 +8,8 @@
 
 **Note:** The marketplace name was subsequently changed in a later rename commit. The commands below using the old marketplace name are preserved as a historical record of the v4.0.0 rehearsal; they are not for use with current versions.
 
+**Status (2026-08-04):** This document is the historical record of the 2026-07-25 v4.0.0 rehearsal. Since then, the validator battery has grown to 15 checks, and frontmatter canonicalization plus the v4.1.0 bump landed 2026-08-04. Checkboxes below are left untouched as the historical record.
+
 ## Executed Checklist
 
 ### 1. Version Consistency (Check 13)

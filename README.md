@@ -153,7 +153,7 @@ If you have this framework cloned into `~/.claude`, migrate to the plugin distri
 /agentic-framework:migrate-legacy -Apply
 ```
 
-**Note**: Do not run the migration on dirty working trees or unpushed commits — it will refuse to proceed.
+**Note**: Do not run the migration on dirty working trees or unpushed commits — it will refuse to proceed. Exit codes: 0 = migration complete (or dry-run), 2 = checkout cleanup aborted (genuine uncommitted changes or unpushed commits); hook/MCP removals from the earlier steps have already been applied by then.
 
 ---
 
@@ -485,5 +485,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 10 Commands • v4.0.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 10 Commands • v4.1.0**
 <!-- END GENERATED: framework-stats -->
