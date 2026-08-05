@@ -19,11 +19,16 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Check for hardcoded secrets.
+# The VALUE must be a LITERAL: a value whose first character is '$' is a shell
+# expansion — "$SOME_VAR" or "$(command ...)" — and a hardcoded secret is by
+# definition not an expansion. Encoding that in the pattern ([^\"'$] for the
+# first value character) stops the rule from flagging ordinary code such as
+# tool_tokens="$(...)", which cost a CI round with nothing to fix.
 # Exception filters (in order): placeholder values, test fixtures, documented
 # examples, env-var expansion, template placeholders ({{ ... }}), and lines
 # explicitly marked as educational anti-patterns in agent prompts.
 _secret_scan() {
-    grep -r --exclude-dir=.git -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"']{8,}[\"']" . \
+    grep -r --exclude-dir=.git -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"'\$][^\"']{7,}[\"']" . \
         | grep -v "your-api-key" \
         | grep -v "test123" \
         | grep -v -i "example" \
