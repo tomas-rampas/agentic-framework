@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 # Check for hardcoded secrets.
 # The VALUE must be a LITERAL: a value whose first character is '$' is a shell
 # expansion — "$SOME_VAR" or "$(command ...)" — and a hardcoded secret is by
-# definition not an expansion. Encoding that in the pattern ([^\"'$] for the
+# definition not an expansion. Encoding that in the pattern ([^"'$] for the
 # first value character) stops the rule from flagging ordinary code such as
 # tool_tokens="$(...)", which cost a CI round with nothing to fix.
 # Exception filters (in order): placeholder values, test fixtures, documented
@@ -71,9 +71,9 @@ fi
 # Check for private keys
 echo ""
 echo "🔍 Checking for private keys..."
-if grep -r --exclude-dir=.git "-----BEGIN.*PRIVATE KEY-----" . > /dev/null 2>&1; then
+if grep -r --exclude-dir=.git --exclude="security-check.sh" -e "-----BEGIN.*PRIVATE KEY-----" . > /dev/null 2>&1; then
     echo -e "${RED}❌ Private keys found:${NC}"
-    grep -r --exclude-dir=.git "-----BEGIN.*PRIVATE KEY-----" .
+    grep -r --exclude-dir=.git --exclude="security-check.sh" -e "-----BEGIN.*PRIVATE KEY-----" .
     exit 1
 else
     echo -e "${GREEN}✅ No private keys detected${NC}"
