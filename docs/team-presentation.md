@@ -331,15 +331,17 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 
 ## 5. By the numbers
 
+<!-- BEGIN GENERATED: team-presentation-stats -->
 | | |
 |---|---|
 | Specialized agents | 21 (7 categories, 3 model tiers) |
-| Hooks | 4 registered — 1 blocking gate, 3 advisory |
+| Hooks | 4 .ps1/.sh implementation pairs |
 | Skills | 9 loadable knowledge modules |
 | Commands | 10 management commands |
 | MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
 | Validator checks | 15, all derived at runtime |
-| Test assertions | 80 (consistency) + 44+ (hook behavior) + 103 (migration) |
-| CI jobs | 4, including Windows and macOS legs |
+| Test suites | 7 automated suites under tests/ |
+| CI jobs | 4 (consistency, lint, hooks-macos, hooks-windows) |
+<!-- END GENERATED: team-presentation-stats -->
 
 **Takeaway:** agents write the code · hooks make quality non-negotiable · the consistency system keeps the whole thing honest.

@@ -62,6 +62,7 @@ fi
 BLOCKS=(
   "commands/list-agents.md|list-agents-summary|render_list_agents_summary"
   "README.md|framework-stats|render_framework_stats"
+  "docs/team-presentation.md|team-presentation-stats|render_team_presentation_stats"
 )
 
 usage() {

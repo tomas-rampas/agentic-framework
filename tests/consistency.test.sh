@@ -520,6 +520,32 @@ section "[12] Generator staleness: mutate README framework-stats region -> --che
 }
 
 # ===========================================================================
+# CASE 12b - team-presentation-stats staleness: mutate a row inside the
+#            GENERATED region of the "By the numbers" table -> --check (and the
+#            validator via check 11) fail. The whole table is ONE region: an
+#            HTML comment between table rows would end the table in GFM.
+# ===========================================================================
+section "[12b] Generator staleness: mutate team-presentation-stats region -> --check non-zero"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  tp_md="$copy/docs/team-presentation.md"
+  awk '
+    /<!-- BEGIN GENERATED: team-presentation-stats -->/ { inside=1; print; next }
+    /<!-- END GENERATED: team-presentation-stats -->/   { inside=0; print; next }
+    inside && /Specialized agents/ { sub(/\| [0-9]+ \(/, "| 99 ("); print; next }
+    { print }
+  ' "$tp_md" > "$tp_md.tmp" && mv "$tp_md.tmp" "$tp_md"
+  run_generate "$copy" --check
+  assert_rc_nonzero "generate-docs.sh --check fails on a stale team-presentation-stats block"
+  assert_out_contains "reports STALE for team-presentation-stats" "STALE"
+  # And the validator (check 11 wires in --check) must also fail.
+  run_validate "$copy" 11
+  assert_rc_nonzero "validator (check 11) also fails on the stale stats table"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # CASE 13 - Flat skill file: a loose skills/*.md is unloadable -> check 12 fails.
 # ===========================================================================
 section "[13] Flat skill file: add skills/rogue.md -> non-zero (check 12)"
@@ -913,6 +939,37 @@ section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared too
     assert_out_contains "reports missing-serena-bootstrap for $victim (space-separated)" "missing-serena-bootstrap: $victim -> mcp__serena__activate_project"
   else
     _fail "found an agent allowlisting mcp__serena__activate_project" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+
+  # --- 26i: GREEN — example frontmatter in an agent's BODY is not config ---
+  # Check 15 extracts the FIRST '---'-fenced frontmatter block once per file and
+  # parses only that. An agent prompt that DOCUMENTS example frontmatter in a
+  # fenced code block must therefore be ignored entirely. Under the old
+  # whole-file `grep -m1` read, an `effort: bogus` line anywhere in the body
+  # could be picked up as that agent's own configuration.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^effort:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    cat >> "$victim_md" <<'EOF'
+
+## Example (documentation only - NOT this agent's configuration)
+
+```markdown
+---
+name: some-example-agent
+effort: bogus
+mcpServers: [zzz-nonexistent]
+---
+```
+EOF
+    run_validate "$copy" 15
+    assert_rc_zero "example frontmatter in the BODY is ignored by check 15 ($victim)"
+    assert_out_contains "check 15 reports PASS with body example frontmatter" "RESULT: PASS (FILTERED)"
+  else
+    _fail "found an agent with an effort: key" "no agents/*.md declares effort:"
   fi
   rm -rf "$copy"
 }
