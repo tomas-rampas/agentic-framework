@@ -1067,15 +1067,30 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   SERENA_BOOTSTRAP="mcp__serena__activate_project mcp__serena__initial_instructions"
 
   # _fm_block <file> - the contents of the FIRST '---'-fenced frontmatter block
-  # only (exclusive of both fences). Emits nothing when the file does not open
-  # with a '---' fence. Extracting once per file and matching against that text
-  # is what keeps BODY content out of the parse: an agent prompt that documents
-  # example frontmatter in a fenced code block must never be read as this
-  # agent's own configuration.
+  # only (exclusive of both fences). Extracting once per file and matching
+  # against that text is what keeps BODY content out of the parse: an agent
+  # prompt that documents example frontmatter in a fenced code block must never
+  # be read as this agent's own configuration.
+  #
+  # Malformation is LOUD, never silent. Returning empty on a malformed file
+  # would make all four rules no-op and the agent would be counted as valid —
+  # the same vacuous-pass failure mode the block/flow-list handling already
+  # rejects. So:
+  #   - the OPENING fence is matched as tolerantly as the closing one
+  #     (`---` with optional trailing whitespace) and a leading UTF-8 BOM is
+  #     stripped first, so a well-formed-but-untidy file is not misreported;
+  #   - anything else on line 1 (prose, a missing fence) exits 3;
+  #   - an UNTERMINATED block exits 4 rather than returning the whole body,
+  #     which would reopen the body-as-configuration defect.
+  # Both non-zero exits are surfaced by the caller as unparseable-frontmatter.
+  #
   # NOTE: check 7 deliberately retains its legacy whole-file `grep -m1` read for
   # the `model:` key; changing it is out of scope for this hardening pass.
   _fm_block() {
-    awk 'NR==1 { if ($0 != "---") exit; next } /^---[[:space:]]*$/ { exit } { print }' "$1"
+    awk 'NR==1 { sub(/^\xef\xbb\xbf/, ""); if ($0 !~ /^---[[:space:]]*$/) exit 3; next }
+         /^---[[:space:]]*$/ { closed=1; exit }
+         { print }
+         END { if (!closed) exit 4 }' "$1"
   }
   # _fm_value <frontmatter-text> <key> - the single-line frontmatter value for
   # <key>, with any trailing YAML comment and surrounding whitespace/quotes
@@ -1112,11 +1127,19 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   shopt -s nullglob
   for md in "$FACTS_AGENTS_DIR"/*.md; do
     agent="$(basename "$md" .md)"
-    fm_checked=$((fm_checked + 1))
 
     # Parse the FIRST frontmatter block once; every key lookup below reads that
     # text, never the file, so body content can never be parsed as config.
-    fm_text="$(_fm_block "$md")"
+    # A malformed or unterminated block is a blocking failure, NOT a skip: the
+    # agent is deliberately not counted toward the "N valid" pass line, so that
+    # line can never be inflated by files nothing was actually validated on.
+    if ! fm_text="$(_fm_block "$md")"; then
+      ok=0
+      fail "$agent: agents/$agent.md has no well-formed, terminated '---' frontmatter block"
+      detail "unparseable-frontmatter: $agent"
+      continue
+    fi
+    fm_checked=$((fm_checked + 1))
 
     fm_effort="$(_fm_value "$fm_text" effort)"
     fm_mcp="$(_fm_value "$fm_text" mcpServers)"

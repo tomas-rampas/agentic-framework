@@ -139,6 +139,14 @@ render_framework_stats() {
 #     CI jobs                 -> top-level keys under `jobs:` in
 #                                .github/workflows/consistency.yml
 #
+#   FRESHNESS COUPLING (know this before editing the repo): unlike the other two
+#   blocks, this one reads well beyond claude.json — hooks/, tests/,
+#   .github/workflows/consistency.yml and the validator SOURCE all feed rows. So
+#   adding a hook pair, a test suite, a CI job, or a check makes this block STALE
+#   until `generate-docs.sh --write` is re-run. In particular a test harness that
+#   MUTATES tests/ or the workflow in a working copy will see a STALE report that
+#   is correct, not spurious-looking noise to be suppressed.
+#
 #   The old "Test assertions" row was DELETED rather than generated: assertion
 #   totals are runtime facts of a suite execution, so no static source can derive
 #   them — which is exactly why that row drifted repeatedly. The derived
@@ -175,8 +183,10 @@ render_team_presentation_stats() {
 
   # Validator check count: every check body is entered through a `_check_on <n>`
   # call, so that call registry IS the check list. Counting it means adding a
-  # check updates this row automatically.
-  checks="$(grep -cE '^_check_on [0-9]+ ' "$root/scripts/validate-consistency.sh")" || return 1
+  # check updates this row automatically. DISTINCT numbers, not call sites: a
+  # check accidentally registered twice must not inflate the row.
+  checks="$(grep -oE '^_check_on [0-9]+ ' "$root/scripts/validate-consistency.sh" \
+            | awk '{print $2}' | LC_ALL=C sort -u | grep -c .)" || return 1
 
   suites=0
   shopt -s nullglob
@@ -191,7 +201,13 @@ render_team_presentation_stats() {
       gsub(/^  |:[[:space:]]*$/, "", $0); printf "%s%s", (n++ ? ", " : ""), $0
     }
   ' "$root/.github/workflows/consistency.yml")" || return 1
-  job_count="$(printf '%s' "$job_list" | awk -F', ' '{print ($0 == "" ? 0 : NF)}')"
+  # An empty job list yields "" from awk, never "0" — so guard explicitly rather
+  # than relying on a field count of the empty string.
+  if [[ -z "$job_list" ]]; then
+    job_count=0
+  else
+    job_count="$(printf '%s' "$job_list" | awk -F', ' '{print NF}')"
+  fi
 
   printf '| | |\n'
   printf '|---|---|\n'

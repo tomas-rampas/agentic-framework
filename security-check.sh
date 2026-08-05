@@ -24,6 +24,12 @@ NC='\033[0m' # No Color
 # definition not an expansion. Encoding that in the pattern ([^"'$] for the
 # first value character) stops the rule from flagging ordinary code such as
 # tool_tokens="$(...)", which cost a CI round with nothing to fix.
+# ACCEPTED LOSS: a real literal that happens to START with '$' — a crypt/bcrypt
+# hash such as "$2y$10$..." — is no longer matched by this generic rule. That is
+# a deliberate trade: the rule was producing false positives on ordinary code at
+# a far higher rate than it would ever catch a $-leading literal, and the
+# dedicated AWS / GitHub-token / private-key / connection-string rules below are
+# unaffected.
 # Exception filters (in order): placeholder values, test fixtures, documented
 # examples, env-var expansion, template placeholders ({{ ... }}), and lines
 # explicitly marked as educational anti-patterns in agent prompts.

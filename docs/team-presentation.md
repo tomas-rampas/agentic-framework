@@ -281,14 +281,14 @@ In config-as-code, docs and reality drift apart silently. Here, drift **fails th
 %%{init: {"theme": "base", "themeVariables": {"background": "transparent", "actorBkg": "#cde2fb", "actorBorder": "#2a78d6", "actorTextColor": "#0b0b0b", "signalColor": "#898781", "signalTextColor": "#898781", "loopTextColor": "#898781", "labelBoxBkgColor": "#cde2fb", "labelBoxBorderColor": "#2a78d6", "labelTextColor": "#0b0b0b", "noteBkgColor": "#fdeec9", "noteBorderColor": "#eda100", "noteTextColor": "#0b0b0b"}}}%%
 sequenceDiagram
     participant PR as PR / push
-    participant CI as CI — 3 jobs
+    participant CI as CI
     participant V as validate-consistency.sh
     participant SOT as claude.json + filesystem
 
     PR->>CI: commit lands
-    CI->>V: run the 15-check battery
+    CI->>V: run the full validator battery
     V->>SOT: derive all truth at runtime (no hardcoded lists)
-    SOT-->>V: registry · rosters · hooks · skills · counts (15 checks)
+    SOT-->>V: registry · rosters · hooks · skills · counts
     V->>V: compare docs & generated blocks against derived truth
     alt any drift found
         V-->>CI: FAIL (names the exact file & line)
