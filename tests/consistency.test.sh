@@ -157,7 +157,7 @@ RUN_RC=0
 run_validate() {
   # $2 (optional): VALIDATE_CHECKS filter — run only the named check(s).
   # Red-path cases pass the single check they target: the full battery costs
-  # ~10x more per run (all 14 checks incl. the generate-docs pass), and a
+  # ~10x more per run (all 15 checks incl. the generate-docs pass), and a
   # filtered failure assertion is sharper — it proves the TARGET check fires,
   # not merely that the mutation broke something somewhere. Case 1 (happy
   # path) and case 25 (filter sanity) pin the full-battery and filter
@@ -439,13 +439,23 @@ section "[10] Idempotency: generate-docs.sh --write on a clean copy is a no-op"
   copy="$(make_copy)"
   _verify_copy "$copy"
   la="$copy/commands/list-agents.md"
+  tp="$copy/docs/team-presentation.md"
   cp "$la" "$copy/.la.before"
+  cp "$tp" "$copy/.tp.before"
   run_generate "$copy" --write
   assert_rc_zero "generate-docs.sh --write succeeds on a clean copy"
   if cmp -s "$copy/.la.before" "$la"; then
     _pass "list-agents.md byte-identical before/after --write (idempotent)"
   else
     _fail "list-agents.md changed after --write" "expected no diff on a clean copy"
+  fi
+  # team-presentation-stats derives from more sources than any other block
+  # (hooks/, tests/, the CI workflow, the validator source), so its round-trip
+  # is the one most worth pinning byte-for-byte.
+  if cmp -s "$copy/.tp.before" "$tp"; then
+    _pass "team-presentation.md byte-identical before/after --write (idempotent)"
+  else
+    _fail "team-presentation.md changed after --write" "expected no diff on a clean copy"
   fi
   # Belt-and-suspenders: --check must report FRESH after the no-op write.
   run_generate "$copy" --check
@@ -515,7 +525,36 @@ section "[12] Generator staleness: mutate README framework-stats region -> --che
   ' "$rm_md" > "$rm_md.tmp" && mv "$rm_md.tmp" "$rm_md"
   run_generate "$copy" --check
   assert_rc_nonzero "generate-docs.sh --check fails on a stale framework-stats block"
-  assert_out_contains "reports STALE for framework-stats" "STALE"
+  # Needle pinned to the exact non-TTY line (`STALE <rel> [<id>]`), so the
+  # assertion cannot be satisfied by a STALE report about a DIFFERENT block.
+  assert_out_contains "reports STALE for framework-stats" "STALE README.md [framework-stats]"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# CASE 12b - team-presentation-stats staleness: mutate a row inside the
+#            GENERATED region of the "By the numbers" table -> --check (and the
+#            validator via check 11) fail. The whole table is ONE region: an
+#            HTML comment between table rows would end the table in GFM.
+# ===========================================================================
+section "[12b] Generator staleness: mutate team-presentation-stats region -> --check non-zero"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  tp_md="$copy/docs/team-presentation.md"
+  awk '
+    /<!-- BEGIN GENERATED: team-presentation-stats -->/ { inside=1; print; next }
+    /<!-- END GENERATED: team-presentation-stats -->/   { inside=0; print; next }
+    inside && /Specialized agents/ { sub(/\| [0-9]+ \(/, "| 99 ("); print; next }
+    { print }
+  ' "$tp_md" > "$tp_md.tmp" && mv "$tp_md.tmp" "$tp_md"
+  run_generate "$copy" --check
+  assert_rc_nonzero "generate-docs.sh --check fails on a stale team-presentation-stats block"
+  assert_out_contains "reports STALE for team-presentation-stats" \
+    "STALE docs/team-presentation.md [team-presentation-stats]"
+  # And the validator (check 11 wires in --check) must also fail.
+  run_validate "$copy" 11
+  assert_rc_nonzero "validator (check 11) also fails on the stale stats table"
   rm -rf "$copy"
 }
 
@@ -913,6 +952,69 @@ section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared too
     assert_out_contains "reports missing-serena-bootstrap for $victim (space-separated)" "missing-serena-bootstrap: $victim -> mcp__serena__activate_project"
   else
     _fail "found an agent allowlisting mcp__serena__activate_project" "no suitable agents/*.md victim"
+  fi
+  rm -rf "$copy"
+
+  # --- 26i: GREEN — example frontmatter in an agent's BODY is not config ---
+  # Check 15 extracts the FIRST '---'-fenced frontmatter block once per file and
+  # parses only that, so an agent prompt that DOCUMENTS example frontmatter in a
+  # fenced code block is ignored entirely.
+  #
+  # The DISCRIMINATING key here is mcpServers, and the victim is selected for it:
+  # an `effort:` body line proves nothing, because the old whole-file `grep -m1`
+  # stops at the REAL frontmatter's effort: line and never reaches the body. Only
+  # a key the victim does NOT declare in its own frontmatter reaches the body
+  # under that read — where `mcpServers: [zzz-nonexistent]` would be parsed as
+  # this agent's config and fail rule (b). Hence: victim = an agent WITHOUT an
+  # mcpServers: key (grep -L), and the precondition is asserted loudly rather
+  # than allowed to silently defang the case.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -LE '^mcpServers:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    if grep -qE '^mcpServers:' "$victim_md"; then
+      _fail "26i victim must NOT declare mcpServers:" "$victim declares it; case would not discriminate"
+    fi
+    cat >> "$victim_md" <<'EOF'
+
+## Example (documentation only - NOT this agent's configuration)
+
+```markdown
+---
+name: some-example-agent
+effort: bogus
+mcpServers: [zzz-nonexistent]
+---
+```
+EOF
+    run_validate "$copy" 15
+    assert_rc_zero "example frontmatter in the BODY is ignored by check 15 ($victim)"
+    assert_out_contains "check 15 reports PASS with body example frontmatter" "RESULT: PASS (FILTERED)"
+  else
+    _fail "found an agent WITHOUT an mcpServers: key" "every agents/*.md declares mcpServers:; 26i cannot discriminate"
+  fi
+  rm -rf "$copy"
+
+  # --- 26j: RED — unterminated opening fence -------------------------------
+  # Companion to 26i. Returning the whole body on an unterminated block would
+  # reopen exactly the defect 26i guards against, and returning EMPTY would make
+  # all four rules no-op while still counting the agent as valid. Malformation
+  # must be loud: check 15 fails with unparseable-frontmatter.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -lE '^effort:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    # Drop the CLOSING fence only; line 1 stays '---', so the block never ends.
+    awk 'NR==1 { print; next }
+         /^---[[:space:]]*$/ && !dropped { dropped=1; next }
+         { print }' "$victim_md" > "$victim_md.tmp" && mv "$victim_md.tmp" "$victim_md"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails on an unterminated frontmatter fence"
+    assert_out_contains "reports unparseable-frontmatter for $victim" "unparseable-frontmatter: $victim"
+  else
+    _fail "found an agent with an effort: key" "no agents/*.md declares effort:"
   fi
   rm -rf "$copy"
 }

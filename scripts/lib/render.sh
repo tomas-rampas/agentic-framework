@@ -120,6 +120,108 @@ render_framework_stats() {
 }
 
 # ---------------------------------------------------------------------------
+# Block: team-presentation-stats
+#   Renders the ENTIRE "By the numbers" table in docs/team-presentation.md,
+#   header row and separator included. The whole table is one region on purpose:
+#   an HTML comment placed between two markdown table rows terminates the table
+#   in GFM, so per-row markers are not an option.
+#
+#   Every row is derived at runtime:
+#     agents/skills/commands  -> fact_counts (claude.json + filesystem)
+#     categories / tiers      -> claude.json .agent_categories / .sub_agents[].model
+#     hook pairs              -> hooks/<name>.ps1 that have a matching <name>.sh
+#     MCP servers             -> mcp-plugin/.mcp.json .mcpServers (keys_unsorted,
+#                                so the listed order follows the file)
+#     validator checks        -> the `_check_on <n>` call registry inside
+#                                scripts/validate-consistency.sh (self-registering;
+#                                nothing is hardcoded)
+#     test suites             -> tests/*.test.* files
+#     CI jobs                 -> top-level keys under `jobs:` in
+#                                .github/workflows/consistency.yml
+#
+#   FRESHNESS COUPLING (know this before editing the repo): unlike the other two
+#   blocks, this one reads well beyond claude.json — hooks/, tests/,
+#   .github/workflows/consistency.yml and the validator SOURCE all feed rows. So
+#   adding a hook pair, a test suite, a CI job, or a check makes this block STALE
+#   until `generate-docs.sh --write` is re-run. In particular a test harness that
+#   MUTATES tests/ or the workflow in a working copy will see a STALE report that
+#   is correct, not spurious-looking noise to be suppressed.
+#
+#   The old "Test assertions" row was DELETED rather than generated: assertion
+#   totals are runtime facts of a suite execution, so no static source can derive
+#   them — which is exactly why that row drifted repeatedly. The derived
+#   "Test suites" row replaces it.
+#
+#   Emitted WITHOUT a trailing newline (the markers layer adds exactly one).
+# ---------------------------------------------------------------------------
+render_team_presentation_stats() {
+  local root="$FACTS_REPO_ROOT"
+  local agents skills commands categories tiers hook_pairs
+  local mcp_count mcp_list checks suites job_count job_list
+
+  agents="$(fact_count agents)"     || return 1
+  skills="$(fact_count skills)"     || return 1
+  commands="$(fact_count commands)" || return 1
+
+  categories="$(_facts_jq -r '.agent_categories | keys | length' "$FACTS_CLAUDE_JSON")" || return 1
+  tiers="$(_facts_jq -r '[.sub_agents[].model] | unique | length' "$FACTS_CLAUDE_JSON")" || return 1
+
+  # Hook PAIRS: a .ps1 implementation with the matching .sh beside it. dispatch.sh
+  # has no .ps1 counterpart and is correctly not counted as a pair.
+  local f base
+  hook_pairs=0
+  shopt -s nullglob
+  for f in "$FACTS_HOOKS_DIR"/*.ps1; do
+    base="${f%.ps1}"
+    [[ -f "$base.sh" ]] && hook_pairs=$((hook_pairs + 1))
+  done
+  shopt -u nullglob
+
+  local mcp_json="$root/mcp-plugin/.mcp.json"
+  mcp_count="$(_facts_jq -r '.mcpServers // {} | keys | length' "$mcp_json")" || return 1
+  mcp_list="$(_facts_jq -r '.mcpServers // {} | keys_unsorted | join(", ")' "$mcp_json")" || return 1
+
+  # Validator check count: every check body is entered through a `_check_on <n>`
+  # call, so that call registry IS the check list. Counting it means adding a
+  # check updates this row automatically. DISTINCT numbers, not call sites: a
+  # check accidentally registered twice must not inflate the row.
+  checks="$(grep -oE '^_check_on [0-9]+ ' "$root/scripts/validate-consistency.sh" \
+            | awk '{print $2}' | LC_ALL=C sort -u | grep -c .)" || return 1
+
+  suites=0
+  shopt -s nullglob
+  for f in "$root"/tests/*.test.*; do suites=$((suites + 1)); done
+  shopt -u nullglob
+
+  # Top-level keys under `jobs:` in the CI workflow (two-space indented, bare key).
+  job_list="$(awk '
+    /^jobs:/            { in_jobs = 1; next }
+    in_jobs && /^[^[:space:]#]/ { in_jobs = 0 }
+    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
+      gsub(/^  |:[[:space:]]*$/, "", $0); printf "%s%s", (n++ ? ", " : ""), $0
+    }
+  ' "$root/.github/workflows/consistency.yml")" || return 1
+  # An empty job list yields "" from awk, never "0" — so guard explicitly rather
+  # than relying on a field count of the empty string.
+  if [[ -z "$job_list" ]]; then
+    job_count=0
+  else
+    job_count="$(printf '%s' "$job_list" | awk -F', ' '{print NF}')"
+  fi
+
+  printf '| | |\n'
+  printf '|---|---|\n'
+  printf '| Specialized agents | %s (%s categories, %s model tiers) |\n' "$agents" "$categories" "$tiers"
+  printf '| Hooks | %s .ps1/.sh implementation pairs |\n' "$hook_pairs"
+  printf '| Skills | %s loadable knowledge modules |\n' "$skills"
+  printf '| Commands | %s management commands |\n' "$commands"
+  printf '| MCP servers | %s (%s) |\n' "$mcp_count" "$mcp_list"
+  printf '| Validator checks | %s, all derived at runtime |\n' "$checks"
+  printf '| Test suites | %s automated suites under tests/ |\n' "$suites"
+  printf '| CI jobs | %s (%s) |' "$job_count" "$job_list"
+}
+
+# ---------------------------------------------------------------------------
 # render_focus <agent>
 #   Helper exposing the single-sourced focus string for one agent (from
 #   claude.json .sub_agents[<agent>].focus). Returns non-zero if absent.

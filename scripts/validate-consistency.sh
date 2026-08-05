@@ -1066,16 +1066,42 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   VALID_EFFORTS="low medium high xhigh max"
   SERENA_BOOTSTRAP="mcp__serena__activate_project mcp__serena__initial_instructions"
 
-  # _fm_value <file> <key> - the single-line frontmatter value for <key>, with
-  # any trailing YAML comment and surrounding whitespace/quotes removed.
-  # Prints nothing when the key is absent OR present with an empty value; use
-  # _fm_has_key to tell those two apart.
+  # _fm_block <file> - the contents of the FIRST '---'-fenced frontmatter block
+  # only (exclusive of both fences). Extracting once per file and matching
+  # against that text is what keeps BODY content out of the parse: an agent
+  # prompt that documents example frontmatter in a fenced code block must never
+  # be read as this agent's own configuration.
+  #
+  # Malformation is LOUD, never silent. Returning empty on a malformed file
+  # would make all four rules no-op and the agent would be counted as valid —
+  # the same vacuous-pass failure mode the block/flow-list handling already
+  # rejects. So:
+  #   - the OPENING fence is matched as tolerantly as the closing one
+  #     (`---` with optional trailing whitespace) and a leading UTF-8 BOM is
+  #     stripped first, so a well-formed-but-untidy file is not misreported;
+  #   - anything else on line 1 (prose, a missing fence) exits 3;
+  #   - an UNTERMINATED block exits 4 rather than returning the whole body,
+  #     which would reopen the body-as-configuration defect.
+  # Both non-zero exits are surfaced by the caller as unparseable-frontmatter.
+  #
+  # NOTE: check 7 deliberately retains its legacy whole-file `grep -m1` read for
+  # the `model:` key; changing it is out of scope for this hardening pass.
+  _fm_block() {
+    awk 'NR==1 { sub(/^\xef\xbb\xbf/, ""); if ($0 !~ /^---[[:space:]]*$/) exit 3; next }
+         /^---[[:space:]]*$/ { closed=1; exit }
+         { print }
+         END { if (!closed) exit 4 }' "$1"
+  }
+  # _fm_value <frontmatter-text> <key> - the single-line frontmatter value for
+  # <key>, with any trailing YAML comment and surrounding whitespace/quotes
+  # removed. Prints nothing when the key is absent OR present with an empty
+  # value; use _fm_has_key to tell those two apart.
   _fm_value() {
-    grep -m1 -E "^$2:[[:space:]]*" "$1" \
+    printf '%s\n' "${1-}" | grep -m1 -E "^$2:[[:space:]]*" \
       | sed -E "s/^$2:[[:space:]]*//; s/[[:space:]]*#.*\$//; s/[[:space:]]+\$//; s/^[\"']//; s/[\"']\$//"
   }
-  # _fm_has_key <file> <key> - 0 if the key line is present at all.
-  _fm_has_key() { grep -qE "^$2:" "$1"; }
+  # _fm_has_key <frontmatter-text> <key> - 0 if the key line is present at all.
+  _fm_has_key() { printf '%s\n' "${1-}" | grep -qE "^$2:"; }
 
   # _fm_list <value> - normalise a single-line list value into one token per
   # line. Splits on commas AND whitespace (no tool or server name contains
@@ -1101,11 +1127,23 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   shopt -s nullglob
   for md in "$FACTS_AGENTS_DIR"/*.md; do
     agent="$(basename "$md" .md)"
+
+    # Parse the FIRST frontmatter block once; every key lookup below reads that
+    # text, never the file, so body content can never be parsed as config.
+    # A malformed or unterminated block is a blocking failure, NOT a skip: the
+    # agent is deliberately not counted toward the "N valid" pass line, so that
+    # line can never be inflated by files nothing was actually validated on.
+    if ! fm_text="$(_fm_block "$md")"; then
+      ok=0
+      fail "$agent: agents/$agent.md has no well-formed, terminated '---' frontmatter block"
+      detail "unparseable-frontmatter: $agent"
+      continue
+    fi
     fm_checked=$((fm_checked + 1))
 
-    fm_effort="$(_fm_value "$md" effort)"
-    fm_mcp="$(_fm_value "$md" mcpServers)"
-    fm_tools="$(_fm_value "$md" tools)"
+    fm_effort="$(_fm_value "$fm_text" effort)"
+    fm_mcp="$(_fm_value "$fm_text" mcpServers)"
+    fm_tools="$(_fm_value "$fm_text" tools)"
 
     # --- (a) effort tier ---------------------------------------------------
     if [[ -n "$fm_effort" ]]; then
@@ -1125,7 +1163,7 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     if [[ -n "$fm_mcp" ]]; then
       declared_servers="$(_fm_list "$fm_mcp")"
     fi
-    if _fm_has_key "$md" mcpServers && [[ -z "$declared_servers" ]]; then
+    if _fm_has_key "$fm_text" mcpServers && [[ -z "$declared_servers" ]]; then
       ok=0
       fail "$agent: agents/$agent.md mcpServers value is empty or not a single-line list"
       detail "unparseable-mcpservers: $agent (must be a single-line list)"
@@ -1145,20 +1183,20 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
 
     # Normalise tools with the SAME parser as mcpServers, so every accepted
     # spelling (comma-separated, space-separated, flow list) yields identical
-    # tokens. As with mcpServers: an ABSENT tools key is legal; a PRESENT key
+    # entries. As with mcpServers: an ABSENT tools key is legal; a PRESENT key
     # whose single-line value yields no tokens (e.g. a block-style list) is not
     # — it would silently skip rules (c)/(d), which is exactly how the origin
     # defect (missing serena bootstrap) escaped.
     tool_entries=""
     [[ -n "$fm_tools" ]] && tool_entries="$(_fm_list "$fm_tools")"
-    if _fm_has_key "$md" tools && [[ -z "$tool_entries" ]]; then
+    if _fm_has_key "$fm_text" tools && [[ -z "$tool_entries" ]]; then
       ok=0
       fail "$agent: agents/$agent.md tools value is empty or not a single-line list"
       detail "unparseable-tools: $agent (must be a single-line list)"
     fi
     [[ -n "$tool_entries" ]] || continue
 
-    # mcp__<server>__<tool> tokens used in the tools allowlist.
+    # mcp__<server>__<tool> entries used in the tools allowlist.
     tool_servers="$(printf '%s\n' "$tool_entries" | grep -oE '^mcp__[A-Za-z0-9_-]+__' \
                     | sed -E 's/^mcp__//; s/__$//' | LC_ALL=C sort -u)"
 

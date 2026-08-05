@@ -281,14 +281,14 @@ In config-as-code, docs and reality drift apart silently. Here, drift **fails th
 %%{init: {"theme": "base", "themeVariables": {"background": "transparent", "actorBkg": "#cde2fb", "actorBorder": "#2a78d6", "actorTextColor": "#0b0b0b", "signalColor": "#898781", "signalTextColor": "#898781", "loopTextColor": "#898781", "labelBoxBkgColor": "#cde2fb", "labelBoxBorderColor": "#2a78d6", "labelTextColor": "#0b0b0b", "noteBkgColor": "#fdeec9", "noteBorderColor": "#eda100", "noteTextColor": "#0b0b0b"}}}%%
 sequenceDiagram
     participant PR as PR / push
-    participant CI as CI — 3 jobs
+    participant CI as CI
     participant V as validate-consistency.sh
     participant SOT as claude.json + filesystem
 
     PR->>CI: commit lands
-    CI->>V: run the 15-check battery
+    CI->>V: run the full validator battery
     V->>SOT: derive all truth at runtime (no hardcoded lists)
-    SOT-->>V: registry · rosters · hooks · skills · counts (15 checks)
+    SOT-->>V: registry · rosters · hooks · skills · counts
     V->>V: compare docs & generated blocks against derived truth
     alt any drift found
         V-->>CI: FAIL (names the exact file & line)
@@ -331,15 +331,17 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 
 ## 5. By the numbers
 
+<!-- BEGIN GENERATED: team-presentation-stats -->
 | | |
 |---|---|
 | Specialized agents | 21 (7 categories, 3 model tiers) |
-| Hooks | 4 registered — 1 blocking gate, 3 advisory |
+| Hooks | 4 .ps1/.sh implementation pairs |
 | Skills | 9 loadable knowledge modules |
 | Commands | 10 management commands |
 | MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
 | Validator checks | 15, all derived at runtime |
-| Test assertions | 80 (consistency) + 44+ (hook behavior) + 103 (migration) |
-| CI jobs | 4, including Windows and macOS legs |
+| Test suites | 7 automated suites under tests/ |
+| CI jobs | 4 (consistency, lint, hooks-macos, hooks-windows) |
+<!-- END GENERATED: team-presentation-stats -->
 
 **Takeaway:** agents write the code · hooks make quality non-negotiable · the consistency system keeps the whole thing honest.

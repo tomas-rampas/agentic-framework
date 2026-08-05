@@ -19,11 +19,22 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Check for hardcoded secrets.
+# The VALUE must be a LITERAL: a value whose first character is '$' is a shell
+# expansion — "$SOME_VAR" or "$(command ...)" — and a hardcoded secret is by
+# definition not an expansion. Encoding that in the pattern ([^"'$] for the
+# first value character) stops the rule from flagging ordinary code such as
+# tool_tokens="$(...)", which cost a CI round with nothing to fix.
+# ACCEPTED LOSS: a real literal that happens to START with '$' — a crypt/bcrypt
+# hash such as "$2y$10$..." — is no longer matched by this generic rule. That is
+# a deliberate trade: the rule was producing false positives on ordinary code at
+# a far higher rate than it would ever catch a $-leading literal, and the
+# dedicated AWS / GitHub-token / private-key / connection-string rules below are
+# unaffected.
 # Exception filters (in order): placeholder values, test fixtures, documented
 # examples, env-var expansion, template placeholders ({{ ... }}), and lines
 # explicitly marked as educational anti-patterns in agent prompts.
 _secret_scan() {
-    grep -r --exclude-dir=.git -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"']{8,}[\"']" . \
+    grep -r --exclude-dir=.git -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"'\$][^\"']{7,}[\"']" . \
         | grep -v "your-api-key" \
         | grep -v "test123" \
         | grep -v -i "example" \
@@ -66,9 +77,9 @@ fi
 # Check for private keys
 echo ""
 echo "🔍 Checking for private keys..."
-if grep -r --exclude-dir=.git "-----BEGIN.*PRIVATE KEY-----" . > /dev/null 2>&1; then
+if grep -r --exclude-dir=.git --exclude="security-check.sh" -e "-----BEGIN.*PRIVATE KEY-----" . > /dev/null 2>&1; then
     echo -e "${RED}❌ Private keys found:${NC}"
-    grep -r --exclude-dir=.git "-----BEGIN.*PRIVATE KEY-----" .
+    grep -r --exclude-dir=.git --exclude="security-check.sh" -e "-----BEGIN.*PRIVATE KEY-----" .
     exit 1
 else
     echo -e "${GREEN}✅ No private keys detected${NC}"
