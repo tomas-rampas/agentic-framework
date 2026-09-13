@@ -1,0 +1,360 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tomas-rampas/agentic-framework/docs/log-triage/schema/analysis.schema.json",
+  "title": "log-triage analysis document",
+  "description": "Authoritative structured output of /log-triage (schema_version 1.0.0). groups.meta.json is this document without the groups array; groups.ndjson carries the same group objects one per line.",
+  "type": "object",
+  "required": ["schema_version", "tool", "generated_at", "status", "configuration", "inputs", "coverage", "filtering", "diagnostics", "timeline", "repositories", "aggregation", "summary", "investigation_queue", "groups"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0.0"},
+    "tool": {
+      "type": "object",
+      "required": ["name", "version", "fingerprint_version", "template_version"],
+      "properties": {
+        "name": {"type": "string", "const": "log-triage"},
+        "version": {"type": "string"},
+        "fingerprint_version": {"type": "string"},
+        "template_version": {"type": "string"},
+        "python": {"type": "string"},
+        "platform": {"type": "string"}
+      }
+    },
+    "generated_at": {"type": "string"},
+    "analysis_started_at": {"type": ["string", "null"]},
+    "duration_seconds": {"type": "number", "minimum": 0},
+    "rendered_from": {"type": "object"},
+    "status": {
+      "type": "object",
+      "required": ["completion", "reasons", "interrupted", "disk_full"],
+      "properties": {
+        "completion": {"type": "string", "enum": ["complete", "partial", "failed"]},
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "interrupted": {"type": "boolean"},
+        "disk_full": {"type": "boolean"},
+        "exit_code": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+        "model_refinement": {"type": "object"}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "required": ["inputs", "formats", "out_dir", "min_severity", "redact", "limits"],
+      "properties": {
+        "inputs": {"type": "array", "items": {"type": "string"}},
+        "repo": {"type": ["string", "null"]},
+        "repos_dir": {"type": ["string", "null"]},
+        "formats": {"type": "array", "items": {"type": "string", "enum": ["json", "sarif", "html", "markdown", "csv", "ndjson"]}},
+        "out_dir": {"type": "string"},
+        "since": {"type": ["string", "null"]},
+        "min_severity": {"$ref": "#/$defs/severity"},
+        "input_format": {"type": ["string", "null"]},
+        "fallback_format": {"type": "string"},
+        "assume_tz": {"type": "string"},
+        "keep_untimed": {"type": "boolean"},
+        "redact": {"type": "boolean"},
+        "redact_ips": {"type": "boolean"},
+        "limits": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "required": ["requested", "files", "unmatched", "excluded", "summary"],
+      "properties": {
+        "requested": {"type": "array", "items": {"type": "string"}},
+        "files": {"type": "array", "items": {"$ref": "#/$defs/input_file"}},
+        "unmatched": {"type": "array", "items": {"type": "string"}},
+        "excluded": {"type": "array", "items": {"type": "object", "required": ["path", "reason"]}},
+        "excluded_total": {"type": "integer", "minimum": 0},
+        "duplicates": {"type": "array"},
+        "skipped_symlinks": {"type": "array", "items": {"type": "string"}},
+        "summary": {"type": "object", "required": ["discovered", "processed", "partial", "excluded", "failed"]}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["events_parsed", "events_included", "events_filtered_by_since", "events_untimed_excluded_by_since", "events_with_timestamp", "events_without_timestamp", "lines_total", "bytes_read", "parse_failures", "truncated_lines", "encoding_replacements", "time_range", "redaction"],
+      "properties": {
+        "events_parsed": {"type": "integer", "minimum": 0},
+        "events_included": {"type": "integer", "minimum": 0},
+        "events_filtered_by_since": {"type": "integer", "minimum": 0},
+        "events_untimed_excluded_by_since": {"type": "integer", "minimum": 0},
+        "events_untimed_included": {"type": "integer", "minimum": 0},
+        "events_with_timestamp": {"type": "integer", "minimum": 0},
+        "events_without_timestamp": {"type": "integer", "minimum": 0},
+        "lines_total": {"type": "integer", "minimum": 0},
+        "bytes_read": {"type": "integer", "minimum": 0},
+        "bytes_compressed": {"type": "integer", "minimum": 0},
+        "parse_failures": {"type": "integer", "minimum": 0},
+        "truncated_lines": {"type": "integer", "minimum": 0},
+        "discarded_bytes": {"type": "integer", "minimum": 0},
+        "encoding_replacements": {"type": "integer", "minimum": 0},
+        "time_range": {"type": "object", "required": ["first", "last"], "properties": {"first": {"type": ["string", "null"]}, "last": {"type": ["string", "null"]}}},
+        "redaction": {"type": "object", "required": ["enabled", "counts"], "properties": {"enabled": {"type": "boolean"}, "counts": {"type": "object", "additionalProperties": {"type": "integer"}}, "ips_pseudonymized": {"type": "boolean"}}}
+      }
+    },
+    "filtering": {
+      "type": "object",
+      "required": ["min_severity", "groups_total", "groups_reported", "groups_filtered_by_severity", "events_in_reported_groups", "events_in_filtered_groups", "by_severity"],
+      "properties": {
+        "since": {"type": ["string", "null"]},
+        "since_epoch_utc": {"type": ["number", "null"]},
+        "min_severity": {"$ref": "#/$defs/severity"},
+        "groups_total": {"type": "integer", "minimum": 0},
+        "groups_reported": {"type": "integer", "minimum": 0},
+        "groups_filtered_by_severity": {"type": "integer", "minimum": 0},
+        "max_output_groups": {"type": "integer", "minimum": 0},
+        "groups_written": {"type": "integer", "minimum": 0},
+        "groups_omitted_by_output_limit": {"type": "integer", "minimum": 0},
+        "events_in_reported_groups": {"type": "integer", "minimum": 0},
+        "events_in_filtered_groups": {"type": "integer", "minimum": 0},
+        "by_severity": {"type": "object", "additionalProperties": {"type": "object", "required": ["groups", "events"], "properties": {"groups": {"type": "integer"}, "events": {"type": "integer"}}}}
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": ["records", "counts_by_code", "records_dropped", "total"],
+      "properties": {
+        "records": {"type": "array", "items": {"type": "object", "required": ["code", "severity", "message", "count"], "properties": {"code": {"type": "string"}, "severity": {"type": "string", "enum": ["info", "warning", "error"]}, "message": {"type": "string"}, "input": {"type": ["string", "null"]}, "line": {"type": ["integer", "null"]}, "count": {"type": "integer", "minimum": 1}}}},
+        "counts_by_code": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "records_dropped": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 0}
+      }
+    },
+    "timeline": {
+      "type": "object",
+      "required": ["bucket_seconds", "buckets", "bucket_count", "events_with_timestamp", "events_without_timestamp", "coarsened"],
+      "properties": {
+        "bucket_seconds": {"type": "integer", "minimum": 60},
+        "buckets": {"type": "array", "items": {"type": "object", "required": ["start", "end", "total", "counts"], "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "total": {"type": "integer"}, "counts": {"type": "object", "additionalProperties": {"type": "integer"}}}}},
+        "bucket_count": {"type": "integer", "minimum": 0},
+        "events_with_timestamp": {"type": "integer", "minimum": 0},
+        "events_without_timestamp": {"type": "integer", "minimum": 0},
+        "first_timestamp": {"type": ["string", "null"]},
+        "last_timestamp": {"type": ["string", "null"]},
+        "coarsened": {"type": "boolean"}
+      }
+    },
+    "repositories": {
+      "type": "object",
+      "required": ["mode", "discovered", "skipped", "incomplete"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["none", "repo", "repos-dir"]},
+        "root": {"type": ["string", "null"]},
+        "discovered": {"type": "array", "items": {"$ref": "#/$defs/repository"}},
+        "skipped": {"type": "array", "items": {"type": "object", "required": ["path", "reason"]}},
+        "skipped_total": {"type": "integer", "minimum": 0},
+        "incomplete": {"type": "boolean"},
+        "incomplete_reasons": {"type": "array", "items": {"type": "string"}},
+        "directories_visited": {"type": "integer", "minimum": 0},
+        "attribution_summary": {"type": "object"},
+        "investigation_summary": {"type": "object"}
+      }
+    },
+    "aggregation": {
+      "type": "object",
+      "required": ["groups_total", "events", "spilled_to_disk", "spill_count", "temp_bytes_peak"],
+      "properties": {
+        "groups_total": {"type": "integer", "minimum": 0},
+        "events": {"type": "integer", "minimum": 0},
+        "spilled_to_disk": {"type": "boolean"},
+        "spill_count": {"type": "integer", "minimum": 0},
+        "temp_bytes_peak": {"type": "integer", "minimum": 0},
+        "temp_dir": {"type": ["string", "null"]},
+        "max_groups_in_memory": {"type": "integer"},
+        "fingerprint_cache_size": {"type": "integer"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["highest_severity", "top_findings", "counts_by_severity", "counts_by_category"],
+      "properties": {
+        "highest_severity": {"anyOf": [{"$ref": "#/$defs/severity"}, {"type": "null"}]},
+        "top_findings": {"type": "array", "maxItems": 10, "items": {"type": "object", "required": ["id", "severity", "category", "count", "template"]}},
+        "counts_by_severity": {"type": "object"},
+        "counts_by_category": {"type": "object"}
+      }
+    },
+    "investigation_queue": {"type": "array", "items": {"$ref": "#/$defs/queue_entry"}},
+    "groups": {"type": "array", "items": {"$ref": "#/$defs/group"}}
+  },
+  "$defs": {
+    "severity": {"type": "string", "enum": ["info", "low", "medium", "high", "critical"]},
+    "category": {"type": "string", "enum": ["availability", "application_crash", "dependency_failure", "timeout", "auth", "configuration", "resource_exhaustion", "data_integrity", "network", "security", "performance", "client_error", "operational", "unknown"]},
+    "input_file": {
+      "type": "object",
+      "required": ["id", "path", "real_path", "size_bytes", "status", "events", "bytes_read", "lines", "parse_failures", "changed_during_analysis"],
+      "properties": {
+        "id": {"type": "integer", "minimum": 1},
+        "path": {"type": "string"},
+        "real_path": {"type": "string"},
+        "origin": {"type": "string"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "status": {"type": "string", "enum": ["pending", "processed", "partial", "excluded", "failed"]},
+        "reason": {"type": ["string", "null"]},
+        "format": {"type": ["string", "null"]},
+        "detection_confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "encoding": {"type": ["string", "null"]},
+        "compression": {"type": ["string", "null"]},
+        "layout": {"type": ["string", "null"]},
+        "dialect": {"type": ["string", "null"]},
+        "events": {"type": "integer", "minimum": 0},
+        "bytes_read": {"type": "integer", "minimum": 0},
+        "lines": {"type": "integer", "minimum": 0},
+        "parse_failures": {"type": "integer", "minimum": 0},
+        "changed_during_analysis": {"type": "boolean"},
+        "diagnostics": {"type": "integer", "minimum": 0}
+      }
+    },
+    "repository": {
+      "type": "object",
+      "required": ["id", "name", "path", "kind", "inventory"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^R[0-9a-f]{8}$"},
+        "name": {"type": "string"},
+        "path": {"type": "string"},
+        "kind": {"type": "string", "enum": ["repository", "worktree", "submodule"]},
+        "head": {"type": ["string", "null"]},
+        "branch": {"type": ["string", "null"]},
+        "working_tree_dirty": {"type": ["boolean", "null"]},
+        "working_tree_note": {"type": ["string", "null"]},
+        "inventory": {"type": "object", "required": ["files_indexed", "truncated", "source"]},
+        "notes": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": ["function", "file", "line", "in_app"],
+      "properties": {"function": {"type": ["string", "null"]}, "file": {"type": ["string", "null"]}, "line": {"type": ["integer", "null"]}, "in_app": {"type": "boolean"}}
+    },
+    "example": {
+      "type": "object",
+      "required": ["input_id", "input", "line", "timestamp", "level", "message"],
+      "properties": {
+        "input_id": {"type": "integer"},
+        "input": {"type": ["string", "null"]},
+        "line": {"type": "integer", "minimum": 0},
+        "line_end": {"type": ["integer", "null"]},
+        "byte_offset": {"type": ["integer", "null"]},
+        "timestamp": {"type": ["string", "null"]},
+        "level": {"type": ["string", "null"]},
+        "message": {"type": "string"},
+        "exception_text": {"type": ["string", "null"]},
+        "body": {"type": "string"},
+        "attributes": {"type": "object"},
+        "parser": {"type": "string"},
+        "layout": {"type": ["string", "null"]},
+        "ts_flags": {"type": "array", "items": {"type": "string"}},
+        "truncated": {"type": "boolean"},
+        "is_last_seen": {"type": "boolean"}
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": ["repo", "path", "verified"],
+      "properties": {
+        "repo_id": {"type": "string"},
+        "repo": {"type": ["string", "null"]},
+        "path": {"type": ["string", "null"]},
+        "line": {"type": ["integer", "null"]},
+        "function": {"type": ["string", "null"]},
+        "match": {"type": ["string", "null"]},
+        "verified": {"type": "boolean"},
+        "note": {"type": ["string", "null"]},
+        "snippet": {"type": ["string", "null"]}
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "required": ["origin", "kind", "summary", "rationale", "references", "confidence", "regression_tests", "verification_steps"],
+      "properties": {
+        "origin": {"type": "string", "enum": ["deterministic", "model"]},
+        "kind": {"type": "string", "enum": ["source_backed", "generic"]},
+        "summary": {"type": "string"},
+        "rationale": {"type": "string"},
+        "suggested_changes": {"type": "array", "items": {"type": "string"}},
+        "references": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "alternatives": {"type": "array", "items": {"type": "string"}},
+        "regression_tests": {"type": "array", "items": {"type": "string"}},
+        "verification_steps": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["id", "fingerprint", "fingerprint_version", "template", "severity", "category", "assessment", "count", "first_seen", "last_seen", "untimed_count", "levels", "services", "examples", "correlation", "grouping", "attribution", "investigation"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^LT-[0-9a-f]{12}$"},
+        "fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "fingerprint_version": {"type": "string"},
+        "template": {"type": "string"},
+        "severity": {"$ref": "#/$defs/severity"},
+        "category": {"$ref": "#/$defs/category"},
+        "assessment": {
+          "type": "object",
+          "required": ["severity", "category", "confidence", "basis", "rationale", "impact_signals"],
+          "properties": {
+            "severity": {"$ref": "#/$defs/severity"},
+            "category": {"$ref": "#/$defs/category"},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "basis": {"type": "string", "enum": ["observed", "inferred", "unknown"]},
+            "rationale": {"type": "array", "items": {"type": "string"}},
+            "impact_signals": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "count": {"type": "integer", "minimum": 1},
+        "first_seen": {"type": ["string", "null"]},
+        "last_seen": {"type": ["string", "null"]},
+        "untimed_count": {"type": "integer", "minimum": 0},
+        "levels": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "level_max": {"type": ["string", "null"]},
+        "services": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "hosts": {"type": "object", "required": ["distinct", "truncated"]},
+        "logger": {"type": ["string", "null"]},
+        "parser": {"type": ["string", "null"]},
+        "layouts": {"type": "array", "items": {"type": "string"}},
+        "exception": {
+          "anyOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["type", "chain", "frames"], "properties": {"type": {"type": ["string", "null"]}, "message_template": {"type": ["string", "null"]}, "chain": {"type": "array", "items": {"type": ["string", "null"]}}, "frames": {"type": "array", "items": {"$ref": "#/$defs/frame"}}}}
+          ]
+        },
+        "http": {"anyOf": [{"type": "null"}, {"type": "object", "properties": {"status": {"type": ["integer", "null"]}, "method": {"type": ["string", "null"]}, "path_template": {"type": ["string", "null"]}}}]},
+        "error_code": {"type": ["string", "null"]},
+        "examples": {"type": "array", "items": {"$ref": "#/$defs/example"}},
+        "correlation": {"type": "object", "required": ["trace_ids", "request_ids", "truncated"]},
+        "inputs": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "inputs_truncated": {"type": "boolean"},
+        "grouping": {"type": "object", "required": ["confidence", "notes", "key_components"], "properties": {"confidence": {"type": "number", "minimum": 0, "maximum": 1}, "notes": {"type": "array", "items": {"type": "string"}}, "key_components": {"type": "array", "items": {"type": "string"}}}},
+        "attribution": {
+          "type": "object",
+          "required": ["status", "candidates"],
+          "properties": {
+            "status": {"type": "string", "enum": ["not_attempted", "resolved", "ambiguous", "unresolved"]},
+            "reason": {"type": "string"},
+            "note": {"type": "string"},
+            "candidates": {"type": "array", "items": {"type": "object", "required": ["repo_id", "repo", "confidence", "evidence"], "properties": {"repo_id": {"type": "string"}, "repo": {"type": "string"}, "path": {"type": ["string", "null"]}, "head": {"type": ["string", "null"]}, "confidence": {"type": "number", "minimum": 0, "maximum": 1}, "evidence": {"type": "array", "items": {"type": "object", "required": ["kind", "value", "weight"]}}}}}
+          }
+        },
+        "investigation": {
+          "type": "object",
+          "required": ["status", "suggestions", "source_references", "root_cause"],
+          "properties": {
+            "status": {"type": "string", "enum": ["not_attempted", "deterministic", "model_refined", "insufficient_evidence", "not_investigated"]},
+            "reason": {"type": "string"},
+            "suggestions": {"type": "array", "items": {"$ref": "#/$defs/suggestion"}},
+            "source_references": {"type": "array", "items": {"$ref": "#/$defs/reference"}},
+            "root_cause": {"anyOf": [{"type": "null"}, {"type": "object", "required": ["observed", "hypotheses", "uncertainty"]}]},
+            "cross_service": {"type": ["string", "null"]},
+            "model_refinement": {"type": "string"},
+            "model_notes": {"type": "string"},
+            "deterministic_root_cause": {"type": "object"}
+          }
+        }
+      }
+    },
+    "queue_entry": {
+      "type": "object",
+      "required": ["id", "severity", "category", "count", "template", "candidates", "references", "deterministic_suggestion", "questions"],
+      "properties": {"id": {"type": "string"}, "severity": {"$ref": "#/$defs/severity"}, "category": {"$ref": "#/$defs/category"}, "count": {"type": "integer"}, "template": {"type": "string"}}
+    }
+  }
+}

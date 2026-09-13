@@ -1,0 +1,558 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;">
+<title>log-triage report</title><style>
+:root{--bg:#fff;--fg:#1b1f23;--muted:#586069;--line:#d0d7de;--crit:#8b0000;--high:#c62828;--med:#ef6c00;--low:#f9a825;--info:#2e7d32;--accent:#0b5fff}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg)}
+header{padding:16px 24px;border-bottom:1px solid var(--line)}header h1{margin:0 0 4px;font-size:20px}header .meta{color:var(--muted);font-size:13px}
+nav{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:6px 24px;z-index:2}nav a{margin-right:14px;color:var(--accent);text-decoration:none}nav a:focus,nav a:hover{text-decoration:underline}
+main{padding:12px 24px 48px;max-width:1400px}section{margin:28px 0}h2{font-size:17px;border-bottom:1px solid var(--line);padding-bottom:4px}h3{font-size:15px;margin:14px 0 6px}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid var(--line);padding:4px 6px;vertical-align:top;text-align:left}th{background:#f6f8fa;cursor:pointer;user-select:none;white-space:nowrap}th[aria-sort]::after{content:" \2195";color:var(--muted)}
+.badge{display:inline-block;padding:1px 7px;border-radius:10px;color:#fff;font-size:12px;font-weight:600}.sev-critical{background:var(--crit)}.sev-high{background:var(--high)}.sev-medium{background:var(--med)}.sev-low{background:var(--low);color:#000}.sev-info{background:var(--info)}
+.status-complete{color:var(--info);font-weight:600}.status-partial{color:var(--med);font-weight:600}.status-failed{color:var(--high);font-weight:600}
+pre{background:#f6f8fa;border:1px solid var(--line);padding:8px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:340px}code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+details{border:1px solid var(--line);border-radius:4px;padding:6px 10px;margin:8px 0}summary{cursor:pointer;font-weight:600}details[open]>summary{margin-bottom:6px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:8px 0}.controls label{font-size:13px}.controls input[type=search]{padding:4px 6px;min-width:260px}
+.muted{color:var(--muted)}.kv{display:grid;grid-template-columns:max-content 1fr;gap:2px 12px;font-size:13px}.kv div:nth-child(odd){color:var(--muted)}
+.note{background:#fff8e1;border:1px solid #ffe082;padding:8px 10px;border-radius:4px;margin:8px 0}.warn{background:#fdecea;border-color:#f5c2c0}
+.tl{width:100%;height:170px;border:1px solid var(--line);background:#fafbfc}.tl rect:hover{opacity:.8}
+ul.compact{margin:4px 0;padding-left:18px}.hidden{display:none}button{font:inherit;padding:3px 9px}
+@media print{nav,.controls,button{display:none}details{page-break-inside:avoid}details>*{display:block}pre{max-height:none}main{max-width:none}}
+</style></head><body>
+<header><h1>log-triage report</h1><div class="meta">Generated 2026-09-13T14:38:48.212Z by log-triage 1.0.0 &middot; schema 1.0.0 &middot; completion: <span class="status-complete">complete</span></div></header>
+<nav aria-label="Sections"><a href="#summary">Summary</a><a href="#findings">Findings</a><a href="#timeline">Timeline</a><a href="#issues">Issue details</a><a href="#rootcause">Root cause</a><a href="#fixplan">Fix plan</a><a href="#coverage">Coverage &amp; limitations</a></nav><main>
+<section id="summary"><h2>1. Executive summary</h2><div class="kv">
+<div>Scope</div><div>6 input file(s) (6 processed, 0 partial, 0 excluded, 0 failed), 9,270 bytes read; formats: access-log, text</div>
+<div>Time range</div><div>2026-09-13T10:00:00.123Z &rarr; 2026-09-13T12:31:00Z (48 events with timestamps, 1 without)</div>
+<div>Events</div><div>49 parsed, 49 included after filters (0 filtered by --since, 0 untimed excluded)</div>
+<div>Issue groups</div><div>18 total, 18 reported at or above <code>info</code> (0 below threshold)</div>
+<div>Highest severity</div><div><span class="badge sev-high">high</span></div>
+<div>By severity</div><div><span class="badge sev-critical">critical</span> 0 groups / 0 events <span class="badge sev-high">high</span> 3 groups / 4 events <span class="badge sev-medium">medium</span> 7 groups / 37 events <span class="badge sev-low">low</span> 2 groups / 2 events <span class="badge sev-info">info</span> 6 groups / 6 events</div>
+</div>
+<h3>Highest-impact findings</h3><ol>
+<li><a href="#g-LT-d35ab553479c">LT-d35ab553479c</a> <span class="badge sev-high">high</span> <code>availability</code> &times;2 &mdash; POST /api/orders/&lt;n&gt; -&gt; &lt;n&gt;</li>
+<li><a href="#g-LT-45812cae8cb3">LT-45812cae8cb3</a> <span class="badge sev-high">high</span> <code>availability</code> &times;1 &mdash; Failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 500 service=order-service</li>
+<li><a href="#g-LT-0b8d948bb890">LT-0b8d948bb890</a> <span class="badge sev-high">high</span> <code>availability</code> &times;1 &mdash; Failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 503 service=order-service</li>
+<li><a href="#g-LT-0687b7bfe339">LT-0687b7bfe339</a> <span class="badge sev-medium">medium</span> <code>unknown</code> &times;30 &mdash; Failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=order-service</li>
+<li><a href="#g-LT-a90eef438a86">LT-a90eef438a86</a> <span class="badge sev-medium">medium</span> <code>network</code> &times;2 &mdash; Failed to place order &lt;n&gt; for customer &lt;n&gt;</li>
+<li><a href="#g-LT-102319349c95">LT-102319349c95</a> <span class="badge sev-medium">medium</span> <code>unknown</code> &times;1 &mdash; charge failed</li>
+<li><a href="#g-LT-85f302734ac6">LT-85f302734ac6</a> <span class="badge sev-medium">medium</span> <code>unknown</code> &times;1 &mdash; Failed to place order &lt;n&gt;</li>
+<li><a href="#g-LT-bfc7484129c3">LT-bfc7484129c3</a> <span class="badge sev-medium">medium</span> <code>network</code> &times;1 &mdash; charge failed for order &lt;n&gt;</li>
+<li><a href="#g-LT-b1d0e8dc43fc">LT-b1d0e8dc43fc</a> <span class="badge sev-medium">medium</span> <code>network</code> &times;1 &mdash; charge failed for order &lt;n&gt;</li>
+<li><a href="#g-LT-6d7c6a6bd062">LT-6d7c6a6bd062</a> <span class="badge sev-medium">medium</span> <code>unknown</code> &times;1 &mdash; Failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=payment-service</li>
+</ol><h3>Completeness</h3>
+<p class="status-complete">Analysis complete.</p>
+<ul><li>Source references were checked against the current checkouts, which may not match the version that produced the logs.</li></ul>
+</section>
+<section id="findings"><h2>2. Prioritized findings</h2>
+<div class="controls"><label>Search <input type="search" id="q" placeholder="template, exception, service, id" aria-label="Search findings"></label>
+<span>Severity: <label><input type="checkbox" class="f-sev" value="critical" checked> critical</label> <label><input type="checkbox" class="f-sev" value="high" checked> high</label> <label><input type="checkbox" class="f-sev" value="medium" checked> medium</label> <label><input type="checkbox" class="f-sev" value="low" checked> low</label> <label><input type="checkbox" class="f-sev" value="info" checked> info</label></span>
+<label>Category <select id="f-cat"><option value="">all</option><option value="availability">availability</option><option value="client_error">client_error</option><option value="network">network</option><option value="operational">operational</option><option value="performance">performance</option><option value="unknown">unknown</option></select></label>
+<label>Repository <select id="f-repo"><option value="">all</option><option value="billing">billing</option><option value="orders">orders</option></select></label>
+<button type="button" id="expand-all">Expand all</button><button type="button" id="collapse-all">Collapse all</button>
+<span class="muted">Showing <span id="shown">18</span> of 18 listed (18 reported, 18 total groups). Search and filters cover only the groups included in this report.</span></div>
+<table id="findings-table"><thead><tr><th scope="col" data-col="id">ID</th><th scope="col" data-col="sevrank" data-num="1">Severity</th><th scope="col" data-col="category">Category</th><th scope="col" data-col="service">Service / repository</th><th scope="col" data-col="count" data-num="1">Count</th><th scope="col" data-col="confidence" data-num="1">Confidence</th><th scope="col" data-col="first">First seen</th><th scope="col" data-col="last">Last seen</th><th scope="col">Template</th><th scope="col">Next action</th></tr></thead><tbody>
+<tr data-severity="high" data-sevrank="3" data-category="availability" data-repo="orders" data-service="" data-count="2" data-confidence="0.85" data-first="2026-09-13T12:00:00Z" data-last="2026-09-13T12:00:03Z" data-id="LT-d35ab553479c" data-search="lt-d35ab553479c post /api/orders/&lt;n&gt; -&gt; &lt;n&gt;   orders availability">
+<td><a href="#g-LT-d35ab553479c">LT-d35ab553479c</a></td><td><span class="badge sev-high">high</span></td><td>availability</td><td><span class="muted">n/a</span> <span class="muted">[orders]</span></td><td>2</td><td>0.85 (observed)</td><td>2026-09-13T12:00:00Z</td><td>2026-09-13T12:00:03Z</td><td><code>POST /api/orders/&lt;n&gt; -&gt; &lt;n&gt;</code></td><td>Check upstream health and readiness handling for the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="high" data-sevrank="3" data-category="availability" data-repo="" data-service="order-service" data-count="1" data-confidence="0.85" data-first="2026-09-13T12:30:00Z" data-last="2026-09-13T12:30:00Z" data-id="LT-45812cae8cb3" data-search="lt-45812cae8cb3 failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 500 service=order-service  order-service  availability">
+<td><a href="#g-LT-45812cae8cb3">LT-45812cae8cb3</a></td><td><span class="badge sev-high">high</span></td><td>availability</td><td>order-service</td><td>1</td><td>0.85 (observed)</td><td>2026-09-13T12:30:00Z</td><td>2026-09-13T12:30:00Z</td><td><code>Failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 500 service=order-service</code></td><td>Check upstream health and readiness handling for the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="high" data-sevrank="3" data-category="availability" data-repo="" data-service="order-service" data-count="1" data-confidence="0.85" data-first="2026-09-13T12:30:01Z" data-last="2026-09-13T12:30:01Z" data-id="LT-0b8d948bb890" data-search="lt-0b8d948bb890 failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 503 service=order-service  order-service  availability">
+<td><a href="#g-LT-0b8d948bb890">LT-0b8d948bb890</a></td><td><span class="badge sev-high">high</span></td><td>availability</td><td>order-service</td><td>1</td><td>0.85 (observed)</td><td>2026-09-13T12:30:01Z</td><td>2026-09-13T12:30:01Z</td><td><code>Failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 503 service=order-service</code></td><td>Check upstream health and readiness handling for the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="medium" data-sevrank="2" data-category="unknown" data-repo="" data-service="order-service" data-count="30" data-confidence="0.35" data-first="2026-09-13T12:00:00Z" data-last="2026-09-13T12:00:29Z" data-id="LT-0687b7bfe339" data-search="lt-0687b7bfe339 failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=order-service  order-service  unknown">
+<td><a href="#g-LT-0687b7bfe339">LT-0687b7bfe339</a></td><td><span class="badge sev-medium">medium</span></td><td>unknown</td><td>order-service</td><td>30</td><td>0.35 (unknown)</td><td>2026-09-13T12:00:00Z</td><td>2026-09-13T12:00:29Z</td><td><code>Failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=order-service</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="medium" data-sevrank="2" data-category="network" data-repo="orders" data-service="" data-count="2" data-confidence="0.85" data-first="2026-09-13T10:00:01.456Z" data-last="2026-09-13T10:00:02Z" data-id="LT-a90eef438a86" data-search="lt-a90eef438a86 failed to place order &lt;n&gt; for customer &lt;n&gt; system.invalidoperationexception system.io.ioexception  orders network">
+<td><a href="#g-LT-a90eef438a86">LT-a90eef438a86</a></td><td><span class="badge sev-medium">medium</span></td><td>network</td><td><span class="muted">n/a</span> <span class="muted">[orders]</span></td><td>2</td><td>0.85 (observed)</td><td>2026-09-13T10:00:01.456Z</td><td>2026-09-13T10:00:02Z</td><td><code>Failed to place order &lt;n&gt; for customer &lt;n&gt;</code></td><td>Harden network error handling at the call site at src/Acme.Orders/OrderService.cs:42 (orders)</td></tr>
+<tr data-severity="medium" data-sevrank="2" data-category="unknown" data-repo="" data-service="" data-count="1" data-confidence="0.35" data-first="2026-09-13T10:00:01.123Z" data-last="2026-09-13T10:00:01.123Z" data-id="LT-102319349c95" data-search="lt-102319349c95 charge failed    unknown">
+<td><a href="#g-LT-102319349c95">LT-102319349c95</a></td><td><span class="badge sev-medium">medium</span></td><td>unknown</td><td><span class="muted">n/a</span></td><td>1</td><td>0.35 (unknown)</td><td>2026-09-13T10:00:01.123Z</td><td>2026-09-13T10:00:01.123Z</td><td><code>charge failed</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="medium" data-sevrank="2" data-category="unknown" data-repo="" data-service="" data-count="1" data-confidence="0.35" data-first="2026-09-13T10:00:01.123Z" data-last="2026-09-13T10:00:01.123Z" data-id="LT-85f302734ac6" data-search="lt-85f302734ac6 failed to place order &lt;n&gt; java.lang.illegalstateexception   unknown">
+<td><a href="#g-LT-85f302734ac6">LT-85f302734ac6</a></td><td><span class="badge sev-medium">medium</span></td><td>unknown</td><td><span class="muted">n/a</span></td><td>1</td><td>0.35 (unknown)</td><td>2026-09-13T10:00:01.123Z</td><td>2026-09-13T10:00:01.123Z</td><td><code>Failed to place order &lt;n&gt;</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="medium" data-sevrank="2" data-category="network" data-repo="billing" data-service="" data-count="1" data-confidence="0.85" data-first="2026-09-13T12:00:01.123Z" data-last="2026-09-13T12:00:01.123Z" data-id="LT-bfc7484129c3" data-search="lt-bfc7484129c3 charge failed for order &lt;n&gt; billing.errors.chargefailed requests.exceptions.connectionerror  billing network">
+<td><a href="#g-LT-bfc7484129c3">LT-bfc7484129c3</a></td><td><span class="badge sev-medium">medium</span></td><td>network</td><td><span class="muted">n/a</span> <span class="muted">[billing]</span></td><td>1</td><td>0.85 (observed)</td><td>2026-09-13T12:00:01.123Z</td><td>2026-09-13T12:00:01.123Z</td><td><code>charge failed for order &lt;n&gt;</code></td><td>Harden network error handling at the call site at billing/worker.py:33 (billing)</td></tr>
+<tr data-severity="medium" data-sevrank="2" data-category="network" data-repo="billing" data-service="" data-count="1" data-confidence="0.85" data-first="2026-09-13T12:00:02.123Z" data-last="2026-09-13T12:00:02.123Z" data-id="LT-b1d0e8dc43fc" data-search="lt-b1d0e8dc43fc charge failed for order &lt;n&gt; requests.exceptions.connectionerror  billing network">
+<td><a href="#g-LT-b1d0e8dc43fc">LT-b1d0e8dc43fc</a></td><td><span class="badge sev-medium">medium</span></td><td>network</td><td><span class="muted">n/a</span> <span class="muted">[billing]</span></td><td>1</td><td>0.85 (observed)</td><td>2026-09-13T12:00:02.123Z</td><td>2026-09-13T12:00:02.123Z</td><td><code>charge failed for order &lt;n&gt;</code></td><td>Harden network error handling at the call site at billing/charge.py:12 (billing)</td></tr>
+<tr data-severity="medium" data-sevrank="2" data-category="unknown" data-repo="" data-service="payment-service" data-count="1" data-confidence="0.35" data-first="2026-09-13T12:31:00Z" data-last="2026-09-13T12:31:00Z" data-id="LT-6d7c6a6bd062" data-search="lt-6d7c6a6bd062 failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=payment-service  payment-service  unknown">
+<td><a href="#g-LT-6d7c6a6bd062">LT-6d7c6a6bd062</a></td><td><span class="badge sev-medium">medium</span></td><td>unknown</td><td>payment-service</td><td>1</td><td>0.35 (unknown)</td><td>2026-09-13T12:31:00Z</td><td>2026-09-13T12:31:00Z</td><td><code>Failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=payment-service</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="low" data-sevrank="1" data-category="performance" data-repo="" data-service="" data-count="1" data-confidence="0.6" data-first="2026-09-13T10:00:03Z" data-last="2026-09-13T10:00:03Z" data-id="LT-228bb4b285fb" data-search="lt-228bb4b285fb retrying payment (attempt &lt;n&gt;/&lt;n&gt;) after &lt;dur&gt;    performance">
+<td><a href="#g-LT-228bb4b285fb">LT-228bb4b285fb</a></td><td><span class="badge sev-low">low</span></td><td>performance</td><td><span class="muted">n/a</span></td><td>1</td><td>0.6 (inferred)</td><td>2026-09-13T10:00:03Z</td><td>2026-09-13T10:00:03Z</td><td><code>Retrying payment (attempt &lt;n&gt;/&lt;n&gt;) after &lt;dur&gt;</code></td><td>Profile the slow operation and bound retries (generic guidance; no source investigation)</td></tr>
+<tr data-severity="low" data-sevrank="1" data-category="client_error" data-repo="orders" data-service="" data-count="1" data-confidence="0.85" data-first="2026-09-13T12:00:02Z" data-last="2026-09-13T12:00:02Z" data-id="LT-a0db72527b05" data-search="lt-a0db72527b05 get /api/orders/&lt;n&gt; -&gt; &lt;n&gt;   orders client_error">
+<td><a href="#g-LT-a0db72527b05">LT-a0db72527b05</a></td><td><span class="badge sev-low">low</span></td><td>client_error</td><td><span class="muted">n/a</span> <span class="muted">[orders]</span></td><td>1</td><td>0.85 (observed)</td><td>2026-09-13T12:00:02Z</td><td>2026-09-13T12:00:02Z</td><td><code>GET /api/orders/&lt;n&gt; -&gt; &lt;n&gt;</code></td><td>Return structured validation errors and check client integrations (generic guidance; no source investigation)</td></tr>
+<tr data-severity="info" data-sevrank="0" data-category="operational" data-repo="orders" data-service="" data-count="1" data-confidence="0.6" data-first="2026-09-13T10:00:00.123Z" data-last="2026-09-13T10:00:00.123Z" data-id="LT-4e9e698c369a" data-search="lt-4e9e698c369a starting acme.orders   orders operational">
+<td><a href="#g-LT-4e9e698c369a">LT-4e9e698c369a</a></td><td><span class="badge sev-info">info</span></td><td>operational</td><td><span class="muted">n/a</span> <span class="muted">[orders]</span></td><td>1</td><td>0.6 (inferred)</td><td>2026-09-13T10:00:00.123Z</td><td>2026-09-13T10:00:00.123Z</td><td><code>Starting Acme.Orders</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="info" data-sevrank="0" data-category="operational" data-repo="" data-service="" data-count="1" data-confidence="0.6" data-first="2026-09-13T10:00:00.123Z" data-last="2026-09-13T10:00:00.123Z" data-id="LT-abe4e469a8d3" data-search="lt-abe4e469a8d3 starting    operational">
+<td><a href="#g-LT-abe4e469a8d3">LT-abe4e469a8d3</a></td><td><span class="badge sev-info">info</span></td><td>operational</td><td><span class="muted">n/a</span></td><td>1</td><td>0.6 (inferred)</td><td>2026-09-13T10:00:00.123Z</td><td>2026-09-13T10:00:00.123Z</td><td><code>starting</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="info" data-sevrank="0" data-category="operational" data-repo="" data-service="" data-count="1" data-confidence="0.6" data-first="2026-09-13T10:00:00.123Z" data-last="2026-09-13T10:00:00.123Z" data-id="LT-f045f3c4e056" data-search="lt-f045f3c4e056 started app in &lt;dur&gt;    operational">
+<td><a href="#g-LT-f045f3c4e056">LT-f045f3c4e056</a></td><td><span class="badge sev-info">info</span></td><td>operational</td><td><span class="muted">n/a</span></td><td>1</td><td>0.6 (inferred)</td><td>2026-09-13T10:00:00.123Z</td><td>2026-09-13T10:00:00.123Z</td><td><code>Started App in &lt;dur&gt;</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="info" data-sevrank="0" data-category="operational" data-repo="billing" data-service="" data-count="1" data-confidence="0.6" data-first="2026-09-13T12:00:00.123Z" data-last="2026-09-13T12:00:00.123Z" data-id="LT-04097dbdd0ef" data-search="lt-04097dbdd0ef worker started   billing operational">
+<td><a href="#g-LT-04097dbdd0ef">LT-04097dbdd0ef</a></td><td><span class="badge sev-info">info</span></td><td>operational</td><td><span class="muted">n/a</span> <span class="muted">[billing]</span></td><td>1</td><td>0.6 (inferred)</td><td>2026-09-13T12:00:00.123Z</td><td>2026-09-13T12:00:00.123Z</td><td><code>worker started</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="info" data-sevrank="0" data-category="unknown" data-repo="" data-service="" data-count="1" data-confidence="0.35" data-first="2026-09-13T12:00:01Z" data-last="2026-09-13T12:00:01Z" data-id="LT-d46742b9402c" data-search="lt-d46742b9402c get /health -&gt; &lt;n&gt;    unknown">
+<td><a href="#g-LT-d46742b9402c">LT-d46742b9402c</a></td><td><span class="badge sev-info">info</span></td><td>unknown</td><td><span class="muted">n/a</span></td><td>1</td><td>0.35 (unknown)</td><td>2026-09-13T12:00:01Z</td><td>2026-09-13T12:00:01Z</td><td><code>GET /health -&gt; &lt;n&gt;</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+<tr data-severity="info" data-sevrank="0" data-category="unknown" data-repo="" data-service="" data-count="1" data-confidence="0.35" data-first="" data-last="" data-id="LT-2791132b6e6e" data-search="lt-2791132b6e6e time-only serilog console line    unknown">
+<td><a href="#g-LT-2791132b6e6e">LT-2791132b6e6e</a></td><td><span class="badge sev-info">info</span></td><td>unknown</td><td><span class="muted">n/a</span></td><td>1</td><td>0.35 (unknown)</td><td>n/a</td><td>n/a</td><td><code>time-only serilog console line</code></td><td>Increase diagnostic context around the failing operation (generic guidance; no source investigation)</td></tr>
+</tbody></table></section>
+<section id="timeline"><h2>3. Timeline</h2>
+<p class="muted">Bucket size 60 s (4 bucket(s)). 1 event(s) have no usable timestamp and are not on the timeline. Coverage is limited to the processed inputs and the time range above.</p>
+<svg class="tl" viewBox="0 0 1000 160" role="img" aria-label="events per time bucket"><line x1="22" y1="138" x2="978" y2="138" stroke="#999"/><rect x="22.00" y="112.92" width="238.50" height="25.08" fill="#c62828"><title>2026-09-13T10:00:00Z .. 2026-09-13T10:01:00Z: 8 event(s) (error 4, warn 1, info 3)</title></rect><rect x="261.00" y="22.00" width="238.50" height="116.00" fill="#c62828"><title>2026-09-13T12:00:00Z .. 2026-09-13T12:01:00Z: 37 event(s) (error 34, warn 1, info 2)</title></rect><rect x="500.00" y="131.73" width="238.50" height="6.27" fill="#c62828"><title>2026-09-13T12:30:00Z .. 2026-09-13T12:31:00Z: 2 event(s) (error 2)</title></rect><rect x="739.00" y="134.86" width="238.50" height="3.14" fill="#c62828"><title>2026-09-13T12:31:00Z .. 2026-09-13T12:32:00Z: 1 event(s) (error 1)</title></rect><text x="22" y="154" font-size="11" fill="#555">2026-09-13T10:00:00Z</text><text x="978" y="154" font-size="11" fill="#555" text-anchor="end">2026-09-13T12:32:00Z</text><text x="22" y="14" font-size="11" fill="#555">max 37</text></svg>
+</section>
+<section id="issues"><h2>4. Issue details</h2><p class="muted">18 of 18 reported groups detailed; examples are redacted and bounded to 4 per group.</p>
+<details class="group" id="g-LT-d35ab553479c" data-severity="high" data-category="availability" data-repo="orders" data-search="lt-d35ab553479c post /api/orders/&lt;n&gt; -&gt; &lt;n&gt;   orders availability"><summary>LT-d35ab553479c <span class="badge sev-high">high</span> <code>availability</code> &times;2 &mdash; POST /api/orders/&lt;n&gt; -&gt; &lt;n&gt;</summary>
+<div class="kv"><div>Template</div><div><code>POST /api/orders/&lt;n&gt; -&gt; &lt;n&gt;</code></div>
+<div>Fingerprint</div><div><code>d35ab553479c215700ef81acd1b7817bc11b1ecd7ba379729588f7927e0cd1f3</code> (v1)</div>
+<div>Occurrences</div><div>2 (first 2026-09-13T12:00:00Z, last 2026-09-13T12:00:03Z)</div>
+<div>Producer levels</div><div>ERROR x2</div>
+<div>Assessment</div><div><span class="badge sev-high">high</span> availability &mdash; confidence 0.85 (observed)<ul class="compact"><li>HTTP status 502 observed -&gt; availability</li><li>occurrence count (2) does not influence severity</li></ul></div>
+<div>Impact signals</div><div>dependency_or_upstream_failure, failed_requests, service_impact_possible</div>
+<div>HTTP</div><div>POST /api/orders/&lt;n&gt; &rarr; 502</div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template; HTTP status 502 and route template are part of the key</div>
+<div>Attribution</div><div>unresolved: only weak evidence (basename or name mention) matched; not attributed<ul class="compact"><li>orders (confidence 0.1): name-in-message orders</li></ul></div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/access-combined.log:1 &middot; 2026-09-13T12:00:00Z &middot; error &middot; byte offset 0</div>
+<pre><code>POST /api/orders/42 -&gt; 502</code></pre>
+<div class="muted">attributes: <code>{&quot;bytes&quot;: 512, &quot;client_ip&quot;: &quot;10.0.0.1&quot;, &quot;user_agent&quot;: &quot;curl/8.0&quot;}</code></div>
+<div class="muted">logs/access-combined.log:4 &middot; 2026-09-13T12:00:03Z &middot; error &middot; byte offset 273</div>
+<pre><code>POST /api/orders/44 -&gt; 502</code></pre>
+<div class="muted">attributes: <code>{&quot;bytes&quot;: 512, &quot;client_ip&quot;: &quot;10.0.0.4&quot;, &quot;user_agent&quot;: &quot;curl/8.0&quot;}</code></div>
+</details>
+<details class="group" id="g-LT-45812cae8cb3" data-severity="high" data-category="availability" data-repo="" data-search="lt-45812cae8cb3 failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 500 service=order-service  order-service  availability"><summary>LT-45812cae8cb3 <span class="badge sev-high">high</span> <code>availability</code> &times;1 &mdash; Failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 500 service=order-service</summary>
+<div class="kv"><div>Template</div><div><code>Failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 500 service=order-service</code></div>
+<div>Fingerprint</div><div><code>45812cae8cb36f61f0a647b002215444460461ce28291733e596b4013a62e69e</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T12:30:00Z, last 2026-09-13T12:30:00Z)</div>
+<div>Producer levels</div><div>ERROR x1</div>
+<div>Assessment</div><div><span class="badge sev-high">high</span> availability &mdash; confidence 0.85 (observed)<ul class="compact"><li>HTTP status 500 observed -&gt; availability</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Impact signals</div><div>failed_requests, service_impact_possible</div>
+<div>Services</div><div>order-service</div>
+<div>HTTP</div><div>  &rarr; 500</div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template; HTTP status 500 and route template are part of the key</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/grouping-equivalence.log:31 &middot; 2026-09-13T12:30:00Z &middot; ERROR &middot; byte offset 5588</div>
+<pre><code>Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000042 for user 7 status code 500 service=order-service</code></pre>
+<div class="muted">attributes: <code>{&quot;service&quot;: &quot;order-service&quot;}</code></div>
+</details>
+<details class="group" id="g-LT-0b8d948bb890" data-severity="high" data-category="availability" data-repo="" data-search="lt-0b8d948bb890 failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 503 service=order-service  order-service  availability"><summary>LT-0b8d948bb890 <span class="badge sev-high">high</span> <code>availability</code> &times;1 &mdash; Failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 503 service=order-service</summary>
+<div class="kv"><div>Template</div><div><code>Failed to process order &lt;uuid&gt; for user &lt;n&gt; status code 503 service=order-service</code></div>
+<div>Fingerprint</div><div><code>0b8d948bb8909f78c67bda7f91629de508fd2a06f779e07a1e0d95e517e9fc8e</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T12:30:01Z, last 2026-09-13T12:30:01Z)</div>
+<div>Producer levels</div><div>ERROR x1</div>
+<div>Assessment</div><div><span class="badge sev-high">high</span> availability &mdash; confidence 0.85 (observed)<ul class="compact"><li>HTTP status 503 observed -&gt; availability</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Impact signals</div><div>dependency_or_upstream_failure, failed_requests, service_impact_possible</div>
+<div>Services</div><div>order-service</div>
+<div>HTTP</div><div>  &rarr; 503</div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template; HTTP status 503 and route template are part of the key</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/grouping-equivalence.log:32 &middot; 2026-09-13T12:30:01Z &middot; ERROR &middot; byte offset 5725</div>
+<pre><code>Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000043 for user 8 status code 503 service=order-service</code></pre>
+<div class="muted">attributes: <code>{&quot;service&quot;: &quot;order-service&quot;}</code></div>
+</details>
+<details class="group" id="g-LT-0687b7bfe339" data-severity="medium" data-category="unknown" data-repo="" data-search="lt-0687b7bfe339 failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=order-service  order-service  unknown"><summary>LT-0687b7bfe339 <span class="badge sev-medium">medium</span> <code>unknown</code> &times;30 &mdash; Failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=order-service</summary>
+<div class="kv"><div>Template</div><div><code>Failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=order-service</code></div>
+<div>Fingerprint</div><div><code>0687b7bfe339c3f76f0bb2781877b30b36b7b897850dc9137a119e72fc945152</code> (v1)</div>
+<div>Occurrences</div><div>30 (first 2026-09-13T12:00:00Z, last 2026-09-13T12:00:29Z)</div>
+<div>Producer levels</div><div>ERROR x30</div>
+<div>Assessment</div><div><span class="badge sev-medium">medium</span> unknown &mdash; confidence 0.35 (unknown)<ul class="compact"><li>no categorical evidence; producer level indicates a failure of unknown kind</li><li>severity from producer level only (ERROR)</li><li>occurrence count (30) does not influence severity</li></ul></div>
+<div>Services</div><div>order-service</div>
+<div>Correlation ids</div><div>req-0; req-1eef; req-3dde; req-5ccd; req-7bbc (more not retained)</div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template; 8+ distinct raw messages folded into this template (placeholders vary)</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/grouping-equivalence.log:1 &middot; 2026-09-13T12:00:00Z &middot; ERROR &middot; byte offset 0</div>
+<pre><code>Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000000 for user 100 from 10.1.2.0:40000 in 10ms (attempt 1/5) request_id=req-0 service=order-service</code></pre>
+<div class="muted">attributes: <code>{&quot;request_id&quot;: &quot;req-0&quot;, &quot;service&quot;: &quot;order-service&quot;}</code></div>
+<div class="muted">logs/grouping-equivalence.log:2 &middot; 2026-09-13T12:00:01Z &middot; ERROR &middot; byte offset 182</div>
+<pre><code>Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000001 for user 101 from 10.1.2.1:40001 in 11ms (attempt 2/5) request_id=req-1eef service=order-service</code></pre>
+<div class="muted">attributes: <code>{&quot;request_id&quot;: &quot;req-1eef&quot;, &quot;service&quot;: &quot;order-service&quot;}</code></div>
+<div class="muted">logs/grouping-equivalence.log:3 &middot; 2026-09-13T12:00:02Z &middot; ERROR &middot; byte offset 367</div>
+<pre><code>Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000002 for user 102 from 10.1.2.2:40002 in 12ms (attempt 3/5) request_id=req-3dde service=order-service</code></pre>
+<div class="muted">attributes: <code>{&quot;request_id&quot;: &quot;req-3dde&quot;, &quot;service&quot;: &quot;order-service&quot;}</code></div>
+<div class="muted">logs/grouping-equivalence.log:30 &middot; 2026-09-13T12:00:29Z &middot; ERROR &middot; byte offset 5401 &middot; last seen</div>
+<pre><code>Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000029 for user 129 from 10.1.2.29:40029 in 39ms (attempt 5/5) request_id=req-38113 service=order-service</code></pre>
+</details>
+<details class="group" id="g-LT-a90eef438a86" data-severity="medium" data-category="network" data-repo="orders" data-search="lt-a90eef438a86 failed to place order &lt;n&gt; for customer &lt;n&gt; system.invalidoperationexception system.io.ioexception  orders network"><summary>LT-a90eef438a86 <span class="badge sev-medium">medium</span> <code>network</code> &times;2 &mdash; Failed to place order &lt;n&gt; for customer &lt;n&gt;</summary>
+<div class="kv"><div>Template</div><div><code>Failed to place order &lt;n&gt; for customer &lt;n&gt;</code></div>
+<div>Fingerprint</div><div><code>a90eef438a8623bce880cc9f9a5a482fcc63107da1dd8b66c3590188000aaa13</code> (v1)</div>
+<div>Occurrences</div><div>2 (first 2026-09-13T10:00:01.456Z, last 2026-09-13T10:00:02Z)</div>
+<div>Producer levels</div><div>ERR x2</div>
+<div>Assessment</div><div><span class="badge sev-medium">medium</span> network &mdash; confidence 0.85 (observed)<ul class="compact"><li>exception type System.IO.IOException indicates network</li><li>occurrence count (2) does not influence severity</li></ul></div>
+<div>Exception chain</div><div><code>System.InvalidOperationException -&gt; System.IO.IOException</code> &mdash; Sequence contains no elements</div>
+<div>Top frames</div><div><pre><code>Acme.Orders.Api.Controllers.OrdersController.Post (/src/Acme.Orders.Api/Controllers/OrdersController.cs:77)
+Microsoft.AspNetCore.Mvc.Infrastructure.ActionMethodExecutor.TaskOfIActionResultExecutor.Execute  [framework]
+Acme.Orders.OrderService.Place (/src/Acme.Orders/OrderService.cs:42)</code></pre></div>
+<div>Grouping</div><div>confidence 0.9 &mdash; grouped by exception chain System.InvalidOperationException&gt;System.IO.IOException and message template</div>
+<div>Attribution</div><div>resolved<ul class="compact"><li>orders (confidence 1.0): path src/Acme.Orders/OrderService.cs; namespace Acme.Orders; namespace Acme.Orders</li></ul></div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/serilog-text.log:2-8 &middot; 2026-09-13T10:00:01.456Z &middot; ERR &middot; byte offset 58</div>
+<pre><code>Failed to place order 42 for customer 7</code></pre>
+<pre><code>System.InvalidOperationException: Sequence contains no elements
+    at Acme.Orders.Api.Controllers.OrdersController.Post (/src/Acme.Orders.Api/Controllers/OrdersController.cs:77)
+    at Microsoft.AspNetCore.Mvc.Infrastructure.ActionMethodExecutor.TaskOfIActionResultExecutor.Execute
+Caused by: System.IO.IOException: The pipe is broken
+    at Acme.Orders.OrderService.Place (/src/Acme.Orders/OrderService.cs:42)</code></pre>
+<div class="muted">logs/serilog-text.log:9-14 &middot; 2026-09-13T10:00:02Z &middot; ERR &middot; byte offset 653</div>
+<pre><code>Failed to place order 43 for customer 9</code></pre>
+<pre><code>System.InvalidOperationException: Sequence contains no elements
+    at Acme.Orders.Api.Controllers.OrdersController.Post (/src/Acme.Orders.Api/Controllers/OrdersController.cs:77)
+Caused by: System.IO.IOException: The pipe is broken
+    at Acme.Orders.OrderService.Place (/src/Acme.Orders/OrderService.cs:42)</code></pre>
+</details>
+<details class="group" id="g-LT-102319349c95" data-severity="medium" data-category="unknown" data-repo="" data-search="lt-102319349c95 charge failed    unknown"><summary>LT-102319349c95 <span class="badge sev-medium">medium</span> <code>unknown</code> &times;1 &mdash; charge failed</summary>
+<div class="kv"><div>Template</div><div><code>charge failed</code></div>
+<div>Fingerprint</div><div><code>102319349c9586dca92d055a14aba56cd24f458e50f5559053a4a434f99ae0b5</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T10:00:01.123Z, last 2026-09-13T10:00:01.123Z)</div>
+<div>Producer levels</div><div>ERROR x1</div>
+<div>Assessment</div><div><span class="badge sev-medium">medium</span> unknown &mdash; confidence 0.35 (unknown)<ul class="compact"><li>no categorical evidence; producer level indicates a failure of unknown kind</li><li>severity from producer level only (ERROR)</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Logger</div><div><code>worker/main.go:42</code></div>
+<div>Grouping</div><div>confidence 0.7 &mdash; grouped by normalized message template</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/zap-console.log:2 &middot; 2026-09-13T10:00:01.123Z &middot; ERROR &middot; byte offset 61</div>
+<pre><code>charge failed</code></pre>
+<div class="muted">attributes: <code>{&quot;error&quot;: &quot;context deadline exceeded&quot;, &quot;order&quot;: 42}</code></div>
+</details>
+<details class="group" id="g-LT-85f302734ac6" data-severity="medium" data-category="unknown" data-repo="" data-search="lt-85f302734ac6 failed to place order &lt;n&gt; java.lang.illegalstateexception   unknown"><summary>LT-85f302734ac6 <span class="badge sev-medium">medium</span> <code>unknown</code> &times;1 &mdash; Failed to place order &lt;n&gt;</summary>
+<div class="kv"><div>Template</div><div><code>Failed to place order &lt;n&gt;</code></div>
+<div>Fingerprint</div><div><code>85f302734ac6f0ce15a20e88e268861c22a5373cef791f5c89db0025a63313c4</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T10:00:01.123Z, last 2026-09-13T10:00:01.123Z)</div>
+<div>Producer levels</div><div>ERROR x1</div>
+<div>Assessment</div><div><span class="badge sev-medium">medium</span> unknown &mdash; confidence 0.35 (unknown)<ul class="compact"><li>no categorical evidence; producer level indicates a failure of unknown kind</li><li>severity from producer level only (ERROR)</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Logger</div><div><code>c.a.orders.OrderService</code></div>
+<div>Exception chain</div><div><code>java.lang.IllegalStateException</code> &mdash; boom</div>
+<div>Top frames</div><div><pre><code>com.acme.orders.OrderService.place (OrderService.java:42)</code></pre></div>
+<div>Grouping</div><div>confidence 0.9 &mdash; grouped by exception chain java.lang.IllegalStateException and message template</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/spring-boot.log:2-4 &middot; 2026-09-13T10:00:01.123Z &middot; ERROR &middot; byte offset 116</div>
+<pre><code>Failed to place order 42</code></pre>
+<pre><code>java.lang.IllegalStateException: boom
+    at com.acme.orders.OrderService.place (OrderService.java:42)</code></pre>
+</details>
+<details class="group" id="g-LT-bfc7484129c3" data-severity="medium" data-category="network" data-repo="billing" data-search="lt-bfc7484129c3 charge failed for order &lt;n&gt; billing.errors.chargefailed requests.exceptions.connectionerror  billing network"><summary>LT-bfc7484129c3 <span class="badge sev-medium">medium</span> <code>network</code> &times;1 &mdash; charge failed for order &lt;n&gt;</summary>
+<div class="kv"><div>Template</div><div><code>charge failed for order &lt;n&gt;</code></div>
+<div>Fingerprint</div><div><code>bfc7484129c3cc385b75edc98307377df3330da9fe843f9c65f94edd882e0143</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T12:00:01.123Z, last 2026-09-13T12:00:01.123Z)</div>
+<div>Producer levels</div><div>ERROR x1</div>
+<div>Assessment</div><div><span class="badge sev-medium">medium</span> network &mdash; confidence 0.85 (observed)<ul class="compact"><li>exception type requests.exceptions.ConnectionError indicates network</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Logger</div><div><code>billing.worker</code></div>
+<div>Exception chain</div><div><code>billing.errors.ChargeFailed -&gt; requests.exceptions.ConnectionError</code> &mdash; could not charge order &lt;n&gt;</div>
+<div>Top frames</div><div><pre><code>run (/app/billing/worker.py:33)
+charge (/app/billing/charge.py:12)
+run (/app/billing/worker.py:30)</code></pre></div>
+<div>Grouping</div><div>confidence 0.9 &mdash; grouped by exception chain billing.errors.ChargeFailed&gt;requests.exceptions.ConnectionError and message template</div>
+<div>Attribution</div><div>resolved<ul class="compact"><li>billing (confidence 1.0): path billing/worker.py; path billing/charge.py; namespace billing; namespace billing</li></ul></div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/python-asctime.log:2-15 &middot; 2026-09-13T12:00:01.123Z &middot; ERROR &middot; byte offset 65</div>
+<pre><code>charge failed for order 42</code></pre>
+<pre><code>billing.errors.ChargeFailed: could not charge order 42
+    at run (/app/billing/worker.py:33)
+Caused by: requests.exceptions.ConnectionError: HTTPConnectionPool(host=&#x27;payments&#x27;, port=8080): Max retries exceeded
+    at charge (/app/billing/charge.py:12)
+    at run (/app/billing/worker.py:30)</code></pre>
+</details>
+<details class="group" id="g-LT-b1d0e8dc43fc" data-severity="medium" data-category="network" data-repo="billing" data-search="lt-b1d0e8dc43fc charge failed for order &lt;n&gt; requests.exceptions.connectionerror  billing network"><summary>LT-b1d0e8dc43fc <span class="badge sev-medium">medium</span> <code>network</code> &times;1 &mdash; charge failed for order &lt;n&gt;</summary>
+<div class="kv"><div>Template</div><div><code>charge failed for order &lt;n&gt;</code></div>
+<div>Fingerprint</div><div><code>b1d0e8dc43fc373acddeda7cbe3dda499ed337b56819bd0d3e843fe677bd6a2e</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T12:00:02.123Z, last 2026-09-13T12:00:02.123Z)</div>
+<div>Producer levels</div><div>ERROR x1</div>
+<div>Assessment</div><div><span class="badge sev-medium">medium</span> network &mdash; confidence 0.85 (observed)<ul class="compact"><li>exception type requests.exceptions.ConnectionError indicates network</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Impact signals</div><div>also_matches:performance, retries</div>
+<div>Logger</div><div><code>billing.worker</code></div>
+<div>Exception chain</div><div><code>requests.exceptions.ConnectionError</code> &mdash; HTTPConnectionPool(host=&#x27;payments&#x27;, port=&lt;id&gt;): Max retries exceeded</div>
+<div>Top frames</div><div><pre><code>charge (/app/billing/charge.py:12)
+run (/app/billing/worker.py:30)</code></pre></div>
+<div>Grouping</div><div>confidence 0.9 &mdash; grouped by exception chain requests.exceptions.ConnectionError and message template</div>
+<div>Attribution</div><div>resolved<ul class="compact"><li>billing (confidence 1.0): path billing/charge.py; path billing/worker.py; namespace billing</li></ul></div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/python-asctime.log:16-22 &middot; 2026-09-13T12:00:02.123Z &middot; ERROR &middot; byte offset 705</div>
+<pre><code>charge failed for order 43</code></pre>
+<pre><code>requests.exceptions.ConnectionError: HTTPConnectionPool(host=&#x27;payments&#x27;, port=8080): Max retries exceeded
+    at charge (/app/billing/charge.py:12)
+    at run (/app/billing/worker.py:30)</code></pre>
+</details>
+<details class="group" id="g-LT-6d7c6a6bd062" data-severity="medium" data-category="unknown" data-repo="" data-search="lt-6d7c6a6bd062 failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=payment-service  payment-service  unknown"><summary>LT-6d7c6a6bd062 <span class="badge sev-medium">medium</span> <code>unknown</code> &times;1 &mdash; Failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=payment-service</summary>
+<div class="kv"><div>Template</div><div><code>Failed to process order &lt;uuid&gt; for user &lt;n&gt; from &lt;ip&gt;:&lt;n&gt; in &lt;dur&gt; (attempt &lt;n&gt;/&lt;n&gt;) request_id=req-&lt;id&gt; service=payment-service</code></div>
+<div>Fingerprint</div><div><code>6d7c6a6bd0624220de033c2e18f7c10f33412f8d94580ffc111c64de1585bcdc</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T12:31:00Z, last 2026-09-13T12:31:00Z)</div>
+<div>Producer levels</div><div>ERROR x1</div>
+<div>Assessment</div><div><span class="badge sev-medium">medium</span> unknown &mdash; confidence 0.35 (unknown)<ul class="compact"><li>no categorical evidence; producer level indicates a failure of unknown kind</li><li>severity from producer level only (ERROR)</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Services</div><div>payment-service</div>
+<div>Correlation ids</div><div>req-1</div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/grouping-equivalence.log:33 &middot; 2026-09-13T12:31:00Z &middot; ERROR &middot; byte offset 5862</div>
+<pre><code>Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000044 for user 9 from 10.1.2.3:4444 in 12ms (attempt 1/5) request_id=req-1 service=payment-service</code></pre>
+<div class="muted">attributes: <code>{&quot;request_id&quot;: &quot;req-1&quot;, &quot;service&quot;: &quot;payment-service&quot;}</code></div>
+</details>
+<details class="group" id="g-LT-228bb4b285fb" data-severity="low" data-category="performance" data-repo="" data-search="lt-228bb4b285fb retrying payment (attempt &lt;n&gt;/&lt;n&gt;) after &lt;dur&gt;    performance"><summary>LT-228bb4b285fb <span class="badge sev-low">low</span> <code>performance</code> &times;1 &mdash; Retrying payment (attempt &lt;n&gt;/&lt;n&gt;) after &lt;dur&gt;</summary>
+<div class="kv"><div>Template</div><div><code>Retrying payment (attempt &lt;n&gt;/&lt;n&gt;) after &lt;dur&gt;</code></div>
+<div>Fingerprint</div><div><code>228bb4b285fb81fc0a3c94fd438c1acdeab37171a8e5a9ac74fbf3b13623c84a</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T10:00:03Z, last 2026-09-13T10:00:03Z)</div>
+<div>Producer levels</div><div>WRN x1</div>
+<div>Assessment</div><div><span class="badge sev-low">low</span> performance &mdash; confidence 0.6 (inferred)<ul class="compact"><li>message evidence &#x27;retrying&#x27; -&gt; performance</li><li>producer level is WARNING; severity capped at medium</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Impact signals</div><div>retries</div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/serilog-text.log:15 &middot; 2026-09-13T10:00:03Z &middot; WRN &middot; byte offset 1116</div>
+<pre><code>Retrying payment (attempt 2/5) after 5000 ms</code></pre>
+</details>
+<details class="group" id="g-LT-a0db72527b05" data-severity="low" data-category="client_error" data-repo="orders" data-search="lt-a0db72527b05 get /api/orders/&lt;n&gt; -&gt; &lt;n&gt;   orders client_error"><summary>LT-a0db72527b05 <span class="badge sev-low">low</span> <code>client_error</code> &times;1 &mdash; GET /api/orders/&lt;n&gt; -&gt; &lt;n&gt;</summary>
+<div class="kv"><div>Template</div><div><code>GET /api/orders/&lt;n&gt; -&gt; &lt;n&gt;</code></div>
+<div>Fingerprint</div><div><code>a0db72527b05b7d71e7a54317185f30f1f50475aa479dbd16b783e7fa799adf3</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T12:00:02Z, last 2026-09-13T12:00:02Z)</div>
+<div>Producer levels</div><div>WARNING x1</div>
+<div>Assessment</div><div><span class="badge sev-low">low</span> client_error &mdash; confidence 0.85 (observed)<ul class="compact"><li>HTTP status 404 observed -&gt; client error</li><li>producer level is WARNING; severity capped at medium</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>HTTP</div><div>GET /api/orders/&lt;n&gt; &rarr; 404</div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template; HTTP status 404 and route template are part of the key</div>
+<div>Attribution</div><div>unresolved: only weak evidence (basename or name mention) matched; not attributed<ul class="compact"><li>orders (confidence 0.1): name-in-message orders</li></ul></div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/access-combined.log:3 &middot; 2026-09-13T12:00:02Z &middot; warning &middot; byte offset 169</div>
+<pre><code>GET /api/orders/43 -&gt; 404</code></pre>
+<div class="muted">attributes: <code>{&quot;bytes&quot;: 12, &quot;client_ip&quot;: &quot;10.0.0.3&quot;, &quot;user_agent&quot;: &quot;Mozilla/5.0&quot;}</code></div>
+</details>
+<details class="group" id="g-LT-4e9e698c369a" data-severity="info" data-category="operational" data-repo="orders" data-search="lt-4e9e698c369a starting acme.orders   orders operational"><summary>LT-4e9e698c369a <span class="badge sev-info">info</span> <code>operational</code> &times;1 &mdash; Starting Acme.Orders</summary>
+<div class="kv"><div>Template</div><div><code>Starting Acme.Orders</code></div>
+<div>Fingerprint</div><div><code>4e9e698c369a55e1195ef4b83c5d05cc92487611a22b5a13e78a170d0b06c361</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T10:00:00.123Z, last 2026-09-13T10:00:00.123Z)</div>
+<div>Producer levels</div><div>INF x1</div>
+<div>Assessment</div><div><span class="badge sev-info">info</span> operational &mdash; confidence 0.6 (inferred)<ul class="compact"><li>message evidence &#x27;starting&#x27; -&gt; operational</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Grouping</div><div>confidence 0.7 &mdash; grouped by normalized message template</div>
+<div>Attribution</div><div>unresolved: only weak evidence (basename or name mention) matched; not attributed<ul class="compact"><li>orders (confidence 0.1): name-in-message orders</li></ul></div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/serilog-text.log:1 &middot; 2026-09-13T10:00:00.123Z &middot; INF &middot; byte offset 0</div>
+<pre><code>Starting Acme.Orders</code></pre>
+</details>
+<details class="group" id="g-LT-abe4e469a8d3" data-severity="info" data-category="operational" data-repo="" data-search="lt-abe4e469a8d3 starting    operational"><summary>LT-abe4e469a8d3 <span class="badge sev-info">info</span> <code>operational</code> &times;1 &mdash; starting</summary>
+<div class="kv"><div>Template</div><div><code>starting</code></div>
+<div>Fingerprint</div><div><code>abe4e469a8d3cf81fe0499f5711c0bf2e465ee4264090397228fb033ededec25</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T10:00:00.123Z, last 2026-09-13T10:00:00.123Z)</div>
+<div>Producer levels</div><div>INFO x1</div>
+<div>Assessment</div><div><span class="badge sev-info">info</span> operational &mdash; confidence 0.6 (inferred)<ul class="compact"><li>message evidence &#x27;starting&#x27; -&gt; operational</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Logger</div><div><code>worker/main.go:20</code></div>
+<div>Grouping</div><div>confidence 0.7 &mdash; grouped by normalized message template</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/zap-console.log:1 &middot; 2026-09-13T10:00:00.123Z &middot; INFO &middot; byte offset 0</div>
+<pre><code>starting</code></pre>
+</details>
+<details class="group" id="g-LT-f045f3c4e056" data-severity="info" data-category="operational" data-repo="" data-search="lt-f045f3c4e056 started app in &lt;dur&gt;    operational"><summary>LT-f045f3c4e056 <span class="badge sev-info">info</span> <code>operational</code> &times;1 &mdash; Started App in &lt;dur&gt;</summary>
+<div class="kv"><div>Template</div><div><code>Started App in &lt;dur&gt;</code></div>
+<div>Fingerprint</div><div><code>f045f3c4e05600b93faa1b4ca27631bc059a7403ec9c24c38ac96ed39eeda56a</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T10:00:00.123Z, last 2026-09-13T10:00:00.123Z)</div>
+<div>Producer levels</div><div>INFO x1</div>
+<div>Assessment</div><div><span class="badge sev-info">info</span> operational &mdash; confidence 0.6 (inferred)<ul class="compact"><li>message evidence &#x27;started&#x27; -&gt; operational</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Logger</div><div><code>c.a.orders.App</code></div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/spring-boot.log:1 &middot; 2026-09-13T10:00:00.123Z &middot; INFO &middot; byte offset 0</div>
+<pre><code>Started App in 2.5 seconds</code></pre>
+</details>
+<details class="group" id="g-LT-04097dbdd0ef" data-severity="info" data-category="operational" data-repo="billing" data-search="lt-04097dbdd0ef worker started   billing operational"><summary>LT-04097dbdd0ef <span class="badge sev-info">info</span> <code>operational</code> &times;1 &mdash; worker started</summary>
+<div class="kv"><div>Template</div><div><code>worker started</code></div>
+<div>Fingerprint</div><div><code>04097dbdd0effc6a306e698096413fd50e7f22e9555b3752c5cf4aa2877b3650</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T12:00:00.123Z, last 2026-09-13T12:00:00.123Z)</div>
+<div>Producer levels</div><div>INFO x1</div>
+<div>Assessment</div><div><span class="badge sev-info">info</span> operational &mdash; confidence 0.6 (inferred)<ul class="compact"><li>message evidence &#x27;started&#x27; -&gt; operational</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Logger</div><div><code>billing.worker</code></div>
+<div>Grouping</div><div>confidence 0.7 &mdash; grouped by normalized message template</div>
+<div>Attribution</div><div>unresolved: only weak evidence (basename or name mention) matched; not attributed<ul class="compact"><li>billing (confidence 0.3): namespace billing</li></ul></div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/python-asctime.log:1 &middot; 2026-09-13T12:00:00.123Z &middot; INFO &middot; byte offset 0</div>
+<pre><code>worker started</code></pre>
+</details>
+<details class="group" id="g-LT-d46742b9402c" data-severity="info" data-category="unknown" data-repo="" data-search="lt-d46742b9402c get /health -&gt; &lt;n&gt;    unknown"><summary>LT-d46742b9402c <span class="badge sev-info">info</span> <code>unknown</code> &times;1 &mdash; GET /health -&gt; &lt;n&gt;</summary>
+<div class="kv"><div>Template</div><div><code>GET /health -&gt; &lt;n&gt;</code></div>
+<div>Fingerprint</div><div><code>d46742b9402c993db9b68905e5242ef9d5375979552a85b29dcf4e3b409b251d</code> (v1)</div>
+<div>Occurrences</div><div>1 (first 2026-09-13T12:00:01Z, last 2026-09-13T12:00:01Z)</div>
+<div>Producer levels</div><div>INFO x1</div>
+<div>Assessment</div><div><span class="badge sev-info">info</span> unknown &mdash; confidence 0.35 (unknown)<ul class="compact"><li>no failure evidence in message or level</li><li>severity from producer level only (INFO)</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>HTTP</div><div>GET /health &rarr; 200</div>
+<div>Grouping</div><div>confidence 0.8 &mdash; grouped by normalized message template; HTTP status 200 and route template are part of the key</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/access-combined.log:2 &middot; 2026-09-13T12:00:01Z &middot; info &middot; byte offset 96</div>
+<pre><code>GET /health -&gt; 200</code></pre>
+<div class="muted">attributes: <code>{&quot;bytes&quot;: 2, &quot;client_ip&quot;: &quot;10.0.0.2&quot;}</code></div>
+</details>
+<details class="group" id="g-LT-2791132b6e6e" data-severity="info" data-category="unknown" data-repo="" data-search="lt-2791132b6e6e time-only serilog console line    unknown"><summary>LT-2791132b6e6e <span class="badge sev-info">info</span> <code>unknown</code> &times;1 &mdash; time-only serilog console line</summary>
+<div class="kv"><div>Template</div><div><code>time-only serilog console line</code></div>
+<div>Fingerprint</div><div><code>2791132b6e6ead9f773fffa6ead547d2b3a25ec6bdac8696d556731b2b51d813</code> (v1)</div>
+<div>Occurrences</div><div>1 (first unknown, last unknown, 1 without timestamp)</div>
+<div>Producer levels</div><div>INF x1</div>
+<div>Assessment</div><div><span class="badge sev-info">info</span> unknown &mdash; confidence 0.35 (unknown)<ul class="compact"><li>no failure evidence in message or level</li><li>severity from producer level only (INFO)</li><li>occurrence count (1) does not influence severity</li></ul></div>
+<div>Grouping</div><div>confidence 0.7 &mdash; grouped by normalized message template</div>
+<div>Attribution</div><div>unresolved: no path, namespace or service evidence matched any discovered repository</div>
+</div><h3>Examples (redacted)</h3>
+<div class="muted">logs/serilog-text.log:16 &middot; no timestamp &middot; INF &middot; byte offset 1198</div>
+<pre><code>time-only serilog console line</code></pre>
+</details>
+</section>
+<section id="rootcause"><h2>5. Root-cause assessment</h2>
+<details class="group" data-severity="medium" data-category="network" data-repo="orders" data-search="lt-a90eef438a86"><summary>LT-a90eef438a86 <span class="badge sev-medium">medium</span> &mdash; Failed to place order &lt;n&gt; for customer &lt;n&gt;</summary>
+<h3>Observed</h3><ul class="compact"><li>2 occurrence(s) between 2026-09-13T10:00:01.456Z and 2026-09-13T10:00:02Z</li><li>producer level(s): ERR x2</li><li>exception chain: System.InvalidOperationException -&gt; System.IO.IOException</li></ul>
+<h3>Hypotheses</h3><ul class="compact"><li>network failure at src/Acme.Orders/OrderService.cs:42 <span class="muted">(confidence 0.85)</span><ul class="compact"><li>exception type System.IO.IOException indicates network</li><li>occurrence count (2) does not influence severity</li></ul></li></ul>
+<h3>Uncertainty and alternatives</h3><ul class="compact"><li>the analysed checkout (billing@7ae7b2e8156a, orders@7ab99b3bd21d) may not be the version that produced the log</li><li>the message may be a symptom of an upstream failure sharing the same time window (check correlated groups)</li></ul>
+</details>
+<details class="group" data-severity="medium" data-category="network" data-repo="billing" data-search="lt-bfc7484129c3"><summary>LT-bfc7484129c3 <span class="badge sev-medium">medium</span> &mdash; charge failed for order &lt;n&gt;</summary>
+<h3>Observed</h3><ul class="compact"><li>1 occurrence(s) between 2026-09-13T12:00:01.123Z and 2026-09-13T12:00:01.123Z</li><li>producer level(s): ERROR x1</li><li>exception chain: billing.errors.ChargeFailed -&gt; requests.exceptions.ConnectionError</li></ul>
+<h3>Hypotheses</h3><ul class="compact"><li>network failure at billing/worker.py:33 <span class="muted">(confidence 0.85)</span><ul class="compact"><li>exception type requests.exceptions.ConnectionError indicates network</li><li>occurrence count (1) does not influence severity</li></ul></li></ul>
+<h3>Uncertainty and alternatives</h3><ul class="compact"><li>the analysed checkout (billing@7ae7b2e8156a, orders@7ab99b3bd21d) may not be the version that produced the log</li><li>the message may be a symptom of an upstream failure sharing the same time window (check correlated groups)</li></ul>
+</details>
+<details class="group" data-severity="medium" data-category="network" data-repo="billing" data-search="lt-b1d0e8dc43fc"><summary>LT-b1d0e8dc43fc <span class="badge sev-medium">medium</span> &mdash; charge failed for order &lt;n&gt;</summary>
+<h3>Observed</h3><ul class="compact"><li>1 occurrence(s) between 2026-09-13T12:00:02.123Z and 2026-09-13T12:00:02.123Z</li><li>producer level(s): ERROR x1</li><li>exception chain: requests.exceptions.ConnectionError</li></ul>
+<h3>Hypotheses</h3><ul class="compact"><li>network failure at billing/charge.py:12 <span class="muted">(confidence 0.85)</span><ul class="compact"><li>exception type requests.exceptions.ConnectionError indicates network</li><li>occurrence count (1) does not influence severity</li></ul></li></ul>
+<h3>Uncertainty and alternatives</h3><ul class="compact"><li>the analysed checkout (billing@7ae7b2e8156a, orders@7ab99b3bd21d) may not be the version that produced the log</li><li>the message may be a symptom of an upstream failure sharing the same time window (check correlated groups)</li></ul>
+</details>
+</section>
+<section id="fixplan"><h2>6. Fix plan</h2>
+<details class="group" data-severity="medium" data-category="network" data-repo="orders" data-search="lt-a90eef438a86"><summary>LT-a90eef438a86 <span class="badge sev-medium">medium</span> &mdash; Harden network error handling at the call site at src/Acme.Orders/OrderService.cs:42 (orders)</summary>
+<h3>Harden network error handling at the call site at src/Acme.Orders/OrderService.cs:42 (orders) <span class="muted">(source_backed, deterministic, confidence 0.75)</span></h3><p>Network-level failures (DNS, TLS, resets) dominate; the code should retry transient failures and surface persistent ones clearly. Reference verified in the checkout (symbol Place found within 6 lines of line 42).</p>
+<div class="kv"><div>Suggested changes</div><div><ul class="compact"><li>classify transient vs. persistent network errors</li><li>retry transient errors with backoff</li><li>surface TLS/DNS details in the error</li></ul></div>
+<div>Source references</div><div><ul class="compact"><li><code>src/Acme.Orders/OrderService.cs:42</code> in orders &mdash; <strong>verified</strong>: symbol Place found within 6 lines of line 42</li></ul></div>
+<div>Regression tests</div><div><ul class="compact"><li>unit test injecting connection reset / DNS failure</li></ul></div><div>Verification</div><div><ul class="compact"><li>correlate with infrastructure changes (DNS, certificates, load balancer) in the time window</li></ul></div>
+</div>
+<pre><code>   36          // documentation line 35
+   37          // documentation line 36
+   38          // documentation line 37
+   39          // documentation line 38
+   40          public async Task&lt;Order&gt; Place(Order order)
+   41          {
+   42&gt;             var response = await _client.PostAsJsonAsync(&quot;/payments&quot;, order);
+   43              response.EnsureSuccessStatusCode();
+   44              await _repository.SaveAsync(order);
+   45              return order;
+   46          }
+   47      }
+   48  }</code></pre>
+</details>
+<details class="group" data-severity="medium" data-category="network" data-repo="billing" data-search="lt-bfc7484129c3"><summary>LT-bfc7484129c3 <span class="badge sev-medium">medium</span> &mdash; Harden network error handling at the call site at billing/worker.py:33 (billing)</summary>
+<h3>Harden network error handling at the call site at billing/worker.py:33 (billing) <span class="muted">(source_backed, deterministic, confidence 0.75)</span></h3><p>Network-level failures (DNS, TLS, resets) dominate; the code should retry transient failures and surface persistent ones clearly. Reference verified in the checkout (file and line exist in the checkout (no symbol to cross-check); symbol charge found within 6 lines of line 12).</p>
+<div class="kv"><div>Suggested changes</div><div><ul class="compact"><li>classify transient vs. persistent network errors</li><li>retry transient errors with backoff</li><li>surface TLS/DNS details in the error</li></ul></div>
+<div>Source references</div><div><ul class="compact"><li><code>billing/worker.py:33</code> in billing &mdash; <strong>verified</strong>: file and line exist in the checkout (no symbol to cross-check)</li><li><code>billing/charge.py:12</code> in billing &mdash; <strong>verified</strong>: symbol charge found within 6 lines of line 12</li><li><code>billing/worker.py:30</code> in billing &mdash; <strong>verified</strong>: file and line exist in the checkout (no symbol to cross-check)</li></ul></div>
+<div>Regression tests</div><div><ul class="compact"><li>unit test injecting connection reset / DNS failure</li></ul></div><div>Verification</div><div><ul class="compact"><li>correlate with infrastructure changes (DNS, certificates, load balancer) in the time window</li></ul></div>
+</div>
+<pre><code>   27  # padding line 26
+   28  
+   29  def run(queue):
+   30      for order in queue:
+   31          charge(order)
+   32          log.info(&quot;charged %s&quot;, order.id)
+   33&gt;         time.sleep(0.1)
+   34  </code></pre>
+<pre><code>    6  
+    7  def charge(order):
+    8      payload = {&quot;order&quot;: order.id, &quot;amount&quot;: order.amount}
+    9      session = requests.Session()
+   10      session.headers[&quot;X-Order&quot;] = str(order.id)
+   11      # the gateway occasionally times out under load
+   12&gt;     response = session.post(GATEWAY, json=payload, timeout=5)
+   13      response.raise_for_status()
+   14      return response.json()
+   15  </code></pre>
+<pre><code>   24  # padding line 23
+   25  # padding line 24
+   26  # padding line 25
+   27  # padding line 26
+   28  
+   29  def run(queue):
+   30&gt;     for order in queue:
+   31          charge(order)
+   32          log.info(&quot;charged %s&quot;, order.id)
+   33          time.sleep(0.1)
+   34  </code></pre>
+</details>
+<details class="group" data-severity="medium" data-category="network" data-repo="billing" data-search="lt-b1d0e8dc43fc"><summary>LT-b1d0e8dc43fc <span class="badge sev-medium">medium</span> &mdash; Harden network error handling at the call site at billing/charge.py:12 (billing)</summary>
+<h3>Harden network error handling at the call site at billing/charge.py:12 (billing) <span class="muted">(source_backed, deterministic, confidence 0.75)</span></h3><p>Network-level failures (DNS, TLS, resets) dominate; the code should retry transient failures and surface persistent ones clearly. Reference verified in the checkout (symbol charge found within 6 lines of line 12; file and line exist in the checkout (no symbol to cross-check)).</p>
+<div class="kv"><div>Suggested changes</div><div><ul class="compact"><li>classify transient vs. persistent network errors</li><li>retry transient errors with backoff</li><li>surface TLS/DNS details in the error</li></ul></div>
+<div>Source references</div><div><ul class="compact"><li><code>billing/charge.py:12</code> in billing &mdash; <strong>verified</strong>: symbol charge found within 6 lines of line 12</li><li><code>billing/worker.py:30</code> in billing &mdash; <strong>verified</strong>: file and line exist in the checkout (no symbol to cross-check)</li></ul></div>
+<div>Regression tests</div><div><ul class="compact"><li>unit test injecting connection reset / DNS failure</li></ul></div><div>Verification</div><div><ul class="compact"><li>correlate with infrastructure changes (DNS, certificates, load balancer) in the time window</li></ul></div>
+</div>
+<pre><code>    6  
+    7  def charge(order):
+    8      payload = {&quot;order&quot;: order.id, &quot;amount&quot;: order.amount}
+    9      session = requests.Session()
+   10      session.headers[&quot;X-Order&quot;] = str(order.id)
+   11      # the gateway occasionally times out under load
+   12&gt;     response = session.post(GATEWAY, json=payload, timeout=5)
+   13      response.raise_for_status()
+   14      return response.json()
+   15  </code></pre>
+<pre><code>   24  # padding line 23
+   25  # padding line 24
+   26  # padding line 25
+   27  # padding line 26
+   28  
+   29  def run(queue):
+   30&gt;     for order in queue:
+   31          charge(order)
+   32          log.info(&quot;charged %s&quot;, order.id)
+   33          time.sleep(0.1)
+   34  </code></pre>
+</details>
+</section>
+<section id="coverage"><h2>7. Coverage and limitations</h2>
+<h3>Inputs</h3><table><thead><tr><th scope="col">Path</th><th scope="col">Status</th><th scope="col">Format (confidence)</th><th scope="col">Layout / dialect</th><th scope="col">Events</th><th scope="col">Lines</th><th scope="col">Bytes</th><th scope="col">Failures</th><th scope="col">Note</th></tr></thead><tbody>
+<tr><td><code>logs/access-combined.log</code></td><td>processed</td><td>access-log (0.95)</td><td>apache-nginx-access+nginx-error+apache-error</td><td>4</td><td>4</td><td>369</td><td>0</td><td></td></tr>
+<tr><td><code>logs/grouping-equivalence.log</code></td><td>processed</td><td>text (0.6)</td><td>headerless-fallback</td><td>33</td><td>33</td><td>6,043</td><td>0</td><td></td></tr>
+<tr><td><code>logs/python-asctime.log</code></td><td>processed</td><td>text (0.883)</td><td>python-asctime</td><td>3</td><td>22</td><td>1,096</td><td>0</td><td></td></tr>
+<tr><td><code>logs/serilog-text.log</code></td><td>processed</td><td>text (0.894)</td><td>serilog-text</td><td>5</td><td>16</td><td>1,244</td><td>0</td><td></td></tr>
+<tr><td><code>logs/spring-boot.log</code></td><td>processed</td><td>text (0.838)</td><td>spring-boot</td><td>2</td><td>4</td><td>338</td><td>0</td><td></td></tr>
+<tr><td><code>logs/zap-console.log</code></td><td>processed</td><td>text (0.9)</td><td>zap-console</td><td>2</td><td>2</td><td>180</td><td>0</td><td></td></tr>
+</tbody></table>
+<h3>Parsing diagnostics</h3><p>0 diagnostic(s), 0 retained records (0 dropped).</p>
+<h3>Filters and redaction</h3><div class="kv">
+<div>--since</div><div>not set (0 events filtered, 0 untimed events excluded)</div>
+<div>--min-severity</div><div>info (0 groups / 0 events below threshold not shown)</div>
+<div>Redaction</div><div>enabled; replacements by kind: {}</div>
+<div>Encoding / truncation</div><div>0 invalid byte sequences replaced, 0 oversized lines truncated (0 bytes discarded), 0 parse failures</div>
+<div>Aggregation</div><div>18 groups; spill-to-disk not needed (0 spill(s), peak temp 0 bytes)</div></div>
+<h3>Repositories</h3>
+<table><thead><tr><th scope="col">Repository</th><th scope="col">Kind</th><th scope="col">Path</th><th scope="col">HEAD</th><th scope="col">Branch</th><th scope="col">Working tree</th><th scope="col">Files indexed</th></tr></thead><tbody><tr><td>billing</td><td>repository</td><td><code>/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/billing</code></td><td><code>7ae7b2e8156a</code></td><td>master</td><td>clean</td><td>4</td></tr><tr><td>orders</td><td>repository</td><td><code>/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/orders</code></td><td><code>7ab99b3bd21d</code></td><td>master</td><td>clean</td><td>2</td></tr></tbody></table>
+<p>Attribution attempted for 18 groups: 3 resolved, 0 ambiguous, 15 unresolved. Investigation: 3 attempted, 3 with a verified source reference, 0 generic, 0 not investigated (limit).</p>
+<p class="note">Source-version uncertainty: references were verified against the checkouts listed above. The revision that produced the logs may differ; line numbers and symbols were cross-checked and mismatches are reported per reference.</p>
+<p class="muted">Complete machine-readable results: <code>analysis.json</code> (authoritative), <code>analysis.sarif</code>, <code>groups.ndjson</code>, <code>groups.csv</code> in the same output directory.</p>
+</section></main><footer class="muted" style="padding:12px 24px;border-top:1px solid #d0d7de">log-triage 1.0.0 &middot; log content is untrusted data and is rendered escaped.</footer>
+<script>
+(function(){
+  var rows=[].slice.call(document.querySelectorAll('#findings-table tbody tr'));
+  var blocks=[].slice.call(document.querySelectorAll('details.group'));
+  var q=document.getElementById('q'),cat=document.getElementById('f-cat'),repo=document.getElementById('f-repo');
+  var sevBoxes=[].slice.call(document.querySelectorAll('input.f-sev'));
+  var shown=document.getElementById('shown');
+  function visible(el){
+    var t=(q.value||'').toLowerCase(), s=el.getAttribute('data-severity'), c=el.getAttribute('data-category'), r=el.getAttribute('data-repo')||'';
+    var sevOk=sevBoxes.some(function(b){return b.checked&&b.value===s;});
+    if(!sevOk) return false;
+    if(cat.value&&cat.value!==c) return false;
+    if(repo.value&&repo.value!==r) return false;
+    if(t&&(el.getAttribute('data-search')||'').indexOf(t)<0) return false;
+    return true;
+  }
+  function apply(){
+    var n=0;
+    rows.forEach(function(tr){var v=visible(tr);tr.classList.toggle('hidden',!v);if(v)n++;});
+    blocks.forEach(function(d){d.classList.toggle('hidden',!visible(d));});
+    shown.textContent=n;
+  }
+  [q,cat,repo].forEach(function(e){e.addEventListener('input',apply);});
+  sevBoxes.forEach(function(b){b.addEventListener('change',apply);});
+  var ths=[].slice.call(document.querySelectorAll('#findings-table th[data-col]'));
+  ths.forEach(function(th){
+    function sort(){
+      var col=th.getAttribute('data-col'),num=th.getAttribute('data-num')==='1',dir=th.getAttribute('aria-sort')==='ascending'?-1:1;
+      ths.forEach(function(o){if(o!==th)o.removeAttribute('aria-sort');});
+      th.setAttribute('aria-sort',dir===1?'ascending':'descending');
+      var tb=th.closest('table').tBodies[0];
+      rows.sort(function(a,b){var x=a.getAttribute('data-'+col)||'',y=b.getAttribute('data-'+col)||'';
+        if(num){x=parseFloat(x)||0;y=parseFloat(y)||0;return (x-y)*dir;} return x<y?-dir:x>y?dir:0;});
+      rows.forEach(function(r){tb.appendChild(r);});
+    }
+    th.addEventListener('click',sort);
+    th.setAttribute('tabindex','0');
+    th.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();sort();}});
+  });
+  var ea=document.getElementById('expand-all'),ca=document.getElementById('collapse-all');
+  if(ea)ea.addEventListener('click',function(){blocks.forEach(function(d){d.open=true;});});
+  if(ca)ca.addEventListener('click',function(){blocks.forEach(function(d){d.open=false;});});
+  apply();
+})();
+</script></body></html>

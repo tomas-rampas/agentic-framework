@@ -1,0 +1,12 @@
+Started GET "/orders/42" for 127.0.0.1 at 2026-09-13 12:00:01 +0000
+Processing by OrdersController#show as HTML
+  Parameters: {"id"=>"42"}
+  Order Load (0.3ms)  SELECT "orders".* FROM "orders" WHERE "orders"."id" = $1 LIMIT $2
+Completed 500 Internal Server Error in 12ms (ActiveRecord: 0.3ms | Allocations: 1234)
+
+ActiveRecord::RecordNotFound (Couldn't find Order with 'id'=42):
+  
+app/controllers/orders_controller.rb:5:in 'show'
+
+Started GET "/health" for 127.0.0.1 at 2026-09-13 12:00:02 +0000
+Completed 200 OK in 1ms (Allocations: 100)

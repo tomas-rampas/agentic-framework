@@ -1,0 +1,8 @@
+2026-09-13T12:00:00.123456789Z stderr F 2026-09-13 12:00:00,123 - billing.worker - ERROR - charge failed for order 42
+2026-09-13T12:00:00.223456789Z stderr F Traceback (most recent call last):
+2026-09-13T12:00:00.323456789Z stderr F   File "/app/billing/worker.py", line 30, in run
+2026-09-13T12:00:00.423456789Z stderr F ValueError: bad amount
+2026-09-13T12:00:01.000000000Z stdout P {"level":"info","msg":"long json rec
+2026-09-13T12:00:01.000000001Z stdout F ord split","time":"2026-09-13T12:00:01Z"}
+2026-09-13T12:00:02.000000000Z stdout F plain line
+2026-09-13T12:00:03.000000000Z stdout P unterminated partial

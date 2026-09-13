@@ -1,0 +1,779 @@
+{
+ "aggregation": {
+  "events": 49,
+  "fingerprint_cache_size": 20000,
+  "groups_total": 18,
+  "max_groups_in_memory": 20000,
+  "spill_count": 0,
+  "spilled_to_disk": false,
+  "temp_bytes_peak": 0,
+  "temp_dir": null
+ },
+ "analysis_started_at": "2026-09-13T14:38:48.127Z",
+ "configuration": {
+  "assume_tz": "UTC",
+  "fail_on_severity": null,
+  "fallback_format": "text",
+  "follow_symlinks": false,
+  "formats": [
+   "json",
+   "sarif",
+   "html",
+   "markdown",
+   "csv",
+   "ndjson"
+  ],
+  "include_nested_repos": false,
+  "input_format": null,
+  "inputs": [
+   "logs"
+  ],
+  "keep_temp": false,
+  "keep_untimed": false,
+  "limits": {
+   "detect_sample_bytes": 65536,
+   "detect_sample_lines": 256,
+   "fingerprint_cache_size": 20000,
+   "max_attribute_value_chars": 512,
+   "max_attributed_groups": 200,
+   "max_attributes_per_event": 64,
+   "max_compression_ratio": 2000,
+   "max_correlation_ids_per_group": 5,
+   "max_decompressed_bytes": 17179869184,
+   "max_diagnostics": 1000,
+   "max_examples_per_group": 3,
+   "max_exception_chars": 4000,
+   "max_files": 10000,
+   "max_findings_rows": 500,
+   "max_frames": 50,
+   "max_groups_in_memory": 20000,
+   "max_inputs_per_group": 20,
+   "max_investigations": 50,
+   "max_levels_per_group": 8,
+   "max_line_bytes": 1048576,
+   "max_literal_search_files": 5000,
+   "max_literal_search_hits": 5,
+   "max_message_chars": 2000,
+   "max_model_context_chars": 2000,
+   "max_model_queue_groups": 20,
+   "max_multiline_lines": 500,
+   "max_output_groups": 100000,
+   "max_record_bytes": 1048576,
+   "max_repo_depth": 6,
+   "max_repo_dirs_visited": 50000,
+   "max_repo_file_bytes": 524288,
+   "max_repo_files_indexed": 50000,
+   "max_report_example_chars": 1200,
+   "max_report_groups": 500,
+   "max_repos": 200,
+   "max_services_per_group": 10,
+   "max_snippet_lines": 12,
+   "max_timeline_buckets": 200,
+   "read_chunk_bytes": 1048576
+  },
+  "min_severity": "info",
+  "out_dir": "/home/user/agentic-framework/docs/log-triage/samples",
+  "redact": true,
+  "redact_ips": false,
+  "redaction_salt_provided": true,
+  "repo": null,
+  "repos_dir": "repos",
+  "since": null,
+  "temp_dir": null
+ },
+ "coverage": {
+  "bytes_compressed": 9270,
+  "bytes_read": 9270,
+  "discarded_bytes": 0,
+  "encoding_replacements": 0,
+  "events_filtered_by_since": 0,
+  "events_included": 49,
+  "events_parsed": 49,
+  "events_untimed_excluded_by_since": 0,
+  "events_untimed_included": 0,
+  "events_with_timestamp": 48,
+  "events_without_timestamp": 1,
+  "lines_total": 81,
+  "parse_failures": 0,
+  "redaction": {
+   "counts": {},
+   "enabled": true,
+   "ips_pseudonymized": false
+  },
+  "time_range": {
+   "first": "2026-09-13T10:00:00.123Z",
+   "last": "2026-09-13T12:31:00Z"
+  },
+  "truncated_lines": 0
+ },
+ "diagnostics": {
+  "counts_by_code": {},
+  "records": [],
+  "records_dropped": 0,
+  "total": 0
+ },
+ "duration_seconds": 0.085,
+ "filtering": {
+  "by_severity": {
+   "critical": {
+    "events": 0,
+    "groups": 0
+   },
+   "high": {
+    "events": 4,
+    "groups": 3
+   },
+   "info": {
+    "events": 6,
+    "groups": 6
+   },
+   "low": {
+    "events": 2,
+    "groups": 2
+   },
+   "medium": {
+    "events": 37,
+    "groups": 7
+   }
+  },
+  "events_in_filtered_groups": 0,
+  "events_in_reported_groups": 49,
+  "groups_filtered_by_severity": 0,
+  "groups_omitted_by_output_limit": 0,
+  "groups_reported": 18,
+  "groups_total": 18,
+  "groups_written": 18,
+  "max_output_groups": 100000,
+  "min_severity": "info",
+  "since": null,
+  "since_epoch_utc": null
+ },
+ "generated_at": "2026-09-13T14:38:48.212Z",
+ "inputs": {
+  "duplicates": [],
+  "excluded": [],
+  "excluded_total": 0,
+  "files": [
+   {
+    "bytes_read": 369,
+    "changed_during_analysis": false,
+    "compression": null,
+    "detection_confidence": 0.95,
+    "diagnostics": 0,
+    "dialect": null,
+    "encoding": "utf-8",
+    "events": 4,
+    "format": "access-log",
+    "id": 1,
+    "layout": "apache-nginx-access+nginx-error+apache-error",
+    "lines": 4,
+    "origin": "logs",
+    "parse_failures": 0,
+    "path": "logs/access-combined.log",
+    "real_path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/access-combined.log",
+    "reason": null,
+    "size_bytes": 369,
+    "status": "processed"
+   },
+   {
+    "bytes_read": 6043,
+    "changed_during_analysis": false,
+    "compression": null,
+    "detection_confidence": 0.6,
+    "diagnostics": 0,
+    "dialect": null,
+    "encoding": "utf-8",
+    "events": 33,
+    "format": "text",
+    "id": 2,
+    "layout": "headerless-fallback",
+    "lines": 33,
+    "origin": "logs",
+    "parse_failures": 0,
+    "path": "logs/grouping-equivalence.log",
+    "real_path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log",
+    "reason": null,
+    "size_bytes": 6043,
+    "status": "processed"
+   },
+   {
+    "bytes_read": 1096,
+    "changed_during_analysis": false,
+    "compression": null,
+    "detection_confidence": 0.883,
+    "diagnostics": 0,
+    "dialect": null,
+    "encoding": "utf-8",
+    "events": 3,
+    "format": "text",
+    "id": 3,
+    "layout": "python-asctime",
+    "lines": 22,
+    "origin": "logs",
+    "parse_failures": 0,
+    "path": "logs/python-asctime.log",
+    "real_path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/python-asctime.log",
+    "reason": null,
+    "size_bytes": 1096,
+    "status": "processed"
+   },
+   {
+    "bytes_read": 1244,
+    "changed_during_analysis": false,
+    "compression": null,
+    "detection_confidence": 0.894,
+    "diagnostics": 0,
+    "dialect": null,
+    "encoding": "utf-8",
+    "events": 5,
+    "format": "text",
+    "id": 4,
+    "layout": "serilog-text",
+    "lines": 16,
+    "origin": "logs",
+    "parse_failures": 0,
+    "path": "logs/serilog-text.log",
+    "real_path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/serilog-text.log",
+    "reason": null,
+    "size_bytes": 1244,
+    "status": "processed"
+   },
+   {
+    "bytes_read": 338,
+    "changed_during_analysis": false,
+    "compression": null,
+    "detection_confidence": 0.838,
+    "diagnostics": 0,
+    "dialect": null,
+    "encoding": "utf-8",
+    "events": 2,
+    "format": "text",
+    "id": 5,
+    "layout": "spring-boot",
+    "lines": 4,
+    "origin": "logs",
+    "parse_failures": 0,
+    "path": "logs/spring-boot.log",
+    "real_path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/spring-boot.log",
+    "reason": null,
+    "size_bytes": 338,
+    "status": "processed"
+   },
+   {
+    "bytes_read": 180,
+    "changed_during_analysis": false,
+    "compression": null,
+    "detection_confidence": 0.9,
+    "diagnostics": 0,
+    "dialect": null,
+    "encoding": "utf-8",
+    "events": 2,
+    "format": "text",
+    "id": 6,
+    "layout": "zap-console",
+    "lines": 2,
+    "origin": "logs",
+    "parse_failures": 0,
+    "path": "logs/zap-console.log",
+    "real_path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/zap-console.log",
+    "reason": null,
+    "size_bytes": 180,
+    "status": "processed"
+   }
+  ],
+  "requested": [
+   "logs"
+  ],
+  "skipped_symlinks": [],
+  "summary": {
+   "discovered": 6,
+   "duplicates_removed": 0,
+   "excluded": 0,
+   "failed": 0,
+   "partial": 0,
+   "pending": 0,
+   "processed": 6,
+   "unmatched_arguments": 0
+  },
+  "unmatched": []
+ },
+ "investigation_queue": [
+  {
+   "candidates": [
+    {
+     "confidence": 1.0,
+     "repo": "orders"
+    }
+   ],
+   "category": "network",
+   "count": 2,
+   "deterministic_suggestion": "Harden network error handling at the call site at src/Acme.Orders/OrderService.cs:42 (orders)",
+   "exception": {
+    "chain": [
+     "System.InvalidOperationException",
+     "System.IO.IOException"
+    ],
+    "message_template": "Sequence contains no elements",
+    "top_frames": [
+     {
+      "file": "/src/Acme.Orders.Api/Controllers/OrdersController.cs",
+      "function": "Acme.Orders.Api.Controllers.OrdersController.Post",
+      "line": 77
+     },
+     {
+      "file": null,
+      "function": "Microsoft.AspNetCore.Mvc.Infrastructure.ActionMethodExecutor.TaskOfIActionResultExecutor.Execute",
+      "line": null
+     },
+     {
+      "file": "/src/Acme.Orders/OrderService.cs",
+      "function": "Acme.Orders.OrderService.Place",
+      "line": 42
+     }
+    ]
+   },
+   "id": "LT-a90eef438a86",
+   "questions": [
+    "Does the referenced code explain the observed message/exception, or is the failure upstream?",
+    "Which concrete change (file:line) addresses the root cause, and what regression test proves it?"
+   ],
+   "references": [
+    {
+     "line": 42,
+     "note": "symbol Place found within 6 lines of line 42",
+     "path": "src/Acme.Orders/OrderService.cs",
+     "repo": "orders",
+     "snippet": "   36          // documentation line 35\n   37          // documentation line 36\n   38          // documentation line 37\n   39          // documentation line 38\n   40          public async Task<Order> Place(Order order)\n   41          {\n   42>             var response = await _client.PostAsJsonAsync(\"/payments\", order);\n   43              response.EnsureSuccessStatusCode();\n   44              await _repository.SaveAsync(order);\n   45              return order;\n   46          }\n   47      }\n   48  }",
+     "verified": true
+    }
+   ],
+   "severity": "medium",
+   "template": "Failed to place order <n> for customer <n>"
+  },
+  {
+   "candidates": [
+    {
+     "confidence": 1.0,
+     "repo": "billing"
+    }
+   ],
+   "category": "network",
+   "count": 1,
+   "deterministic_suggestion": "Harden network error handling at the call site at billing/worker.py:33 (billing)",
+   "exception": {
+    "chain": [
+     "billing.errors.ChargeFailed",
+     "requests.exceptions.ConnectionError"
+    ],
+    "message_template": "could not charge order <n>",
+    "top_frames": [
+     {
+      "file": "/app/billing/worker.py",
+      "function": "run",
+      "line": 33
+     },
+     {
+      "file": "/app/billing/charge.py",
+      "function": "charge",
+      "line": 12
+     },
+     {
+      "file": "/app/billing/worker.py",
+      "function": "run",
+      "line": 30
+     }
+    ]
+   },
+   "id": "LT-bfc7484129c3",
+   "questions": [
+    "Does the referenced code explain the observed message/exception, or is the failure upstream?",
+    "Which concrete change (file:line) addresses the root cause, and what regression test proves it?"
+   ],
+   "references": [
+    {
+     "line": 33,
+     "note": "file and line exist in the checkout (no symbol to cross-check)",
+     "path": "billing/worker.py",
+     "repo": "billing",
+     "snippet": "   27  # padding line 26\n   28  \n   29  def run(queue):\n   30      for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33>         time.sleep(0.1)\n   34  ",
+     "verified": true
+    },
+    {
+     "line": 12,
+     "note": "symbol charge found within 6 lines of line 12",
+     "path": "billing/charge.py",
+     "repo": "billing",
+     "snippet": "    6  \n    7  def charge(order):\n    8      payload = {\"order\": order.id, \"amount\": order.amount}\n    9      session = requests.Session()\n   10      session.headers[\"X-Order\"] = str(order.id)\n   11      # the gateway occasionally times out under load\n   12>     response = session.post(GATEWAY, json=payload, timeout=5)\n   13      response.raise_for_status()\n   14      return response.json()\n   15  ",
+     "verified": true
+    },
+    {
+     "line": 30,
+     "note": "file and line exist in the checkout (no symbol to cross-check)",
+     "path": "billing/worker.py",
+     "repo": "billing",
+     "snippet": "   24  # padding line 23\n   25  # padding line 24\n   26  # padding line 25\n   27  # padding line 26\n   28  \n   29  def run(queue):\n   30>     for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33          time.sleep(0.1)\n   34  ",
+     "verified": true
+    }
+   ],
+   "severity": "medium",
+   "template": "charge failed for order <n>"
+  },
+  {
+   "candidates": [
+    {
+     "confidence": 1.0,
+     "repo": "billing"
+    }
+   ],
+   "category": "network",
+   "count": 1,
+   "deterministic_suggestion": "Harden network error handling at the call site at billing/charge.py:12 (billing)",
+   "exception": {
+    "chain": [
+     "requests.exceptions.ConnectionError"
+    ],
+    "message_template": "HTTPConnectionPool(host='payments', port=<id>): Max retries exceeded",
+    "top_frames": [
+     {
+      "file": "/app/billing/charge.py",
+      "function": "charge",
+      "line": 12
+     },
+     {
+      "file": "/app/billing/worker.py",
+      "function": "run",
+      "line": 30
+     }
+    ]
+   },
+   "id": "LT-b1d0e8dc43fc",
+   "questions": [
+    "Does the referenced code explain the observed message/exception, or is the failure upstream?",
+    "Which concrete change (file:line) addresses the root cause, and what regression test proves it?"
+   ],
+   "references": [
+    {
+     "line": 12,
+     "note": "symbol charge found within 6 lines of line 12",
+     "path": "billing/charge.py",
+     "repo": "billing",
+     "snippet": "    6  \n    7  def charge(order):\n    8      payload = {\"order\": order.id, \"amount\": order.amount}\n    9      session = requests.Session()\n   10      session.headers[\"X-Order\"] = str(order.id)\n   11      # the gateway occasionally times out under load\n   12>     response = session.post(GATEWAY, json=payload, timeout=5)\n   13      response.raise_for_status()\n   14      return response.json()\n   15  ",
+     "verified": true
+    },
+    {
+     "line": 30,
+     "note": "file and line exist in the checkout (no symbol to cross-check)",
+     "path": "billing/worker.py",
+     "repo": "billing",
+     "snippet": "   24  # padding line 23\n   25  # padding line 24\n   26  # padding line 25\n   27  # padding line 26\n   28  \n   29  def run(queue):\n   30>     for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33          time.sleep(0.1)\n   34  ",
+     "verified": true
+    }
+   ],
+   "severity": "medium",
+   "template": "charge failed for order <n>"
+  }
+ ],
+ "repositories": {
+  "attribution_summary": {
+   "ambiguous": 0,
+   "attempted": 18,
+   "per_repo": {
+    "billing": 2,
+    "orders": 1
+   },
+   "resolved": 3,
+   "unresolved": 15
+  },
+  "directories_visited": 1,
+  "discovered": [
+   {
+    "branch": "master",
+    "head": "7ae7b2e8156ab7b268d5026611172ef724a93bf1",
+    "id": "R8796c199",
+    "inventory": {
+     "files_indexed": 4,
+     "languages": {
+      ".py": 3
+     },
+     "names": [
+      "billing"
+     ],
+     "namespaces": [
+      "billing"
+     ],
+     "source": "git ls-files",
+     "truncated": false
+    },
+    "kind": "repository",
+    "name": "billing",
+    "notes": [],
+    "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/billing",
+    "working_tree_dirty": false,
+    "working_tree_note": "clean (tracked files)"
+   },
+   {
+    "branch": "master",
+    "head": "7ab99b3bd21de841b3d1d38ed54b1ebbc5d37066",
+    "id": "R4e6e5b5c",
+    "inventory": {
+     "files_indexed": 2,
+     "languages": {
+      ".cs": 1
+     },
+     "names": [
+      "acmeorders",
+      "orders"
+     ],
+     "namespaces": [
+      "Acme.Orders"
+     ],
+     "source": "git ls-files",
+     "truncated": false
+    },
+    "kind": "repository",
+    "name": "orders",
+    "notes": [],
+    "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/orders",
+    "working_tree_dirty": false,
+    "working_tree_note": "clean (tracked files)"
+   }
+  ],
+  "incomplete": false,
+  "incomplete_reasons": [],
+  "investigation_summary": {
+   "attempted": 3,
+   "generic": 0,
+   "insufficient_evidence": 15,
+   "not_investigated": 0,
+   "with_verified_reference": 3
+  },
+  "mode": "repos-dir",
+  "root": "repos",
+  "skipped": [],
+  "skipped_total": 0
+ },
+ "schema_version": "1.0.0",
+ "status": {
+  "completion": "complete",
+  "disk_full": false,
+  "exit_code": 0,
+  "interrupted": false,
+  "reasons": []
+ },
+ "summary": {
+  "counts_by_category": {
+   "availability": {
+    "events": 4,
+    "groups": 3
+   },
+   "client_error": {
+    "events": 1,
+    "groups": 1
+   },
+   "network": {
+    "events": 4,
+    "groups": 3
+   },
+   "operational": {
+    "events": 4,
+    "groups": 4
+   },
+   "performance": {
+    "events": 1,
+    "groups": 1
+   },
+   "unknown": {
+    "events": 35,
+    "groups": 6
+   }
+  },
+  "counts_by_severity": {
+   "critical": {
+    "events": 0,
+    "groups": 0
+   },
+   "high": {
+    "events": 4,
+    "groups": 3
+   },
+   "info": {
+    "events": 6,
+    "groups": 6
+   },
+   "low": {
+    "events": 2,
+    "groups": 2
+   },
+   "medium": {
+    "events": 37,
+    "groups": 7
+   }
+  },
+  "highest_severity": "high",
+  "top_findings": [
+   {
+    "category": "availability",
+    "count": 2,
+    "id": "LT-d35ab553479c",
+    "services": [],
+    "severity": "high",
+    "template": "POST /api/orders/<n> -> <n>"
+   },
+   {
+    "category": "availability",
+    "count": 1,
+    "id": "LT-45812cae8cb3",
+    "services": [
+     "order-service"
+    ],
+    "severity": "high",
+    "template": "Failed to process order <uuid> for user <n> status code 500 service=order-service"
+   },
+   {
+    "category": "availability",
+    "count": 1,
+    "id": "LT-0b8d948bb890",
+    "services": [
+     "order-service"
+    ],
+    "severity": "high",
+    "template": "Failed to process order <uuid> for user <n> status code 503 service=order-service"
+   },
+   {
+    "category": "unknown",
+    "count": 30,
+    "id": "LT-0687b7bfe339",
+    "services": [
+     "order-service"
+    ],
+    "severity": "medium",
+    "template": "Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=order-service"
+   },
+   {
+    "category": "network",
+    "count": 2,
+    "id": "LT-a90eef438a86",
+    "services": [],
+    "severity": "medium",
+    "template": "Failed to place order <n> for customer <n>"
+   },
+   {
+    "category": "unknown",
+    "count": 1,
+    "id": "LT-102319349c95",
+    "services": [],
+    "severity": "medium",
+    "template": "charge failed"
+   },
+   {
+    "category": "unknown",
+    "count": 1,
+    "id": "LT-85f302734ac6",
+    "services": [],
+    "severity": "medium",
+    "template": "Failed to place order <n>"
+   },
+   {
+    "category": "network",
+    "count": 1,
+    "id": "LT-bfc7484129c3",
+    "services": [],
+    "severity": "medium",
+    "template": "charge failed for order <n>"
+   },
+   {
+    "category": "network",
+    "count": 1,
+    "id": "LT-b1d0e8dc43fc",
+    "services": [],
+    "severity": "medium",
+    "template": "charge failed for order <n>"
+   },
+   {
+    "category": "unknown",
+    "count": 1,
+    "id": "LT-6d7c6a6bd062",
+    "services": [
+     "payment-service"
+    ],
+    "severity": "medium",
+    "template": "Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=payment-service"
+   }
+  ]
+ },
+ "timeline": {
+  "bucket_count": 4,
+  "bucket_seconds": 60,
+  "buckets": [
+   {
+    "counts": {
+     "error": 4,
+     "info": 3,
+     "warn": 1
+    },
+    "end": "2026-09-13T10:01:00Z",
+    "start": "2026-09-13T10:00:00Z",
+    "total": 8
+   },
+   {
+    "counts": {
+     "error": 34,
+     "info": 2,
+     "warn": 1
+    },
+    "end": "2026-09-13T12:01:00Z",
+    "start": "2026-09-13T12:00:00Z",
+    "total": 37
+   },
+   {
+    "counts": {
+     "error": 2
+    },
+    "end": "2026-09-13T12:31:00Z",
+    "start": "2026-09-13T12:30:00Z",
+    "total": 2
+   },
+   {
+    "counts": {
+     "error": 1
+    },
+    "end": "2026-09-13T12:32:00Z",
+    "start": "2026-09-13T12:31:00Z",
+    "total": 1
+   }
+  ],
+  "coarsened": false,
+  "events_with_timestamp": 48,
+  "events_without_timestamp": 1,
+  "first_timestamp": "2026-09-13T10:00:00.123Z",
+  "last_timestamp": "2026-09-13T12:31:00Z"
+ },
+ "tool": {
+  "fingerprint_version": "1",
+  "name": "log-triage",
+  "platform": "Linux-6.18.44-fc-v24-x86_64-with-glibc2.39",
+  "python": "3.11.15",
+  "template_version": "1",
+  "version": "1.0.0"
+ },
+ "groups": [
+  {"assessment": {"basis": "observed", "category": "availability", "confidence": 0.85, "impact_signals": ["dependency_or_upstream_failure", "failed_requests", "service_impact_possible"], "rationale": ["HTTP status 502 observed -> availability", "occurrence count (2) does not influence severity"], "severity": "high"}, "attribution": {"candidates": [{"confidence": 0.1, "evidence": [{"kind": "name-in-message", "matched": "orders", "value": "orders", "weight": 0.1}], "head": "7ab99b3bd21de841b3d1d38ed54b1ebbc5d37066", "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/orders", "repo": "orders", "repo_id": "R4e6e5b5c"}], "reason": "only weak evidence (basename or name mention) matched; not attributed", "status": "unresolved"}, "category": "availability", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 2, "error_code": null, "examples": [{"attributes": {"bytes": 512, "client_ip": "10.0.0.1", "user_agent": "curl/8.0"}, "byte_offset": 0, "exception_text": null, "input": "logs/access-combined.log", "input_id": 1, "layout": "apache-nginx-access", "level": "error", "line": 1, "line_end": null, "message": "POST /api/orders/42 -> 502", "parser": "access-log", "timestamp": "2026-09-13T12:00:00Z", "truncated": false, "ts_flags": []}, {"attributes": {"bytes": 512, "client_ip": "10.0.0.4", "user_agent": "curl/8.0"}, "byte_offset": 273, "exception_text": null, "input": "logs/access-combined.log", "input_id": 1, "layout": "apache-nginx-access", "level": "error", "line": 4, "line_end": null, "message": "POST /api/orders/44 -> 502", "parser": "access-log", "timestamp": "2026-09-13T12:00:03Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "d35ab553479c215700ef81acd1b7817bc11b1ecd7ba379729588f7927e0cd1f3", "fingerprint_version": "1", "first_seen": "2026-09-13T12:00:00Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=", "log=", "exc=", "excmsg=", "frames=", "msg=POST /api/orders/<n> -> <n>", "http=502", "code="], "notes": ["grouped by normalized message template", "HTTP status 502 and route template are part of the key"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": {"method": "POST", "path_template": "/api/orders/<n>", "status": 502}, "id": "LT-d35ab553479c", "inputs": {"logs/access-combined.log": 2}, "inputs_truncated": false, "investigation": {"reason": "only weak evidence (basename or name mention) matched; not attributed", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T12:00:03Z", "layouts": ["apache-nginx-access"], "level_max": "error", "levels": {"ERROR": 2}, "logger": null, "parser": "access-log", "services": {}, "severity": "high", "template": "POST /api/orders/<n> -> <n>", "untimed_count": 0},
+  {"assessment": {"basis": "observed", "category": "availability", "confidence": 0.85, "impact_signals": ["failed_requests", "service_impact_possible"], "rationale": ["HTTP status 500 observed -> availability", "occurrence count (1) does not influence severity"], "severity": "high"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "availability", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {"service": "order-service"}, "byte_offset": 5588, "exception_text": null, "input": "logs/grouping-equivalence.log", "input_id": 2, "layout": "generic-ts", "level": "ERROR", "line": 31, "line_end": null, "message": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000042 for user 7 status code 500 service=order-service", "parser": "text", "service": "order-service", "timestamp": "2026-09-13T12:30:00Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "45812cae8cb36f61f0a647b002215444460461ce28291733e596b4013a62e69e", "fingerprint_version": "1", "first_seen": "2026-09-13T12:30:00Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=order-service", "log=", "exc=", "excmsg=", "frames=", "msg=Failed to process order <uuid> for user <n> status code 500 service=order-service", "http=500", "code="], "notes": ["grouped by normalized message template", "HTTP status 500 and route template are part of the key"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": {"method": null, "path_template": null, "status": 500}, "id": "LT-45812cae8cb3", "inputs": {"logs/grouping-equivalence.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T12:30:00Z", "layouts": ["generic-ts"], "level_max": "ERROR", "levels": {"ERROR": 1}, "logger": null, "parser": "text", "services": {"order-service": 1}, "severity": "high", "template": "Failed to process order <uuid> for user <n> status code 500 service=order-service", "untimed_count": 0},
+  {"assessment": {"basis": "observed", "category": "availability", "confidence": 0.85, "impact_signals": ["dependency_or_upstream_failure", "failed_requests", "service_impact_possible"], "rationale": ["HTTP status 503 observed -> availability", "occurrence count (1) does not influence severity"], "severity": "high"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "availability", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {"service": "order-service"}, "byte_offset": 5725, "exception_text": null, "input": "logs/grouping-equivalence.log", "input_id": 2, "layout": "generic-ts", "level": "ERROR", "line": 32, "line_end": null, "message": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000043 for user 8 status code 503 service=order-service", "parser": "text", "service": "order-service", "timestamp": "2026-09-13T12:30:01Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "0b8d948bb8909f78c67bda7f91629de508fd2a06f779e07a1e0d95e517e9fc8e", "fingerprint_version": "1", "first_seen": "2026-09-13T12:30:01Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=order-service", "log=", "exc=", "excmsg=", "frames=", "msg=Failed to process order <uuid> for user <n> status code 503 service=order-service", "http=503", "code="], "notes": ["grouped by normalized message template", "HTTP status 503 and route template are part of the key"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": {"method": null, "path_template": null, "status": 503}, "id": "LT-0b8d948bb890", "inputs": {"logs/grouping-equivalence.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T12:30:01Z", "layouts": ["generic-ts"], "level_max": "ERROR", "levels": {"ERROR": 1}, "logger": null, "parser": "text", "services": {"order-service": 1}, "severity": "high", "template": "Failed to process order <uuid> for user <n> status code 503 service=order-service", "untimed_count": 0},
+  {"assessment": {"basis": "unknown", "category": "unknown", "confidence": 0.35, "impact_signals": [], "rationale": ["no categorical evidence; producer level indicates a failure of unknown kind", "severity from producer level only (ERROR)", "occurrence count (30) does not influence severity"], "severity": "medium"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "unknown", "correlation": {"request_ids": ["req-0", "req-1eef", "req-3dde", "req-5ccd", "req-7bbc"], "trace_ids": [], "truncated": true}, "count": 30, "error_code": null, "examples": [{"attributes": {"request_id": "req-0", "service": "order-service"}, "byte_offset": 0, "exception_text": null, "input": "logs/grouping-equivalence.log", "input_id": 2, "layout": "generic-ts", "level": "ERROR", "line": 1, "line_end": null, "message": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000000 for user 100 from 10.1.2.0:40000 in 10ms (attempt 1/5) request_id=req-0 service=order-service", "parser": "text", "request_id": "req-0", "service": "order-service", "timestamp": "2026-09-13T12:00:00Z", "truncated": false, "ts_flags": []}, {"attributes": {"request_id": "req-1eef", "service": "order-service"}, "byte_offset": 182, "exception_text": null, "input": "logs/grouping-equivalence.log", "input_id": 2, "layout": "generic-ts", "level": "ERROR", "line": 2, "line_end": null, "message": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000001 for user 101 from 10.1.2.1:40001 in 11ms (attempt 2/5) request_id=req-1eef service=order-service", "parser": "text", "request_id": "req-1eef", "service": "order-service", "timestamp": "2026-09-13T12:00:01Z", "truncated": false, "ts_flags": []}, {"attributes": {"request_id": "req-3dde", "service": "order-service"}, "byte_offset": 367, "exception_text": null, "input": "logs/grouping-equivalence.log", "input_id": 2, "layout": "generic-ts", "level": "ERROR", "line": 3, "line_end": null, "message": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000002 for user 102 from 10.1.2.2:40002 in 12ms (attempt 3/5) request_id=req-3dde service=order-service", "parser": "text", "request_id": "req-3dde", "service": "order-service", "timestamp": "2026-09-13T12:00:02Z", "truncated": false, "ts_flags": []}, {"byte_offset": 5401, "input": "logs/grouping-equivalence.log", "input_id": 2, "is_last_seen": true, "level": "ERROR", "line": 30, "line_end": null, "message": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000029 for user 129 from 10.1.2.29:40029 in 39ms (attempt 5/5) request_id=req-38113 service=order-service", "timestamp": "2026-09-13T12:00:29Z"}], "exception": null, "fingerprint": "0687b7bfe339c3f76f0bb2781877b30b36b7b897850dc9137a119e72fc945152", "fingerprint_version": "1", "first_seen": "2026-09-13T12:00:00Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=order-service", "log=", "exc=", "excmsg=", "frames=", "msg=Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=order-service", "http=", "code="], "notes": ["grouped by normalized message template", "8+ distinct raw messages folded into this template (placeholders vary)"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-0687b7bfe339", "inputs": {"logs/grouping-equivalence.log": 30}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T12:00:29Z", "layouts": ["generic-ts"], "level_max": "ERROR", "levels": {"ERROR": 30}, "logger": null, "parser": "text", "services": {"order-service": 30}, "severity": "medium", "template": "Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=order-service", "untimed_count": 0},
+  {"assessment": {"basis": "observed", "category": "network", "confidence": 0.85, "impact_signals": [], "rationale": ["exception type System.IO.IOException indicates network", "occurrence count (2) does not influence severity"], "severity": "medium"}, "attribution": {"candidates": [{"confidence": 1.0, "evidence": [{"kind": "path", "matched": "src/Acme.Orders/OrderService.cs", "value": "/src/Acme.Orders/OrderService.cs", "weight": 0.6}, {"kind": "namespace", "matched": "Acme.Orders", "value": "Acme.Orders.Api.Controllers.OrdersController.Post", "weight": 0.5}, {"kind": "namespace", "matched": "Acme.Orders", "value": "Acme.Orders.OrderService.Place", "weight": 0.5}], "head": "7ab99b3bd21de841b3d1d38ed54b1ebbc5d37066", "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/orders", "repo": "orders", "repo_id": "R4e6e5b5c"}], "status": "resolved"}, "category": "network", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 2, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 58, "exception_text": "System.InvalidOperationException: Sequence contains no elements\n    at Acme.Orders.Api.Controllers.OrdersController.Post (/src/Acme.Orders.Api/Controllers/OrdersController.cs:77)\n    at Microsoft.AspNetCore.Mvc.Infrastructure.ActionMethodExecutor.TaskOfIActionResultExecutor.Execute\nCaused by: System.IO.IOException: The pipe is broken\n    at Acme.Orders.OrderService.Place (/src/Acme.Orders/OrderService.cs:42)", "input": "logs/serilog-text.log", "input_id": 4, "layout": "serilog-text", "level": "ERR", "line": 2, "line_end": 8, "message": "Failed to place order 42 for customer 7", "parser": "text", "timestamp": "2026-09-13T10:00:01.456Z", "truncated": false, "ts_flags": []}, {"attributes": {}, "byte_offset": 653, "exception_text": "System.InvalidOperationException: Sequence contains no elements\n    at Acme.Orders.Api.Controllers.OrdersController.Post (/src/Acme.Orders.Api/Controllers/OrdersController.cs:77)\nCaused by: System.IO.IOException: The pipe is broken\n    at Acme.Orders.OrderService.Place (/src/Acme.Orders/OrderService.cs:42)", "input": "logs/serilog-text.log", "input_id": 4, "layout": "serilog-text", "level": "ERR", "line": 9, "line_end": 14, "message": "Failed to place order 43 for customer 9", "parser": "text", "timestamp": "2026-09-13T10:00:02Z", "truncated": false, "ts_flags": []}], "exception": {"chain": ["System.InvalidOperationException", "System.IO.IOException"], "frames": [{"file": "/src/Acme.Orders.Api/Controllers/OrdersController.cs", "function": "Acme.Orders.Api.Controllers.OrdersController.Post", "in_app": true, "line": 77}, {"file": null, "function": "Microsoft.AspNetCore.Mvc.Infrastructure.ActionMethodExecutor.TaskOfIActionResultExecutor.Execute", "in_app": false, "line": null}, {"file": "/src/Acme.Orders/OrderService.cs", "function": "Acme.Orders.OrderService.Place", "in_app": true, "line": 42}], "message_template": "Sequence contains no elements", "type": "System.InvalidOperationException"}, "fingerprint": "a90eef438a8623bce880cc9f9a5a482fcc63107da1dd8b66c3590188000aaa13", "fingerprint_version": "1", "first_seen": "2026-09-13T10:00:01.456Z", "grouping": {"confidence": 0.9, "key_components": ["v1", "svc=", "log=", "exc=System.InvalidOperationException>System.IO.IOException", "excmsg=Sequence contains no elements", "frames=Acme.Orders.Api.Controllers.OrdersController.Post|OrdersController.cs", "msg=Failed to place order <n> for customer <n>", "http=", "code="], "notes": ["grouped by exception chain System.InvalidOperationException>System.IO.IOException and message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-a90eef438a86", "inputs": {"logs/serilog-text.log": 2}, "inputs_truncated": false, "investigation": {"cross_service": null, "model_refinement": "pending", "root_cause": {"alternatives": ["the message may be a symptom of an upstream failure sharing the same time window (check correlated groups)"], "hypotheses": [{"confidence": 0.85, "evidence": ["exception type System.IO.IOException indicates network", "occurrence count (2) does not influence severity"], "hypothesis": "network failure at src/Acme.Orders/OrderService.cs:42"}], "observed": ["2 occurrence(s) between 2026-09-13T10:00:01.456Z and 2026-09-13T10:00:02Z", "producer level(s): ERR x2", "exception chain: System.InvalidOperationException -> System.IO.IOException"], "uncertainty": ["the analysed checkout (billing@7ae7b2e8156a, orders@7ab99b3bd21d) may not be the version that produced the log"]}, "source_references": [{"function": "Acme.Orders.OrderService.Place", "line": 42, "match": "path", "note": "symbol Place found within 6 lines of line 42", "path": "src/Acme.Orders/OrderService.cs", "repo": "orders", "repo_id": "R4e6e5b5c", "snippet": "   36          // documentation line 35\n   37          // documentation line 36\n   38          // documentation line 37\n   39          // documentation line 38\n   40          public async Task<Order> Place(Order order)\n   41          {\n   42>             var response = await _client.PostAsJsonAsync(\"/payments\", order);\n   43              response.EnsureSuccessStatusCode();\n   44              await _repository.SaveAsync(order);\n   45              return order;\n   46          }\n   47      }\n   48  }", "verified": true}], "status": "deterministic", "suggestions": [{"alternatives": [], "confidence": 0.75, "kind": "source_backed", "origin": "deterministic", "rationale": "Network-level failures (DNS, TLS, resets) dominate; the code should retry transient failures and surface persistent ones clearly. Reference verified in the checkout (symbol Place found within 6 lines of line 42).", "references": [{"function": "Acme.Orders.OrderService.Place", "line": 42, "match": "path", "note": "symbol Place found within 6 lines of line 42", "path": "src/Acme.Orders/OrderService.cs", "repo": "orders", "repo_id": "R4e6e5b5c", "snippet": "   36          // documentation line 35\n   37          // documentation line 36\n   38          // documentation line 37\n   39          // documentation line 38\n   40          public async Task<Order> Place(Order order)\n   41          {\n   42>             var response = await _client.PostAsJsonAsync(\"/payments\", order);\n   43              response.EnsureSuccessStatusCode();\n   44              await _repository.SaveAsync(order);\n   45              return order;\n   46          }\n   47      }\n   48  }", "verified": true}], "regression_tests": ["unit test injecting connection reset / DNS failure"], "suggested_changes": ["classify transient vs. persistent network errors", "retry transient errors with backoff", "surface TLS/DNS details in the error"], "summary": "Harden network error handling at the call site at src/Acme.Orders/OrderService.cs:42 (orders)", "verification_steps": ["correlate with infrastructure changes (DNS, certificates, load balancer) in the time window"]}]}, "last_seen": "2026-09-13T10:00:02Z", "layouts": ["serilog-text"], "level_max": "ERR", "levels": {"ERR": 2}, "logger": null, "parser": "text", "services": {}, "severity": "medium", "template": "Failed to place order <n> for customer <n>", "untimed_count": 0},
+  {"assessment": {"basis": "unknown", "category": "unknown", "confidence": 0.35, "impact_signals": [], "rationale": ["no categorical evidence; producer level indicates a failure of unknown kind", "severity from producer level only (ERROR)", "occurrence count (1) does not influence severity"], "severity": "medium"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "unknown", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {"error": "context deadline exceeded", "order": 42}, "byte_offset": 61, "exception_text": null, "input": "logs/zap-console.log", "input_id": 6, "layout": "zap-console", "level": "ERROR", "line": 2, "line_end": null, "logger": "worker/main.go:42", "message": "charge failed", "parser": "text", "timestamp": "2026-09-13T10:00:01.123Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "102319349c9586dca92d055a14aba56cd24f458e50f5559053a4a434f99ae0b5", "fingerprint_version": "1", "first_seen": "2026-09-13T10:00:01.123Z", "grouping": {"confidence": 0.7, "key_components": ["v1", "svc=", "log=worker/main.go:42", "exc=", "excmsg=", "frames=", "msg=charge failed", "http=", "code="], "notes": ["grouped by normalized message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-102319349c95", "inputs": {"logs/zap-console.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T10:00:01.123Z", "layouts": ["zap-console"], "level_max": "ERROR", "levels": {"ERROR": 1}, "logger": "worker/main.go:42", "parser": "text", "services": {}, "severity": "medium", "template": "charge failed", "untimed_count": 0},
+  {"assessment": {"basis": "unknown", "category": "unknown", "confidence": 0.35, "impact_signals": [], "rationale": ["no categorical evidence; producer level indicates a failure of unknown kind", "severity from producer level only (ERROR)", "occurrence count (1) does not influence severity"], "severity": "medium"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "unknown", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 116, "exception_text": "java.lang.IllegalStateException: boom\n    at com.acme.orders.OrderService.place (OrderService.java:42)", "input": "logs/spring-boot.log", "input_id": 5, "layout": "spring-boot", "level": "ERROR", "line": 2, "line_end": 4, "logger": "c.a.orders.OrderService", "message": "Failed to place order 42", "parser": "text", "thread": "nio-8080-exec-1", "timestamp": "2026-09-13T10:00:01.123Z", "truncated": false, "ts_flags": []}], "exception": {"chain": ["java.lang.IllegalStateException"], "frames": [{"file": "OrderService.java", "function": "com.acme.orders.OrderService.place", "in_app": true, "line": 42}], "message_template": "boom", "type": "java.lang.IllegalStateException"}, "fingerprint": "85f302734ac6f0ce15a20e88e268861c22a5373cef791f5c89db0025a63313c4", "fingerprint_version": "1", "first_seen": "2026-09-13T10:00:01.123Z", "grouping": {"confidence": 0.9, "key_components": ["v1", "svc=", "log=c.a.orders.OrderService", "exc=java.lang.IllegalStateException", "excmsg=boom", "frames=com.acme.orders.OrderService.place|OrderService.java", "msg=Failed to place order <n>", "http=", "code="], "notes": ["grouped by exception chain java.lang.IllegalStateException and message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-85f302734ac6", "inputs": {"logs/spring-boot.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T10:00:01.123Z", "layouts": ["spring-boot"], "level_max": "ERROR", "levels": {"ERROR": 1}, "logger": "c.a.orders.OrderService", "parser": "text", "services": {}, "severity": "medium", "template": "Failed to place order <n>", "untimed_count": 0},
+  {"assessment": {"basis": "observed", "category": "network", "confidence": 0.85, "impact_signals": [], "rationale": ["exception type requests.exceptions.ConnectionError indicates network", "occurrence count (1) does not influence severity"], "severity": "medium"}, "attribution": {"candidates": [{"confidence": 1.0, "evidence": [{"kind": "path", "matched": "billing/worker.py", "value": "/app/billing/worker.py", "weight": 0.6}, {"kind": "path", "matched": "billing/charge.py", "value": "/app/billing/charge.py", "weight": 0.6}, {"kind": "namespace", "matched": "billing", "value": "billing.worker", "weight": 0.3}, {"kind": "namespace", "matched": "billing", "value": "billing.errors.ChargeFailed", "weight": 0.3}], "head": "7ae7b2e8156ab7b268d5026611172ef724a93bf1", "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/billing", "repo": "billing", "repo_id": "R8796c199"}], "status": "resolved"}, "category": "network", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 65, "exception_text": "billing.errors.ChargeFailed: could not charge order 42\n    at run (/app/billing/worker.py:33)\nCaused by: requests.exceptions.ConnectionError: HTTPConnectionPool(host='payments', port=8080): Max retries exceeded\n    at charge (/app/billing/charge.py:12)\n    at run (/app/billing/worker.py:30)", "input": "logs/python-asctime.log", "input_id": 3, "layout": "python-asctime", "level": "ERROR", "line": 2, "line_end": 15, "logger": "billing.worker", "message": "charge failed for order 42", "parser": "text", "timestamp": "2026-09-13T12:00:01.123Z", "truncated": false, "ts_flags": ["naive"]}], "exception": {"chain": ["billing.errors.ChargeFailed", "requests.exceptions.ConnectionError"], "frames": [{"file": "/app/billing/worker.py", "function": "run", "in_app": true, "line": 33}, {"file": "/app/billing/charge.py", "function": "charge", "in_app": true, "line": 12}, {"file": "/app/billing/worker.py", "function": "run", "in_app": true, "line": 30}], "message_template": "could not charge order <n>", "type": "billing.errors.ChargeFailed"}, "fingerprint": "bfc7484129c3cc385b75edc98307377df3330da9fe843f9c65f94edd882e0143", "fingerprint_version": "1", "first_seen": "2026-09-13T12:00:01.123Z", "grouping": {"confidence": 0.9, "key_components": ["v1", "svc=", "log=billing.worker", "exc=billing.errors.ChargeFailed>requests.exceptions.ConnectionError", "excmsg=could not charge order <n>", "frames=run|worker.py", "msg=charge failed for order <n>", "http=", "code="], "notes": ["grouped by exception chain billing.errors.ChargeFailed>requests.exceptions.ConnectionError and message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-bfc7484129c3", "inputs": {"logs/python-asctime.log": 1}, "inputs_truncated": false, "investigation": {"cross_service": null, "model_refinement": "pending", "root_cause": {"alternatives": ["the message may be a symptom of an upstream failure sharing the same time window (check correlated groups)"], "hypotheses": [{"confidence": 0.85, "evidence": ["exception type requests.exceptions.ConnectionError indicates network", "occurrence count (1) does not influence severity"], "hypothesis": "network failure at billing/worker.py:33"}], "observed": ["1 occurrence(s) between 2026-09-13T12:00:01.123Z and 2026-09-13T12:00:01.123Z", "producer level(s): ERROR x1", "exception chain: billing.errors.ChargeFailed -> requests.exceptions.ConnectionError"], "uncertainty": ["the analysed checkout (billing@7ae7b2e8156a, orders@7ab99b3bd21d) may not be the version that produced the log"]}, "source_references": [{"function": "run", "line": 33, "match": "path", "note": "file and line exist in the checkout (no symbol to cross-check)", "path": "billing/worker.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "   27  # padding line 26\n   28  \n   29  def run(queue):\n   30      for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33>         time.sleep(0.1)\n   34  ", "verified": true}, {"function": "charge", "line": 12, "match": "path", "note": "symbol charge found within 6 lines of line 12", "path": "billing/charge.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "    6  \n    7  def charge(order):\n    8      payload = {\"order\": order.id, \"amount\": order.amount}\n    9      session = requests.Session()\n   10      session.headers[\"X-Order\"] = str(order.id)\n   11      # the gateway occasionally times out under load\n   12>     response = session.post(GATEWAY, json=payload, timeout=5)\n   13      response.raise_for_status()\n   14      return response.json()\n   15  ", "verified": true}, {"function": "run", "line": 30, "match": "path", "note": "file and line exist in the checkout (no symbol to cross-check)", "path": "billing/worker.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "   24  # padding line 23\n   25  # padding line 24\n   26  # padding line 25\n   27  # padding line 26\n   28  \n   29  def run(queue):\n   30>     for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33          time.sleep(0.1)\n   34  ", "verified": true}], "status": "deterministic", "suggestions": [{"alternatives": [], "confidence": 0.75, "kind": "source_backed", "origin": "deterministic", "rationale": "Network-level failures (DNS, TLS, resets) dominate; the code should retry transient failures and surface persistent ones clearly. Reference verified in the checkout (file and line exist in the checkout (no symbol to cross-check); symbol charge found within 6 lines of line 12).", "references": [{"function": "run", "line": 33, "match": "path", "note": "file and line exist in the checkout (no symbol to cross-check)", "path": "billing/worker.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "   27  # padding line 26\n   28  \n   29  def run(queue):\n   30      for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33>         time.sleep(0.1)\n   34  ", "verified": true}, {"function": "charge", "line": 12, "match": "path", "note": "symbol charge found within 6 lines of line 12", "path": "billing/charge.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "    6  \n    7  def charge(order):\n    8      payload = {\"order\": order.id, \"amount\": order.amount}\n    9      session = requests.Session()\n   10      session.headers[\"X-Order\"] = str(order.id)\n   11      # the gateway occasionally times out under load\n   12>     response = session.post(GATEWAY, json=payload, timeout=5)\n   13      response.raise_for_status()\n   14      return response.json()\n   15  ", "verified": true}, {"function": "run", "line": 30, "match": "path", "note": "file and line exist in the checkout (no symbol to cross-check)", "path": "billing/worker.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "   24  # padding line 23\n   25  # padding line 24\n   26  # padding line 25\n   27  # padding line 26\n   28  \n   29  def run(queue):\n   30>     for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33          time.sleep(0.1)\n   34  ", "verified": true}], "regression_tests": ["unit test injecting connection reset / DNS failure"], "suggested_changes": ["classify transient vs. persistent network errors", "retry transient errors with backoff", "surface TLS/DNS details in the error"], "summary": "Harden network error handling at the call site at billing/worker.py:33 (billing)", "verification_steps": ["correlate with infrastructure changes (DNS, certificates, load balancer) in the time window"]}]}, "last_seen": "2026-09-13T12:00:01.123Z", "layouts": ["python-asctime"], "level_max": "ERROR", "levels": {"ERROR": 1}, "logger": "billing.worker", "parser": "text", "services": {}, "severity": "medium", "template": "charge failed for order <n>", "untimed_count": 0},
+  {"assessment": {"basis": "observed", "category": "network", "confidence": 0.85, "impact_signals": ["also_matches:performance", "retries"], "rationale": ["exception type requests.exceptions.ConnectionError indicates network", "occurrence count (1) does not influence severity"], "severity": "medium"}, "attribution": {"candidates": [{"confidence": 1.0, "evidence": [{"kind": "path", "matched": "billing/charge.py", "value": "/app/billing/charge.py", "weight": 0.6}, {"kind": "path", "matched": "billing/worker.py", "value": "/app/billing/worker.py", "weight": 0.6}, {"kind": "namespace", "matched": "billing", "value": "billing.worker", "weight": 0.3}], "head": "7ae7b2e8156ab7b268d5026611172ef724a93bf1", "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/billing", "repo": "billing", "repo_id": "R8796c199"}], "status": "resolved"}, "category": "network", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 705, "exception_text": "requests.exceptions.ConnectionError: HTTPConnectionPool(host='payments', port=8080): Max retries exceeded\n    at charge (/app/billing/charge.py:12)\n    at run (/app/billing/worker.py:30)", "input": "logs/python-asctime.log", "input_id": 3, "layout": "python-asctime", "level": "ERROR", "line": 16, "line_end": 22, "logger": "billing.worker", "message": "charge failed for order 43", "parser": "text", "timestamp": "2026-09-13T12:00:02.123Z", "truncated": false, "ts_flags": ["naive"]}], "exception": {"chain": ["requests.exceptions.ConnectionError"], "frames": [{"file": "/app/billing/charge.py", "function": "charge", "in_app": true, "line": 12}, {"file": "/app/billing/worker.py", "function": "run", "in_app": true, "line": 30}], "message_template": "HTTPConnectionPool(host='payments', port=<id>): Max retries exceeded", "type": "requests.exceptions.ConnectionError"}, "fingerprint": "b1d0e8dc43fc373acddeda7cbe3dda499ed337b56819bd0d3e843fe677bd6a2e", "fingerprint_version": "1", "first_seen": "2026-09-13T12:00:02.123Z", "grouping": {"confidence": 0.9, "key_components": ["v1", "svc=", "log=billing.worker", "exc=requests.exceptions.ConnectionError", "excmsg=HTTPConnectionPool(host='payments', port=<id>): Max retries exceeded", "frames=charge|charge.py;run|worker.py", "msg=charge failed for order <n>", "http=", "code="], "notes": ["grouped by exception chain requests.exceptions.ConnectionError and message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-b1d0e8dc43fc", "inputs": {"logs/python-asctime.log": 1}, "inputs_truncated": false, "investigation": {"cross_service": null, "model_refinement": "pending", "root_cause": {"alternatives": ["the message may be a symptom of an upstream failure sharing the same time window (check correlated groups)"], "hypotheses": [{"confidence": 0.85, "evidence": ["exception type requests.exceptions.ConnectionError indicates network", "occurrence count (1) does not influence severity"], "hypothesis": "network failure at billing/charge.py:12"}], "observed": ["1 occurrence(s) between 2026-09-13T12:00:02.123Z and 2026-09-13T12:00:02.123Z", "producer level(s): ERROR x1", "exception chain: requests.exceptions.ConnectionError"], "uncertainty": ["the analysed checkout (billing@7ae7b2e8156a, orders@7ab99b3bd21d) may not be the version that produced the log"]}, "source_references": [{"function": "charge", "line": 12, "match": "path", "note": "symbol charge found within 6 lines of line 12", "path": "billing/charge.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "    6  \n    7  def charge(order):\n    8      payload = {\"order\": order.id, \"amount\": order.amount}\n    9      session = requests.Session()\n   10      session.headers[\"X-Order\"] = str(order.id)\n   11      # the gateway occasionally times out under load\n   12>     response = session.post(GATEWAY, json=payload, timeout=5)\n   13      response.raise_for_status()\n   14      return response.json()\n   15  ", "verified": true}, {"function": "run", "line": 30, "match": "path", "note": "file and line exist in the checkout (no symbol to cross-check)", "path": "billing/worker.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "   24  # padding line 23\n   25  # padding line 24\n   26  # padding line 25\n   27  # padding line 26\n   28  \n   29  def run(queue):\n   30>     for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33          time.sleep(0.1)\n   34  ", "verified": true}], "status": "deterministic", "suggestions": [{"alternatives": [], "confidence": 0.75, "kind": "source_backed", "origin": "deterministic", "rationale": "Network-level failures (DNS, TLS, resets) dominate; the code should retry transient failures and surface persistent ones clearly. Reference verified in the checkout (symbol charge found within 6 lines of line 12; file and line exist in the checkout (no symbol to cross-check)).", "references": [{"function": "charge", "line": 12, "match": "path", "note": "symbol charge found within 6 lines of line 12", "path": "billing/charge.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "    6  \n    7  def charge(order):\n    8      payload = {\"order\": order.id, \"amount\": order.amount}\n    9      session = requests.Session()\n   10      session.headers[\"X-Order\"] = str(order.id)\n   11      # the gateway occasionally times out under load\n   12>     response = session.post(GATEWAY, json=payload, timeout=5)\n   13      response.raise_for_status()\n   14      return response.json()\n   15  ", "verified": true}, {"function": "run", "line": 30, "match": "path", "note": "file and line exist in the checkout (no symbol to cross-check)", "path": "billing/worker.py", "repo": "billing", "repo_id": "R8796c199", "snippet": "   24  # padding line 23\n   25  # padding line 24\n   26  # padding line 25\n   27  # padding line 26\n   28  \n   29  def run(queue):\n   30>     for order in queue:\n   31          charge(order)\n   32          log.info(\"charged %s\", order.id)\n   33          time.sleep(0.1)\n   34  ", "verified": true}], "regression_tests": ["unit test injecting connection reset / DNS failure"], "suggested_changes": ["classify transient vs. persistent network errors", "retry transient errors with backoff", "surface TLS/DNS details in the error"], "summary": "Harden network error handling at the call site at billing/charge.py:12 (billing)", "verification_steps": ["correlate with infrastructure changes (DNS, certificates, load balancer) in the time window"]}]}, "last_seen": "2026-09-13T12:00:02.123Z", "layouts": ["python-asctime"], "level_max": "ERROR", "levels": {"ERROR": 1}, "logger": "billing.worker", "parser": "text", "services": {}, "severity": "medium", "template": "charge failed for order <n>", "untimed_count": 0},
+  {"assessment": {"basis": "unknown", "category": "unknown", "confidence": 0.35, "impact_signals": [], "rationale": ["no categorical evidence; producer level indicates a failure of unknown kind", "severity from producer level only (ERROR)", "occurrence count (1) does not influence severity"], "severity": "medium"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "unknown", "correlation": {"request_ids": ["req-1"], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {"request_id": "req-1", "service": "payment-service"}, "byte_offset": 5862, "exception_text": null, "input": "logs/grouping-equivalence.log", "input_id": 2, "layout": "generic-ts", "level": "ERROR", "line": 33, "line_end": null, "message": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000044 for user 9 from 10.1.2.3:4444 in 12ms (attempt 1/5) request_id=req-1 service=payment-service", "parser": "text", "request_id": "req-1", "service": "payment-service", "timestamp": "2026-09-13T12:31:00Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "6d7c6a6bd0624220de033c2e18f7c10f33412f8d94580ffc111c64de1585bcdc", "fingerprint_version": "1", "first_seen": "2026-09-13T12:31:00Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=payment-service", "log=", "exc=", "excmsg=", "frames=", "msg=Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=payment-service", "http=", "code="], "notes": ["grouped by normalized message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-6d7c6a6bd062", "inputs": {"logs/grouping-equivalence.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T12:31:00Z", "layouts": ["generic-ts"], "level_max": "ERROR", "levels": {"ERROR": 1}, "logger": null, "parser": "text", "services": {"payment-service": 1}, "severity": "medium", "template": "Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=payment-service", "untimed_count": 0},
+  {"assessment": {"basis": "inferred", "category": "performance", "confidence": 0.6, "impact_signals": ["retries"], "rationale": ["message evidence 'retrying' -> performance", "producer level is WARNING; severity capped at medium", "occurrence count (1) does not influence severity"], "severity": "low"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "performance", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 1116, "exception_text": null, "input": "logs/serilog-text.log", "input_id": 4, "layout": "serilog-text", "level": "WRN", "line": 15, "line_end": null, "message": "Retrying payment (attempt 2/5) after 5000 ms", "parser": "text", "timestamp": "2026-09-13T10:00:03Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "228bb4b285fb81fc0a3c94fd438c1acdeab37171a8e5a9ac74fbf3b13623c84a", "fingerprint_version": "1", "first_seen": "2026-09-13T10:00:03Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=", "log=", "exc=", "excmsg=", "frames=", "msg=Retrying payment (attempt <n>/<n>) after <dur>", "http=", "code="], "notes": ["grouped by normalized message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-228bb4b285fb", "inputs": {"logs/serilog-text.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T10:00:03Z", "layouts": ["serilog-text"], "level_max": "WRN", "levels": {"WRN": 1}, "logger": null, "parser": "text", "services": {}, "severity": "low", "template": "Retrying payment (attempt <n>/<n>) after <dur>", "untimed_count": 0},
+  {"assessment": {"basis": "observed", "category": "client_error", "confidence": 0.85, "impact_signals": [], "rationale": ["HTTP status 404 observed -> client error", "producer level is WARNING; severity capped at medium", "occurrence count (1) does not influence severity"], "severity": "low"}, "attribution": {"candidates": [{"confidence": 0.1, "evidence": [{"kind": "name-in-message", "matched": "orders", "value": "orders", "weight": 0.1}], "head": "7ab99b3bd21de841b3d1d38ed54b1ebbc5d37066", "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/orders", "repo": "orders", "repo_id": "R4e6e5b5c"}], "reason": "only weak evidence (basename or name mention) matched; not attributed", "status": "unresolved"}, "category": "client_error", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {"bytes": 12, "client_ip": "10.0.0.3", "user_agent": "Mozilla/5.0"}, "byte_offset": 169, "exception_text": null, "input": "logs/access-combined.log", "input_id": 1, "layout": "apache-nginx-access", "level": "warning", "line": 3, "line_end": null, "message": "GET /api/orders/43 -> 404", "parser": "access-log", "timestamp": "2026-09-13T12:00:02Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "a0db72527b05b7d71e7a54317185f30f1f50475aa479dbd16b783e7fa799adf3", "fingerprint_version": "1", "first_seen": "2026-09-13T12:00:02Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=", "log=", "exc=", "excmsg=", "frames=", "msg=GET /api/orders/<n> -> <n>", "http=404", "code="], "notes": ["grouped by normalized message template", "HTTP status 404 and route template are part of the key"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": {"method": "GET", "path_template": "/api/orders/<n>", "status": 404}, "id": "LT-a0db72527b05", "inputs": {"logs/access-combined.log": 1}, "inputs_truncated": false, "investigation": {"reason": "only weak evidence (basename or name mention) matched; not attributed", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T12:00:02Z", "layouts": ["apache-nginx-access"], "level_max": "warning", "levels": {"WARNING": 1}, "logger": null, "parser": "access-log", "services": {}, "severity": "low", "template": "GET /api/orders/<n> -> <n>", "untimed_count": 0},
+  {"assessment": {"basis": "inferred", "category": "operational", "confidence": 0.6, "impact_signals": [], "rationale": ["message evidence 'starting' -> operational", "occurrence count (1) does not influence severity"], "severity": "info"}, "attribution": {"candidates": [{"confidence": 0.1, "evidence": [{"kind": "name-in-message", "matched": "orders", "value": "orders", "weight": 0.1}], "head": "7ab99b3bd21de841b3d1d38ed54b1ebbc5d37066", "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/orders", "repo": "orders", "repo_id": "R4e6e5b5c"}], "reason": "only weak evidence (basename or name mention) matched; not attributed", "status": "unresolved"}, "category": "operational", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 0, "exception_text": null, "input": "logs/serilog-text.log", "input_id": 4, "layout": "serilog-text", "level": "INF", "line": 1, "line_end": null, "message": "Starting Acme.Orders", "parser": "text", "timestamp": "2026-09-13T10:00:00.123Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "4e9e698c369a55e1195ef4b83c5d05cc92487611a22b5a13e78a170d0b06c361", "fingerprint_version": "1", "first_seen": "2026-09-13T10:00:00.123Z", "grouping": {"confidence": 0.7, "key_components": ["v1", "svc=", "log=", "exc=", "excmsg=", "frames=", "msg=Starting Acme.Orders", "http=", "code="], "notes": ["grouped by normalized message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-4e9e698c369a", "inputs": {"logs/serilog-text.log": 1}, "inputs_truncated": false, "investigation": {"reason": "only weak evidence (basename or name mention) matched; not attributed", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T10:00:00.123Z", "layouts": ["serilog-text"], "level_max": "INF", "levels": {"INF": 1}, "logger": null, "parser": "text", "services": {}, "severity": "info", "template": "Starting Acme.Orders", "untimed_count": 0},
+  {"assessment": {"basis": "inferred", "category": "operational", "confidence": 0.6, "impact_signals": [], "rationale": ["message evidence 'starting' -> operational", "occurrence count (1) does not influence severity"], "severity": "info"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "operational", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 0, "exception_text": null, "input": "logs/zap-console.log", "input_id": 6, "layout": "zap-console", "level": "INFO", "line": 1, "line_end": null, "logger": "worker/main.go:20", "message": "starting", "parser": "text", "timestamp": "2026-09-13T10:00:00.123Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "abe4e469a8d3cf81fe0499f5711c0bf2e465ee4264090397228fb033ededec25", "fingerprint_version": "1", "first_seen": "2026-09-13T10:00:00.123Z", "grouping": {"confidence": 0.7, "key_components": ["v1", "svc=", "log=worker/main.go:20", "exc=", "excmsg=", "frames=", "msg=starting", "http=", "code="], "notes": ["grouped by normalized message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-abe4e469a8d3", "inputs": {"logs/zap-console.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T10:00:00.123Z", "layouts": ["zap-console"], "level_max": "INFO", "levels": {"INFO": 1}, "logger": "worker/main.go:20", "parser": "text", "services": {}, "severity": "info", "template": "starting", "untimed_count": 0},
+  {"assessment": {"basis": "inferred", "category": "operational", "confidence": 0.6, "impact_signals": [], "rationale": ["message evidence 'started' -> operational", "occurrence count (1) does not influence severity"], "severity": "info"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "operational", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 0, "exception_text": null, "input": "logs/spring-boot.log", "input_id": 5, "layout": "spring-boot", "level": "INFO", "line": 1, "line_end": null, "logger": "c.a.orders.App", "message": "Started App in 2.5 seconds", "parser": "text", "thread": "main", "timestamp": "2026-09-13T10:00:00.123Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "f045f3c4e05600b93faa1b4ca27631bc059a7403ec9c24c38ac96ed39eeda56a", "fingerprint_version": "1", "first_seen": "2026-09-13T10:00:00.123Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=", "log=c.a.orders.App", "exc=", "excmsg=", "frames=", "msg=Started App in <dur>", "http=", "code="], "notes": ["grouped by normalized message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-f045f3c4e056", "inputs": {"logs/spring-boot.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T10:00:00.123Z", "layouts": ["spring-boot"], "level_max": "INFO", "levels": {"INFO": 1}, "logger": "c.a.orders.App", "parser": "text", "services": {}, "severity": "info", "template": "Started App in <dur>", "untimed_count": 0},
+  {"assessment": {"basis": "inferred", "category": "operational", "confidence": 0.6, "impact_signals": [], "rationale": ["message evidence 'started' -> operational", "occurrence count (1) does not influence severity"], "severity": "info"}, "attribution": {"candidates": [{"confidence": 0.3, "evidence": [{"kind": "namespace", "matched": "billing", "value": "billing.worker", "weight": 0.3}], "head": "7ae7b2e8156ab7b268d5026611172ef724a93bf1", "path": "/tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/billing", "repo": "billing", "repo_id": "R8796c199"}], "reason": "only weak evidence (basename or name mention) matched; not attributed", "status": "unresolved"}, "category": "operational", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 0, "exception_text": null, "input": "logs/python-asctime.log", "input_id": 3, "layout": "python-asctime", "level": "INFO", "line": 1, "line_end": null, "logger": "billing.worker", "message": "worker started", "parser": "text", "timestamp": "2026-09-13T12:00:00.123Z", "truncated": false, "ts_flags": ["naive"]}], "exception": null, "fingerprint": "04097dbdd0effc6a306e698096413fd50e7f22e9555b3752c5cf4aa2877b3650", "fingerprint_version": "1", "first_seen": "2026-09-13T12:00:00.123Z", "grouping": {"confidence": 0.7, "key_components": ["v1", "svc=", "log=billing.worker", "exc=", "excmsg=", "frames=", "msg=worker started", "http=", "code="], "notes": ["grouped by normalized message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-04097dbdd0ef", "inputs": {"logs/python-asctime.log": 1}, "inputs_truncated": false, "investigation": {"reason": "only weak evidence (basename or name mention) matched; not attributed", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T12:00:00.123Z", "layouts": ["python-asctime"], "level_max": "INFO", "levels": {"INFO": 1}, "logger": "billing.worker", "parser": "text", "services": {}, "severity": "info", "template": "worker started", "untimed_count": 0},
+  {"assessment": {"basis": "unknown", "category": "unknown", "confidence": 0.35, "impact_signals": [], "rationale": ["no failure evidence in message or level", "severity from producer level only (INFO)", "occurrence count (1) does not influence severity"], "severity": "info"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "unknown", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {"bytes": 2, "client_ip": "10.0.0.2"}, "byte_offset": 96, "exception_text": null, "input": "logs/access-combined.log", "input_id": 1, "layout": "apache-nginx-access", "level": "info", "line": 2, "line_end": null, "message": "GET /health -> 200", "parser": "access-log", "timestamp": "2026-09-13T12:00:01Z", "truncated": false, "ts_flags": []}], "exception": null, "fingerprint": "d46742b9402c993db9b68905e5242ef9d5375979552a85b29dcf4e3b409b251d", "fingerprint_version": "1", "first_seen": "2026-09-13T12:00:01Z", "grouping": {"confidence": 0.8, "key_components": ["v1", "svc=", "log=", "exc=", "excmsg=", "frames=", "msg=GET /health -> <n>", "http=200", "code="], "notes": ["grouped by normalized message template", "HTTP status 200 and route template are part of the key"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": {"method": "GET", "path_template": "/health", "status": 200}, "id": "LT-d46742b9402c", "inputs": {"logs/access-combined.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": "2026-09-13T12:00:01Z", "layouts": ["apache-nginx-access"], "level_max": "info", "levels": {"INFO": 1}, "logger": null, "parser": "access-log", "services": {}, "severity": "info", "template": "GET /health -> <n>", "untimed_count": 0},
+  {"assessment": {"basis": "unknown", "category": "unknown", "confidence": 0.35, "impact_signals": [], "rationale": ["no failure evidence in message or level", "severity from producer level only (INFO)", "occurrence count (1) does not influence severity"], "severity": "info"}, "attribution": {"candidates": [], "reason": "no path, namespace or service evidence matched any discovered repository", "status": "unresolved"}, "category": "unknown", "correlation": {"request_ids": [], "trace_ids": [], "truncated": false}, "count": 1, "error_code": null, "examples": [{"attributes": {}, "byte_offset": 1198, "exception_text": null, "input": "logs/serilog-text.log", "input_id": 4, "layout": "generic-ts", "level": "INF", "line": 16, "line_end": null, "message": "time-only serilog console line", "parser": "text", "timestamp": null, "truncated": false, "ts_flags": ["time_only"]}], "exception": null, "fingerprint": "2791132b6e6ead9f773fffa6ead547d2b3a25ec6bdac8696d556731b2b51d813", "fingerprint_version": "1", "first_seen": null, "grouping": {"confidence": 0.7, "key_components": ["v1", "svc=", "log=", "exc=", "excmsg=", "frames=", "msg=time-only serilog console line", "http=", "code="], "notes": ["grouped by normalized message template"]}, "hosts": {"distinct": 0, "sample": [], "truncated": false}, "http": null, "id": "LT-2791132b6e6e", "inputs": {"logs/serilog-text.log": 1}, "inputs_truncated": false, "investigation": {"reason": "no path, namespace or service evidence matched any discovered repository", "root_cause": null, "source_references": [], "status": "insufficient_evidence", "suggestions": []}, "last_seen": null, "layouts": ["generic-ts"], "level_max": "INF", "levels": {"INF": 1}, "logger": null, "parser": "text", "services": {}, "severity": "info", "template": "time-only serilog console line", "untimed_count": 1}
+ ]
+}

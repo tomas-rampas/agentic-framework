@@ -1,0 +1,2 @@
+<logs><entry time="2026-09-13T12:00:00Z" level="error"><source>svc</source><message>boom</message><stacktrace>java.lang.RuntimeException: x
+	at a.b.C.d(C.java:1)</stacktrace></entry><entry time="2026-09-13T12:00:01Z" level="info"><message>ok</message></entry></logs>

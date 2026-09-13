@@ -1,0 +1,8 @@
+2026-09-13 12:00:00.123 [DefaultDispatcher-worker-1] ERROR com.acme.feed.FeedViewModel - load failed
+kotlinx.coroutines.JobCancellationException: Parent job is Cancelled; job=SupervisorJobImpl{Cancelling}@1a2b3c
+	at kotlinx.coroutines.JobSupport.cancelParent(JobSupport.kt:678)
+	at com.acme.feed.FeedViewModel$load$1.invokeSuspend(FeedViewModel.kt:31)
+2026-09-13 12:00:01.123 [main] ERROR com.acme.pipeline.Job - stage failed
+scala.MatchError: None (of class scala.None$)
+	at com.acme.pipeline.Job$.$anonfun$run$1(Job.scala:22)
+	at scala.collection.immutable.List.map(List.scala:246)

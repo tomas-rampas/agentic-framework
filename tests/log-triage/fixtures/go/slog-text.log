@@ -1,0 +1,3 @@
+time=2026-09-13T12:00:00.000Z level=INFO msg=starting service=api
+time=2026-09-13T12:00:01.000Z level=ERROR msg="charge failed" err="context deadline exceeded" order=42 service=api
+time=2026-09-13T12:00:02.000Z level=ERROR msg="charge failed" err="context deadline exceeded" order=43 service=api

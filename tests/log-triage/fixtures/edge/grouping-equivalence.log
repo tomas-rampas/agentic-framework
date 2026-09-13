@@ -1,0 +1,33 @@
+2026-09-13T12:00:00Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000000 for user 100 from 10.1.2.0:40000 in 10ms (attempt 1/5) request_id=req-0 service=order-service
+2026-09-13T12:00:01Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000001 for user 101 from 10.1.2.1:40001 in 11ms (attempt 2/5) request_id=req-1eef service=order-service
+2026-09-13T12:00:02Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000002 for user 102 from 10.1.2.2:40002 in 12ms (attempt 3/5) request_id=req-3dde service=order-service
+2026-09-13T12:00:03Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000003 for user 103 from 10.1.2.3:40003 in 13ms (attempt 4/5) request_id=req-5ccd service=order-service
+2026-09-13T12:00:04Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000004 for user 104 from 10.1.2.4:40004 in 14ms (attempt 5/5) request_id=req-7bbc service=order-service
+2026-09-13T12:00:05Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000005 for user 105 from 10.1.2.5:40005 in 15ms (attempt 1/5) request_id=req-9aab service=order-service
+2026-09-13T12:00:06Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000006 for user 106 from 10.1.2.6:40006 in 16ms (attempt 2/5) request_id=req-b99a service=order-service
+2026-09-13T12:00:07Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000007 for user 107 from 10.1.2.7:40007 in 17ms (attempt 3/5) request_id=req-d889 service=order-service
+2026-09-13T12:00:08Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000008 for user 108 from 10.1.2.8:40008 in 18ms (attempt 4/5) request_id=req-f778 service=order-service
+2026-09-13T12:00:09Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000009 for user 109 from 10.1.2.9:40009 in 19ms (attempt 5/5) request_id=req-11667 service=order-service
+2026-09-13T12:00:10Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000010 for user 110 from 10.1.2.10:40010 in 20ms (attempt 1/5) request_id=req-13556 service=order-service
+2026-09-13T12:00:11Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000011 for user 111 from 10.1.2.11:40011 in 21ms (attempt 2/5) request_id=req-15445 service=order-service
+2026-09-13T12:00:12Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000012 for user 112 from 10.1.2.12:40012 in 22ms (attempt 3/5) request_id=req-17334 service=order-service
+2026-09-13T12:00:13Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000013 for user 113 from 10.1.2.13:40013 in 23ms (attempt 4/5) request_id=req-19223 service=order-service
+2026-09-13T12:00:14Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000014 for user 114 from 10.1.2.14:40014 in 24ms (attempt 5/5) request_id=req-1b112 service=order-service
+2026-09-13T12:00:15Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000015 for user 115 from 10.1.2.15:40015 in 25ms (attempt 1/5) request_id=req-1d001 service=order-service
+2026-09-13T12:00:16Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000016 for user 116 from 10.1.2.16:40016 in 26ms (attempt 2/5) request_id=req-1eef0 service=order-service
+2026-09-13T12:00:17Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000017 for user 117 from 10.1.2.17:40017 in 27ms (attempt 3/5) request_id=req-20ddf service=order-service
+2026-09-13T12:00:18Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000018 for user 118 from 10.1.2.18:40018 in 28ms (attempt 4/5) request_id=req-22cce service=order-service
+2026-09-13T12:00:19Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000019 for user 119 from 10.1.2.19:40019 in 29ms (attempt 5/5) request_id=req-24bbd service=order-service
+2026-09-13T12:00:20Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000020 for user 120 from 10.1.2.20:40020 in 30ms (attempt 1/5) request_id=req-26aac service=order-service
+2026-09-13T12:00:21Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000021 for user 121 from 10.1.2.21:40021 in 31ms (attempt 2/5) request_id=req-2899b service=order-service
+2026-09-13T12:00:22Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000022 for user 122 from 10.1.2.22:40022 in 32ms (attempt 3/5) request_id=req-2a88a service=order-service
+2026-09-13T12:00:23Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000023 for user 123 from 10.1.2.23:40023 in 33ms (attempt 4/5) request_id=req-2c779 service=order-service
+2026-09-13T12:00:24Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000024 for user 124 from 10.1.2.24:40024 in 34ms (attempt 5/5) request_id=req-2e668 service=order-service
+2026-09-13T12:00:25Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000025 for user 125 from 10.1.2.25:40025 in 35ms (attempt 1/5) request_id=req-30557 service=order-service
+2026-09-13T12:00:26Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000026 for user 126 from 10.1.2.26:40026 in 36ms (attempt 2/5) request_id=req-32446 service=order-service
+2026-09-13T12:00:27Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000027 for user 127 from 10.1.2.27:40027 in 37ms (attempt 3/5) request_id=req-34335 service=order-service
+2026-09-13T12:00:28Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000028 for user 128 from 10.1.2.28:40028 in 38ms (attempt 4/5) request_id=req-36224 service=order-service
+2026-09-13T12:00:29Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000029 for user 129 from 10.1.2.29:40029 in 39ms (attempt 5/5) request_id=req-38113 service=order-service
+2026-09-13T12:30:00Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000042 for user 7 status code 500 service=order-service
+2026-09-13T12:30:01Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000043 for user 8 status code 503 service=order-service
+2026-09-13T12:31:00Z ERROR Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000044 for user 9 from 10.1.2.3:4444 in 12ms (attempt 1/5) request_id=req-1 service=payment-service

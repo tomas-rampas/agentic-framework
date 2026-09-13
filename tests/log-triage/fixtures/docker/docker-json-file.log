@@ -1,0 +1,6 @@
+{"log": "2026-09-13 12:00:00,123 - billing.worker - ERROR - charge failed for order 42\n", "stream": "stderr", "time": "2026-09-13T12:00:00.200Z"}
+{"log": "Traceback (most recent call last):\n", "stream": "stderr", "time": "2026-09-13T12:00:00.201Z"}
+{"log": "  File \"/app/billing/worker.py\", line 30, in run\n", "stream": "stderr", "time": "2026-09-13T12:00:00.202Z"}
+{"log": "ValueError: bad amount\n", "stream": "stderr", "time": "2026-09-13T12:00:00.203Z"}
+{"log": "{\"level\": \"info\", \"msg\": \"json inside docker\", \"time\": \"2026-09-13T12:00:01Z\"}\n", "stream": "stdout", "time": "2026-09-13T12:00:01.100Z"}
+{"log": "plain line\n", "stream": "stdout", "time": "2026-09-13T12:00:02Z", "attrs": {"tag": "orders"}}

@@ -1,0 +1,1 @@
+{"records": [{"time": "2026-09-13T12:00:00.123Z", "resourceId": "/SUBSCRIPTIONS/X/RESOURCEGROUPS/RG/PROVIDERS/MICROSOFT.WEB/SITES/ORDERS", "category": "AppServiceConsoleLogs", "operationName": "Microsoft.Web/sites/log", "level": "Error", "properties": {"message": "charge failed for order 42", "appRoleName": "orders"}}]}

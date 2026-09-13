@@ -1,0 +1,4 @@
+{"timestamp": "2026-09-13T12:00:00Z", "severity": "ERROR", "text": "boom", "correlationId": "c1", "status": 500, "method": "post", "path": "/x", "custom": {"a": 1}}
+not json at all
+{"time": "2026-09-13T12:00:02Z", "lvl": "info", "description": "fine"}
+{bad json

@@ -1,0 +1,9 @@
+Server listening on 3000
+TypeError: Cannot read properties of undefined (reading 'id')
+    at getUser (/app/src/users/service.js:12:18)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+Error: connect ECONNREFUSED 127.0.0.1:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1494:16) {
+  errno: -111,
+  code: 'ECONNREFUSED'
+}

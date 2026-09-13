@@ -1,0 +1,2 @@
+[Sun Sep 13 12:00:04.123456 2026] [proxy:error] [pid 1234:tid 5678] [client 10.0.0.1:5555] AH00898: Error reading from remote server returned by /api
+[Sun Sep 13 12:00:05 2026] [error] [client 10.0.0.1] PHP Fatal error:  Uncaught Exception: boom in /var/www/x.php:12

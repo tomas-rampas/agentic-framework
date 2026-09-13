@@ -1,0 +1,20 @@
+**********************
+Windows PowerShell transcript start
+Start time: 20260913120000
+Username: ACME\deploy
+Machine: BUILD01 (Microsoft Windows NT 10.0.19045.0)
+**********************
+Transcript started, output file is C:\logs\t.txt
+PS C:\> Get-Item C:\nope
+Get-Item : Cannot find path 'C:\nope' because it does not exist.
+At line:1 char:1
++ Get-Item C:\nope
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (C:\nope:String) [Get-Item], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetItemCommand
+PS C:\> Write-Host done
+done
+**********************
+Windows PowerShell transcript end
+End time: 20260913120100
+**********************

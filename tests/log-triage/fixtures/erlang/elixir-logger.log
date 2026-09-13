@@ -1,0 +1,8 @@
+12:00:00.123 [info] Running MyAppWeb.Endpoint with cowboy 2.10.0 at :::4000 (http)
+12:00:01.123 request_id=abc [error] GenServer MyApp.Worker terminating
+** (RuntimeError) boom
+    (my_app 0.1.0) lib/my_app/worker.ex:12: MyApp.Worker.handle_call/3
+    (stdlib 5.0) gen_server.erl:1113: :gen_server.try_handle_call/4
+Last message (from #PID<0.123.0>): :crash
+State: %{}
+2026-09-13 12:00:02.123 [warning] date+time variant

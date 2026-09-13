@@ -1,0 +1,1 @@
+{"@timestamp": "2026-09-13T12:00:00.123+02:00", "@version": "1", "message": "Failed to place order 42", "logger_name": "com.acme.orders.OrderService", "thread_name": "http-nio-8080-exec-1", "level": "ERROR", "level_value": 40000, "stack_trace": "java.lang.IllegalStateException: boom\n\tat com.acme.orders.OrderService.place(OrderService.java:42)\n"}

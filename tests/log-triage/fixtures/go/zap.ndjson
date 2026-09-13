@@ -1,0 +1,1 @@
+{"level": "error", "ts": 1789000001.5, "caller": "worker/main.go:42", "msg": "charge failed", "error": "context deadline exceeded", "stacktrace": "main.run\n\t/app/main.go:42\nmain.main\n\t/app/main.go:10"}

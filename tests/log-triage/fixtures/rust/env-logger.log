@@ -1,0 +1,2 @@
+[2026-09-13T12:00:00Z INFO  myapp] starting
+[2026-09-13T12:00:01Z ERROR myapp::worker] charge failed: connection refused (os error 111)

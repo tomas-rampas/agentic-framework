@@ -1,0 +1,13 @@
+worker: /src/queue.c:88: dequeue: Assertion `q->len > 0' failed.
+Aborted (core dumped)
+==12345==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000014 at pc 0x0000004f4c4d bp 0x7ffd sp 0x7ffd
+READ of size 4 at 0x602000000014 thread T0
+    #0 0x4f4c4c in process_items /src/lib/items.cc:42:12
+    #1 0x4f4d10 in main /src/main.cc:12:3
+SUMMARY: AddressSanitizer: heap-buffer-overflow /src/lib/items.cc:42:12 in process_items
+==12345==ABORTING
+Assertion failed: (x > 0), function foo, file main.c, line 12.
+/src/x.cc:12:3: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'
+WARNING: ThreadSanitizer: data race (pid=777)
+  Write of size 4 at 0x7b0400000000 by thread T1:
+    #0 worker /src/w.cc:5:3

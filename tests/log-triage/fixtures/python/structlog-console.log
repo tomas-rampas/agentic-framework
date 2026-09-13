@@ -1,0 +1,2 @@
+2026-09-13T12:00:00.123456Z [info     ] worker started                 service=billing
+2026-09-13T12:00:01.123456Z [error    ] charge failed                  order_id=42 service=billing request_id=req-1

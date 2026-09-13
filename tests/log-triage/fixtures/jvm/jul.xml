@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE log SYSTEM "logger.dtd">
+<log>
+<record>
+  <date>2026-09-13T12:00:00.123Z</date>
+  <millis>1789000000123</millis>
+  <sequence>0</sequence>
+  <logger>com.acme.orders.OrderService</logger>
+  <level>SEVERE</level>
+  <class>com.acme.orders.OrderService</class>
+  <method>place</method>
+  <thread>1</thread>
+  <message>Failed to place order 42</message>
+  <exception>
+    <message>java.lang.IllegalStateException: boom</message>
+    <frame>
+      <class>com.acme.orders.OrderService</class>
+      <method>place</method>
+      <line>42</line>
+    </frame>
+  </exception>
+</record>
+</log>

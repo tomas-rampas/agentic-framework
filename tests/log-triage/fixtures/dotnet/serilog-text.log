@@ -1,0 +1,16 @@
+2026-09-13 12:00:00.123 +02:00 [INF] Starting Acme.Orders
+2026-09-13 12:00:01.456 +02:00 [ERR] Failed to place order 42 for customer 7
+System.InvalidOperationException: Sequence contains no elements
+ ---> System.IO.IOException: The pipe is broken
+   at Acme.Orders.OrderService.Place(Order order) in /src/Acme.Orders/OrderService.cs:line 42
+   --- End of inner exception stack trace ---
+   at Acme.Orders.Api.Controllers.OrdersController.Post(OrderDto dto) in /src/Acme.Orders.Api/Controllers/OrdersController.cs:line 77
+   at Microsoft.AspNetCore.Mvc.Infrastructure.ActionMethodExecutor.TaskOfIActionResultExecutor.Execute(ActionContext actionContext)
+2026-09-13 12:00:02.000 +02:00 [ERR] Failed to place order 43 for customer 9
+System.InvalidOperationException: Sequence contains no elements
+ ---> System.IO.IOException: The pipe is broken
+   at Acme.Orders.OrderService.Place(Order order) in /src/Acme.Orders/OrderService.cs:line 42
+   --- End of inner exception stack trace ---
+   at Acme.Orders.Api.Controllers.OrdersController.Post(OrderDto dto) in /src/Acme.Orders.Api/Controllers/OrdersController.cs:line 77
+2026-09-13 12:00:03.000 +02:00 [WRN] Retrying payment (attempt 2/5) after 5000 ms
+[12:00:04 INF] time-only serilog console line

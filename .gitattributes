@@ -16,3 +16,8 @@
 *.dll binary
 *.exe binary
 *.nupkg binary
+
+# /log-triage: fixtures are byte-exact test inputs (CRLF, UTF-16, Latin-1, gzip) and the
+# CSV sample documents CRLF output — never normalise their line endings
+tests/log-triage/fixtures/** -text
+docs/log-triage/samples/groups.csv -text
