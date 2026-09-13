@@ -199,7 +199,7 @@ class GroupStore:
                         fr.raw = x
                 else:   # a multi-line secret spanned frames: drop the frame text rather than keep any of it
                     for fr in exc.frames:
-                        fr.raw = r.redact(fr.raw) if fr.raw else fr.raw
+                        fr.raw = ""
 
     def add(self, ev: Event) -> str:
         limits = self.limits

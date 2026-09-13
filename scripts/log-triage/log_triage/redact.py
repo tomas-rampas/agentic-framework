@@ -57,6 +57,7 @@ _PK_RE = re.compile(r"%s%s%s.*?(?:%s%s%s|$)" % (_DASHES, _PK_BEGIN, _DASHES, _DA
 _PREFILTER = re.compile(r"[@=:]|\d|-----|akia|asia|agpa|aida|aroa|anpa|eyj|xox[abprs]-|aiza|sg\.|npm_|pypi-|sk-|gh[opsur]_|github_pat_|accountkey|bearer|authorization", re.IGNORECASE)
 _SENSITIVE_KEY = re.compile("^(?:%s)$" % _KV_KEYS, re.IGNORECASE)
 _KEY_SPLIT = re.compile(r"[._\-@/: ]+")
+_COUNTER_SUFFIXES = {"count", "total", "alg", "algorithm", "version", "len", "length", "size", "type", "kind", "name", "id"}
 _CAMEL = re.compile(r"([a-z0-9])([A-Z])")
 
 
@@ -72,7 +73,10 @@ def _is_sensitive_key(key: str) -> bool:
         return False
     if _SENSITIVE_KEY.match(leaf):
         return True
-    return any(_SENSITIVE_KEY.match(seg) for seg in _KEY_SPLIT.split(_CAMEL.sub(r"\1 \2", leaf)) if seg)
+    segs = [seg for seg in _KEY_SPLIT.split(_CAMEL.sub(r"\1 \2", leaf)) if seg]
+    if segs and segs[-1].lower() in _COUNTER_SUFFIXES:
+        return False    # token_count, cookie_total, sig_alg: metadata about a secret, not the secret
+    return any(_SENSITIVE_KEY.match(seg) for seg in segs)
 _SIMPLE_TOKENS = {
     "pk": _R % "private-key", "jwt": _R % "jwt", "aws": _R % "aws-access-key",
     "gh": _R % "github-token", "slack": _R % "slack-token", "google": _R % "google-api-key",

@@ -21,7 +21,7 @@ from .base import AtomicFile, Exporter
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _SPECIAL = re.compile(r"([\\`*_\[\]<>|~])")
 _LEADING = re.compile(r"^(\s*)([#>+\-]|\d+\.)(?=\s|$)")
-_AUTOLINK = re.compile(r"(?i)\b((?:https?|ftps?|ssh|git|file|mailto|www)(?::/*|\.))")
+_AUTOLINK = re.compile(r"(?i)\b((?:(?:https?|ftps?|ssh|git|file|mailto):/*|www\.))")
 
 
 def md(value: Any) -> str:

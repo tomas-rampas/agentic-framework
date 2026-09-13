@@ -338,6 +338,8 @@ def investigate_all(store, repos: RepoSet, limits, options) -> Dict[str, Any]:
     from .aggregate import acc_to_dict
     summary = {"attempted": 0, "with_verified_reference": 0, "generic": 0, "insufficient_evidence": 0,
                "not_investigated": 0, "queue": []}
+    _TEXT_CACHE.clear()
+    _TEXT_CACHE_BYTES[0] = 0
     queue: List[Dict[str, Any]] = []
     if not repos.repos:
         return summary
