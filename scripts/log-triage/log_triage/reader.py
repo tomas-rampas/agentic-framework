@@ -401,7 +401,7 @@ class Sample:
     """Bounded head sample used for detection."""
 
     __slots__ = ("raw", "text", "lines", "encoding", "compression", "binary_kind", "binary_hint",
-                 "bom", "total_size", "complete", "shape_cache")
+                 "bom", "total_size", "complete", "shape_cache", "stream_error", "stream_truncated")
 
     def __init__(self) -> None:
         self.raw: bytes = b""
@@ -415,6 +415,8 @@ class Sample:
         self.total_size: int = 0
         self.complete: bool = False   # True when the sample covers the entire (decompressed) input
         self.shape_cache = None       # per-sample memo used by the structured-format sniffers
+        self.stream_error: Optional[str] = None   # decompression error seen while sampling
+        self.stream_truncated: bool = False       # compressed stream ended prematurely while sampling
 
 
 def read_sample(path: str, limits) -> Sample:
@@ -435,6 +437,8 @@ def read_sample(path: str, limits) -> Sample:
         sample.complete = not probe and len(data) < limits.detect_sample_bytes or (not probe and not data)
         if len(data) >= limits.detect_sample_bytes and not probe:
             sample.complete = True
+        sample.stream_error = getattr(stream, "error", None)
+        sample.stream_truncated = bool(getattr(stream, "truncated", False))
     finally:
         stream.close()
     sample.raw = data

@@ -26,7 +26,8 @@ The slash command passes its arguments verbatim to the engine:
 python3 "${CLAUDE_PLUGIN_ROOT:-.}/scripts/log-triage" <log-path|glob> [options]
 ```
 
-(`python` on Windows when `python3` is not on PATH. Python 3.8 or newer; tested on 3.11.)
+(`python` on Windows when `python3` is not on PATH. Requires Python 3.8 or newer: the code is checked for 3.8 syntax, and
+the test suite is exercised on CPython 3.10–3.13.)
 
 ### Inputs
 

@@ -121,12 +121,12 @@ placeholders, 0.7 for literal templates, reduced when the group's raw messages a
 | Field | Content |
 |---|---|
 | `id`, `fingerprint`, `fingerprint_version`, `template` | identity (see §3) |
-| `severity`, `category`, `assessment` | assessed severity/category; `assessment` = `{severity, category, confidence, basis, signals[], rationale[]}` (§5) |
+| `severity`, `category`, `assessment` | assessed severity/category; `assessment` = `{severity, category, confidence, basis, rationale[], impact_signals[]}` (§5) |
 | `count`, `first_seen`, `last_seen`, `untimed_count` | exact occurrence count; ISO UTC min/max of timed occurrences; occurrences without timestamp |
-| `levels` (`distinct`, `truncated`, `sample`), `level_max` | producer levels seen (bounded by `max_levels_per_group`) and the highest level number |
+| `levels`, `level_max` | producer level texts seen with their counts (`{LEVEL: count}`, bounded by `max_levels_per_group`; overflow is folded into `_other`) and the highest level number |
 | `services`, `hosts` | bounded distinct sets (`truncated` flag when the bound was hit; `hosts.distinct` is an exact count) |
 | `logger`, `parser`, `layouts` | provenance |
-| `exception` | `{type, message_template, chain[], frames[] (first exception, bounded), chain_frames (count)}` |
+| `exception` | `{type, message_template, chain[], frames[]}` — the outermost type, its message template, the type chain (≤8) and the bounded in-app/first frames collected across the chain |
 | `http` (`status`, `method`, `path_template`), `error_code` | protected context |
 | `examples[]` | up to `max_examples_per_group` first occurrences plus the last-seen one: `{input, input_id, line, line_end, byte_offset, timestamp, level, message, exception_text, body (raw excerpt when no exception), is_last_seen}` — redacted, bounded by `max_report_example_chars` in reports |
 | `correlation` | bounded `trace_ids[]`, `request_ids[]` (`truncated` flag) |
@@ -151,7 +151,7 @@ omission is disclosed in `filtering.groups_omitted_by_output_limit`.
 | `availability` | HTTP 502/503/5xx from a server, `service unavailable`, health-check failures, upstream down |
 | `application_crash` | panics, unhandled exceptions, segfaults/sanitizer reports, Erlang crash reports, `Aborted (core dumped)` |
 | `dependency_failure` | connection refused/reset to a dependency, SQL/driver exceptions, gRPC/HTTP client failures |
-| `timeout` | `timed out`, `deadline exceeded`, HTTP 408/504, `TimeoutException`, `context deadline exceeded` |
+| `timeout` | `timed out`, `deadline exceeded`, HTTP 408/504, `TimeoutException`, `context deadline exceeded`; .NET `OperationCanceledException`/`TaskCanceledException` count here too because HttpClient and ADO.NET surface timeouts through them — a user-initiated cancellation is therefore reported as a timeout (limitation) |
 | `auth` | HTTP 401/403, authentication/authorization exceptions, expired tokens |
 | `configuration` | missing/invalid settings, unknown options, `FileNotFound` for config, environment variables unset |
 | `resource_exhaustion` | out-of-memory, disk full, HTTP 429, thread/connection pool exhausted, too many open files |
@@ -167,9 +167,9 @@ Evidence precedence (highest first): a parser-supplied observed category (saniti
 exception type → HTTP status → message rules. When observed evidence exists, message rules are consulted only for
 `performance`/`security` refinements; the category is then `basis: "observed"`. When only message wording matched,
 `basis: "inferred"`; when nothing matched, `category: "unknown"`, `basis: "unknown"`. Confidence is 0.85
-(observed), 0.6 (inferred) or 0.35 (unknown), lowered further when the producer level contradicts the category.
-`assessment.signals[]` names the exact evidence (exception type, status, rule) and `rationale[]` explains each
-severity decision.
+(observed), 0.6 (inferred) or 0.35 (unknown). `assessment.rationale[]` names the evidence used (exception type,
+HTTP status, matched rule) and explains each severity decision; `assessment.impact_signals[]` lists the impact
+labels derived from that evidence (termination, data loss, resource exhaustion, …).
 
 ### Severity policy
 
@@ -214,7 +214,8 @@ reported alongside. Counts are exact; coarsening merges buckets, it does not sam
 ## 7. Repository attribution
 
 Attribution runs for the top `max_attributed_groups` groups when `--repo`/`--repos-dir` is given. Evidence and
-weights (per candidate repository; the best score per evidence kind is kept, kinds add up):
+weights (per candidate repository every distinct piece of evidence — a `(kind, value)` pair — adds its weight; the
+sum is capped at 1.0):
 
 | Evidence | Weight | Source |
 |---|---|---|
@@ -243,14 +244,15 @@ Deterministic investigation runs for the top `max_investigations` attributed gro
 * the message template's literal words are searched in the repository (bounded by `max_literal_search_files` /
   `max_literal_search_hits`) to locate the logging call;
 * `root_cause` = `{observed[], hypotheses[] {hypothesis, evidence[], confidence}, uncertainty[], alternatives[]}`;
-  observed facts come from the assessment signals, hypotheses are category-based and cite verified locations,
+  observed facts come from the assessment rationale, hypotheses are category-based and cite verified locations,
   uncertainty states what could not be verified (inferred basis, dirty or mismatched checkout);
 * `suggestions[]` = `{summary, rationale, kind, confidence, suggested_changes[], references[] {repo, path, line,
   verified, function, note}, regression_tests[], verification_steps[], alternatives[], origin}` where `kind` is
   `source_backed` only when a reference was verified in the checkout and `generic` otherwise (category-based
   guidance clearly labelled as such);
 * `status`: `deterministic` (references verified), `insufficient_evidence` (nothing verifiable — the suggestion
-  says so instead of guessing), `not_investigated` (beyond the bound or no repository given);
+  says so instead of guessing), `not_investigated` (beyond `max_investigations`), `not_attempted` (no repository
+  given, or the group was not attributed);
 * `investigation_queue[]` (≤ `max_model_queue_groups`, each ≤ `max_model_context_chars` of context) hands the model
   compact entries: `{id, severity, category, count, template, exception {chain, message_template}, top_frames[],
   candidates[], references[] {repo, path, line, verified, function, snippet, note}, deterministic_suggestion,

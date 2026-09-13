@@ -65,7 +65,7 @@ protocol from `CLAUDE.md` (log file + exit-code marker, confirmed alive by a gro
 ### 1. Preconditions
 
 1. Locate the engine: `${CLAUDE_PLUGIN_ROOT:-.}/scripts/log-triage` (a directory with `__main__.py`). Python 3.8+ is
-   required: `python3 --version` (Windows: `python --version`). If Python is missing, stop and say so — there is
+   required (3.10–3.13 are what the test suite runs on): `python3 --version` (Windows: `python --version`). If Python is missing, stop and say so — there is
    no fallback that keeps the guarantees below.
 2. Resolve the output directory (default `./log-triage-out`) and make sure it is not inside the log inputs.
 3. Always request `ndjson` in addition to what the user asked for **when the user did not pin formats**

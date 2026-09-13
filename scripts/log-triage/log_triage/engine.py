@@ -142,17 +142,22 @@ def process_file(f: InputFile, options: Options, diagnostics: DiagnosticSink, st
         hint = UnsupportedCompression(sample.compression).hint()
         f.status, f.reason = "excluded", "unsupported-compression:%s" % sample.compression
         ctx.diag("unsupported-compression", "error", "%s: %s" % (f.path, hint))
-        counters.reasons.append("unsupported compression: %s" % f.path)
         return
     if sample.binary_kind:
         f.status, f.reason = "excluded", "binary-unsupported:%s" % sample.binary_kind
         ctx.diag("binary-input-unsupported", "error", "%s: %s" % (f.path, sample.binary_hint))
-        counters.reasons.append("binary input excluded: %s" % f.path)
         return
     f.encoding = sample.encoding
     f.compressed = sample.compression
-    if not sample.raw.strip() if isinstance(sample.raw, bytes) else True:
-        f.status, f.reason = "processed", "empty"
+    if not sample.raw.strip():
+        if sample.stream_error:
+            f.status, f.reason = "failed", "corrupt-compressed-input"
+            ctx.diag("input-corrupt", "error", "%s: %s; nothing could be decompressed" % (f.path, sample.stream_error))
+        elif sample.stream_truncated:
+            f.status, f.reason = "partial", "truncated-compressed-input"
+            ctx.diag("input-truncated", "error", "%s: compressed stream ends before any data; nothing could be decompressed" % f.path)
+        else:
+            f.status, f.reason = "processed", "empty"
         return
     parser = _choose_parser(f, sample, options, ctx)
     reader = LineReader(f.real_path, limits, encoding=None)

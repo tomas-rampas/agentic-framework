@@ -138,8 +138,20 @@ class ReaderTests(TriageTestCase):
         self.assertIn("limit-reached", doc["diagnostics"]["counts_by_code"])
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+
+class CorruptCompressedInputTests(TriageTestCase):
+    def test_corrupt_gzip_is_not_reported_as_processed(self):
+        garbage = self.write("garbage.log.gz", b"\x1f\x8b\x08\x00" + b"\x00" * 6 + b"this is not deflate data at all" * 4, binary=True)
+        header_only = self.write("header.log.gz", b"\x1f\x8b\x08\x00" + b"\x00" * 6, binary=True)
+        doc = self.analyze([garbage, header_only], formats=["json"], expect_code=3)
+        by_path = {f["path"]: f for f in doc["inputs"]["files"]}
+        self.assertEqual(by_path[garbage]["status"], "failed", by_path[garbage])
+        self.assertEqual(by_path[garbage]["reason"], "corrupt-compressed-input")
+        self.assertIn(by_path[header_only]["status"], ("partial", "failed"), by_path[header_only])
+        self.assertEqual(doc["status"]["completion"], "partial")
+        codes = doc["diagnostics"]["counts_by_code"]
+        self.assertGreaterEqual(codes.get("input-corrupt", 0) + codes.get("input-truncated", 0), 2)
 
 
 class HostileTokenTests(TriageTestCase):
@@ -171,3 +183,6 @@ class HostileTokenTests(TriageTestCase):
         self.assertEqual(len(doc["groups"]), 1)
         self.assertIn("status 500", doc["groups"][0]["template"])
 
+
+if __name__ == "__main__":
+    unittest.main()

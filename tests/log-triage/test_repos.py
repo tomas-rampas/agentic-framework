@@ -153,5 +153,33 @@ class RepoTests(TriageTestCase):
         self.assertEqual(doc["investigation_queue"], [])
 
 
+class HostileRepositoryTests(TriageTestCase):
+    def test_traversing_head_ref_is_ignored(self):
+        root = os.path.join(self.tmp, "evil")
+        os.makedirs(os.path.join(root, ".git", "refs", "heads"))
+        with open(os.path.join(root, ".git", "HEAD"), "w", encoding="utf-8") as fh:
+            fh.write("ref: ../../../../../../../../etc/passwd\n")
+        with open(os.path.join(root, "app.py"), "w", encoding="utf-8") as fh:
+            fh.write("print('x')\n")
+        log = self.write("evil.log", "2026-09-13 12:00:00,123 - app - ERROR - boom\n")
+        doc = self.analyze([log], formats=["json", "sarif"], extra=["--repo", root])
+        raw = self.read_text(os.path.join(self.out_dir(), "analysis.json")) + self.read_text(os.path.join(self.out_dir(), "analysis.sarif"))
+        self.assertNotIn("root:x:0:0", raw)
+        repo = doc["repositories"]["discovered"][0]
+        self.assertIsNone(repo["head"])
+        self.assertIsNone(repo["branch"])
+        self.assertTrue(any("invalid ref" in n for n in repo.get("notes", [])), repo)
+        # a ref file that does not hold an object id is ignored as well
+        with open(os.path.join(root, ".git", "HEAD"), "w", encoding="utf-8") as fh:
+            fh.write("ref: refs/heads/main\n")
+        with open(os.path.join(root, ".git", "refs", "heads", "main"), "w", encoding="utf-8") as fh:
+            fh.write("not-a-sha but some text that must not leak\n")
+        doc = self.analyze([log], formats=["json"], extra=["--repo", root], out=self.out_dir("second"))
+        repo = doc["repositories"]["discovered"][0]
+        self.assertIsNone(repo["head"])
+        self.assertEqual(repo["branch"], "main")
+        self.assertNotIn("must not leak", self.read_text(os.path.join(self.out_dir("second"), "analysis.json")))
+
+
 if __name__ == "__main__":
     unittest.main()

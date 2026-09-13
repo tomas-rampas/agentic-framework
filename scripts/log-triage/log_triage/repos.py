@@ -124,6 +124,13 @@ def _resolve_head(repo: Repo) -> None:
     head = _read_head(os.path.join(gd, "HEAD"), 4096).strip()
     if head.startswith("ref: "):
         ref = head[5:].strip()
+        # HEAD comes from an untrusted checkout: only a well-formed ref name may be joined onto the git
+        # directory, otherwise "ref: ../../etc/passwd" would read an arbitrary file into the report
+        if not re.match(r"^refs/[A-Za-z0-9._/-]{1,255}$", ref) or ".." in ref.split("/"):
+            repo.head = None
+            repo.branch = None
+            repo.notes.append("HEAD names an invalid ref; ignored")
+            return
         repo.branch = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
         common = gd
         cd = os.path.join(gd, "commondir")
@@ -136,6 +143,9 @@ def _resolve_head(repo: Repo) -> None:
             m = re.search(r"^([0-9a-f]{40,64}) " + re.escape(ref) + r"$", packed, re.M)
             if m:
                 sha = m.group(1)
+        if sha and not re.match(r"^[0-9a-f]{40,64}$", sha):
+            repo.notes.append("ref %s does not contain an object id; ignored" % ref)
+            sha = ""
         repo.head = sha or None
     elif re.match(r"^[0-9a-f]{40,64}$", head):
         repo.head = head
@@ -151,7 +161,8 @@ def _git(args: List[str], cwd: str, timeout: float = 20.0) -> Optional[str]:
         # program during `git status`; disable them explicitly for every invocation.
         res = subprocess.run(["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"] + args,
                              cwd=cwd, capture_output=True, timeout=timeout, check=False,
-                             env=dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0"))
+                             env=dict({k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")},
+                                      GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0"))
     except (OSError, subprocess.SubprocessError):
         return None
     if res.returncode != 0:

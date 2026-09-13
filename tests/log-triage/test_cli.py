@@ -155,8 +155,25 @@ class CliContractTests(TriageTestCase):
         self.assertIn("--suggestions requires --render", se)
 
 
-if __name__ == "__main__":
-    unittest.main()
+
+
+class RenderStreamingTests(TriageTestCase):
+    def test_large_document_streaming_branch_matches_direct_load(self):
+        from log_triage import render
+        from log_triage.config import Limits
+        doc = self.analyze([fixture("jvm", "jvm-classic.log"), fixture("web", "access-combined.log")], formats=["json"])
+        path = os.path.join(self.out_dir(), "analysis.json")
+        direct_meta, direct_groups = render.load_analysis(path, Limits())
+        old = render.STREAM_THRESHOLD_BYTES
+        render.STREAM_THRESHOLD_BYTES = 0
+        try:
+            meta, groups = render.load_analysis(path, Limits())
+        finally:
+            render.STREAM_THRESHOLD_BYTES = old
+        self.assertEqual(groups, direct_groups)
+        self.assertEqual(meta, direct_meta)
+        self.assertGreater(len(groups), 1)
+        self.assertIn("filtering", meta)
 
 
 class InvocationEdgeTests(TriageTestCase):
@@ -180,3 +197,6 @@ class InvocationEdgeTests(TriageTestCase):
         doc = self.analyze([path], formats=["json"])
         self.assertEqual(doc["generated_at"], "2026-09-14T00:00:00Z")
 
+
+if __name__ == "__main__":
+    unittest.main()

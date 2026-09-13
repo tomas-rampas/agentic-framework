@@ -102,6 +102,24 @@ def _literal_fragment(template: str) -> Optional[str]:
     return best if len(best) >= 12 else None
 
 
+_TEXT_CACHE: Dict[Tuple[str, str], bytes] = {}      # (repo id, relative path) -> lower-cased bytes
+_TEXT_CACHE_BYTES = [0]
+_TEXT_CACHE_BUDGET = 32 * 1024 * 1024               # source text kept across groups within one run
+
+
+def _cached_lower(repo: Repo, rel: str, full: str) -> Optional[bytes]:
+    key = (repo.id, rel)
+    data = _TEXT_CACHE.get(key)
+    if data is not None:
+        return data
+    with open(full, "rb") as fh:
+        data = fh.read().lower()
+    if _TEXT_CACHE_BYTES[0] + len(data) <= _TEXT_CACHE_BUDGET:
+        _TEXT_CACHE[key] = data
+        _TEXT_CACHE_BYTES[0] += len(data)
+    return data
+
+
 def search_literal(fragment: str, repo: Repo, limits) -> List[Dict[str, Any]]:
     hits: List[Dict[str, Any]] = []
     scanned = 0
@@ -119,15 +137,17 @@ def search_literal(fragment: str, repo: Repo, limits) -> List[Dict[str, Any]]:
             size = os.path.getsize(full)
             if size > limits.max_repo_file_bytes:
                 continue
-            with open(full, "rb") as fh:
-                data = fh.read()
+            low = _cached_lower(repo, rel, full)      # lower-cased bytes, cached across groups
         except OSError:
             continue
-        scanned_bytes += len(data)
-        low = data.lower()
+        scanned_bytes += len(low)
         if needle.encode("utf-8") not in low:
             continue
-        text = data.decode("utf-8", "replace")
+        try:
+            with open(full, "rb") as fh:            # hits are rare and bounded: re-read for original case
+                text = fh.read().decode("utf-8", "replace")
+        except OSError:
+            continue
         for i, ln in enumerate(text.split("\n")):
             if needle in ln.lower():
                 hits.append({"repo_id": repo.id, "repo": repo.name, "path": rel, "line": i + 1, "match": "message-literal",

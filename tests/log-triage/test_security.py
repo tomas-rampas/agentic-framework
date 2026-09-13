@@ -35,6 +35,17 @@ class RedactionTests(unittest.TestCase):
             out = r.redact(text)
             self.assertIn(expected, out, text)
         self.assertNotIn(aws, r.redact("aws access id " + aws))
+        # prefixed / quoted / camel-case key shapes that real logs carry
+        val = "s3cr3t" + "value42"
+        for text in ("DB_PASSWORD=%s" % val, "db_password=%s" % val, "user_password: %s" % val,
+                     '{"password":"%s","user":"bob"}' % val, '{"user_password":"%s"}' % val,
+                     '{"apiKey":"%s"}' % val, "X-Api-Key: %s" % val):
+            out = r.redact(text)
+            self.assertNotIn(val, out, text)
+            self.assertIn("<redacted:", out, text)
+        for key in ("user_password", "db.user_password", "passwordHash", "ctx.apiKey", "DB_PASSWORD", "headers.Authorization"):
+            self.assertEqual(r.redact_attr(key, val), "<redacted:%s>" % key.lower(), key)
+        self.assertEqual(r.redact_attr("order_id", "42"), "42")
         self.assertEqual(r.redact("card 1234 5678 9012 3456 7890 id"), "card 1234 5678 9012 3456 7890 id")  # Luhn fails -> kept
         self.assertGreaterEqual(sum(r.summary().values()), len(cases))
 
@@ -99,6 +110,9 @@ class HostileContentTests(TriageTestCase):
         prose = re.sub(r"`[^`\n]*`", "", prose)
         self.assertNotIn("[link](http://evil.example)", prose)
         self.assertNotIn("<script>", prose)
+        # bare URLs must not autolink in GFM: the scheme is followed by a zero-width space
+        self.assertNotRegex(prose, r"https?://[A-Za-z0-9]")
+        self.assertNotRegex(prose, r"\bwww\.[A-Za-z0-9]")
         self.assertNotIn("\n# heading", md.split("## 2. Prioritized findings")[1].split("## 3.")[0])
         # secrets redacted everywhere
         for blob in (html, md, raw_json):
@@ -140,11 +154,29 @@ class HostileContentTests(TriageTestCase):
         self.assertIn("rm -rf", md)   # rendered as text
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class RedactionCoverageTests(TriageTestCase):
+    def test_private_key_block_spanning_continuation_lines_is_redacted(self):
+        b64 = ["MIIEowIBAAKCAQEAv7Zq3KJf0X9c2t1yQ8mN4pL6rS7uV8wX9yZ0aB1cD2eF3gH4",
+               "iJ5kL6mN7oP8qR9sT0uV1wX2yZ3aB4cD5eF6gH7iJ8kL9mN0oP1qR2sT3uV4wX5y",
+               "Z6aB7cD8eF9gH0iJ1kL2mN3oP4qR5sT6uV7wX8yZ9aB0cD1eF2gH3iJ4kL5mN6oP"]
+        marker = "-----BEGIN RSA PRIVATE " + "KEY-----"
+        end = "-----END RSA PRIVATE " + "KEY-----"
+        body = ("2026-09-13 12:00:00,123 - app - ERROR - failed to load credentials: %s\n" % marker
+                + "\n".join(b64) + "\n" + end + "\n"
+                + "2026-09-13 12:00:01,123 - app - INFO - continuing\n")
+        path = self.write("pem.log", body)
+        doc = self.analyze([path], formats=["json", "html", "markdown", "ndjson", "csv", "sarif"])
+        out = self.out_dir()
+        for name in ("analysis.json", "report.html", "report.md", "groups.ndjson", "groups.csv", "analysis.sarif"):
+            blob = self.read_text(os.path.join(out, name))
+            for chunk in b64:
+                self.assertNotIn(chunk, blob, name)
+            self.assertNotIn("END RSA PRIVATE", blob, name)
+        self.assertGreaterEqual(doc["coverage"]["redaction"]["counts"].get("pk", 0), 1)
+        self.assertEqual(doc["coverage"]["events_included"], 2)
+
     def test_multiline_continuation_text_is_redacted(self):
         jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijklmnop"
         secret = "hunter2" + "secret"
@@ -181,3 +213,6 @@ class RedactionCoverageTests(TriageTestCase):
         self.assertNotIn("aGVsbG86d29ybGQ=", raw)
         self.assertGreaterEqual(doc["coverage"]["redaction"]["counts"].get("key-value-secret", 0), 2)
 
+
+if __name__ == "__main__":
+    unittest.main()

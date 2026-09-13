@@ -22,9 +22,13 @@ SUGGESTIONS_SCHEMA_VERSION = "1"
 _ALLOWED_KINDS = {"source_backed", "generic"}
 
 
+STREAM_THRESHOLD_BYTES = 256 * 1024 * 1024   # larger documents are streamed (tests lower this)
+_GROUPS_DELIMITER = ',\n "groups": ['           # exactly what exporters/json_exporter.py writes
+
+
 def load_analysis(path: str, limits) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     size = os.path.getsize(path)
-    if size <= 256 * 1024 * 1024:
+    if size <= STREAM_THRESHOLD_BYTES:
         with open(path, "r", encoding="utf-8") as fh:
             doc = json.load(fh)
         groups = doc.pop("groups", [])
@@ -39,9 +43,12 @@ def load_analysis(path: str, limits) -> Tuple[Dict[str, Any], List[Dict[str, Any
                     groups.append(json.loads(raw))
     with open(path, "r", encoding="utf-8") as fh:
         text = fh.read(50 * 1024 * 1024)
-    # meta = everything before "groups"; parse leniently by removing the groups array
-    idx = text.find('"groups"')
-    meta = json.loads(text[:idx].rstrip().rstrip(",") + "}") if idx > 0 else {}
+    # meta = everything before the groups array. The exporter writes the array last, on its own line;
+    # a plain search for '"groups"' would stop at filtering.by_severity[*].groups.
+    idx = text.find(_GROUPS_DELIMITER)
+    if idx < 0:
+        raise ValueError("cannot locate the groups array in %s (not written by this tool's JSON exporter?)" % path)
+    meta = json.loads(text[:idx] + "}")
     return meta, groups
 
 

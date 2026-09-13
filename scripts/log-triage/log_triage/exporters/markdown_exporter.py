@@ -21,6 +21,7 @@ from .base import AtomicFile, Exporter
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _SPECIAL = re.compile(r"([\\`*_\[\]<>|~])")
 _LEADING = re.compile(r"^(\s*)([#>+\-]|\d+\.)(?=\s|$)")
+_AUTOLINK = re.compile(r"(?i)\b((?:https?|ftps?|ssh|git|file|mailto|www)(?::/*|\.))")
 
 
 def md(value: Any) -> str:
@@ -30,6 +31,9 @@ def md(value: Any) -> str:
     s = _CTRL.sub("", str(value)).replace("\r", "").replace("\n", " ")
     s = _SPECIAL.sub(r"\\\1", s)
     s = _LEADING.sub(lambda m: m.group(1) + "\\" + m.group(2), s)
+    # GFM autolinks bare URLs (http://..., www....); a zero-width space after the scheme keeps log
+    # content from becoming a clickable link while leaving it readable
+    s = _AUTOLINK.sub(lambda m: m.group(1) + "\u200b", s)
     return s
 
 

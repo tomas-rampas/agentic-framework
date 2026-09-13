@@ -173,7 +173,14 @@ class GroupStore:
         r = self.redactor
         if not r.enabled:
             return
-        ev.message = r.redact(ev.message) or ""
+        if ev.raw_excerpt:
+            # message + continuation lines are redacted as one text: a private-key block whose BEGIN
+            # marker is on the header line and whose body is continuation text is one secret
+            joined = r.redact((ev.message or "") + "\n" + ev.raw_excerpt) or ""
+            head, _sep, tail = joined.partition("\n")
+            ev.message, ev.raw_excerpt = head, tail
+        else:
+            ev.message = r.redact(ev.message) or ""
         for exc in ev.exceptions:
             if exc.message:
                 exc.message = r.redact(exc.message)
@@ -183,12 +190,16 @@ class GroupStore:
                     ev.attrs[k] = r.redact_attr(k, v)
         if ev.http_path:
             ev.http_path = r.redact(ev.http_path)
-        if ev.raw_excerpt:
-            ev.raw_excerpt = r.redact(ev.raw_excerpt)
         for exc in ev.exceptions:
-            for fr in exc.frames:
-                if fr.raw and r.prefilter_hit(fr.raw):
-                    fr.raw = r.redact(fr.raw)
+            raws = [fr.raw or "" for fr in exc.frames]
+            if any(r.prefilter_hit(x) for x in raws):
+                cleaned = (r.redact("\n".join(raws)) or "").split("\n")
+                if len(cleaned) == len(raws):
+                    for fr, x in zip(exc.frames, cleaned):
+                        fr.raw = x
+                else:   # a multi-line secret spanned frames: drop the frame text rather than keep any of it
+                    for fr in exc.frames:
+                        fr.raw = r.redact(fr.raw) if fr.raw else fr.raw
 
     def add(self, ev: Event) -> str:
         limits = self.limits
