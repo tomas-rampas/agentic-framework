@@ -1,0 +1,13 @@
+Get-Item : Cannot find path 'C:\nope' because it does not exist.
+At C:\scripts\deploy.ps1:12 char:5
++     Get-Item C:\nope
++     ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (C:\nope:String) [Get-Item], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetItemCommand
+
+Exception             : System.Net.WebException: The remote server returned an error: (503) Server Unavailable.
+                           at System.Net.HttpWebRequest.GetResponse()
+TargetObject          : System.Net.HttpWebRequest
+CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest], WebException
+FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand
+ScriptStackTrace      : at Invoke-Deploy, C:\scripts\deploy.ps1: line 40

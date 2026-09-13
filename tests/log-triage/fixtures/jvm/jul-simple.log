@@ -1,0 +1,6 @@
+Sep 13, 2026 12:00:00 PM com.acme.orders.OrderService place
+SEVERE: Failed to place order 42
+java.lang.RuntimeException: boom
+	at com.acme.orders.OrderService.place(OrderService.java:42)
+Sep 13, 2026 12:00:01 PM com.acme.orders.App main
+INFO: started

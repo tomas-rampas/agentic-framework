@@ -1,0 +1,2 @@
+{"__REALTIME_TIMESTAMP": "1789000000123456", "__CURSOR": "s=abc", "PRIORITY": "3", "MESSAGE": "Failed to start unit\nTraceback (most recent call last):\n  File \"/x.py\", line 1, in m\nValueError: 1", "_SYSTEMD_UNIT": "app.service", "_HOSTNAME": "host01", "_PID": "42", "SYSLOG_IDENTIFIER": "app"}
+{"__REALTIME_TIMESTAMP": "1789000001123456", "__CURSOR": "s=abd", "PRIORITY": "6", "MESSAGE": [72, 105], "_COMM": "bash", "_HOSTNAME": "host01"}

@@ -1,0 +1,1 @@
+{"took": 1, "hits": {"total": {"value": 1}, "hits": [{"_index": "logs", "_id": "1", "_source": {"@timestamp": "2026-09-13T12:00:00Z", "log.level": "error", "message": "boom", "service.name": "orders"}}]}}

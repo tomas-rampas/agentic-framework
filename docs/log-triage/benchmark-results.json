@@ -1,0 +1,152 @@
+{
+ "tool": "log-triage benchmark",
+ "python": "3.11.15",
+ "unique_ratio": 0.25,
+ "platform": "Linux 6.18.44-fc-v24",
+ "cpu_count": 4,
+ "fixed_limits": [],
+ "measurement": {
+  "elapsed": "wall-clock of the analyzer subprocess",
+  "peak_memory": "resource.getrusage(RUSAGE_CHILDREN).ru_maxrss of the analyzer (KiB on Linux), measured in a fresh parent process per run",
+  "temp_disk": "aggregation.temp_bytes_peak from analysis.json (peak SQLite spill file size)",
+  "counts": "coverage.events_included and filtering.groups_total compared with the generator's totals"
+ },
+ "results": [
+  {
+   "name": "normal-256mib",
+   "mode": "normal",
+   "input_mib": 256,
+   "input_bytes": 268435552,
+   "expected": {
+    "events": 1477017,
+    "groups": 61,
+    "bytes": 268435552,
+    "mode": "normal",
+    "seed": 20260913
+   },
+   "measured": {
+    "command": "/usr/local/bin/python3 <repo>/scripts/log-triage <scratch>/bench2/normal-256mib.log --format json --out <scratch>/bench2/normal-256mib-out --quiet --no-redact",
+    "exit_code": 0,
+    "elapsed_seconds": 223.4,
+    "peak_rss_kib": 52428,
+    "stderr_tail": "",
+    "events_parsed": 1477017,
+    "events_included": 1477017,
+    "groups_total": 61,
+    "spilled": false,
+    "spill_count": 0,
+    "temp_bytes_peak": 0,
+    "completion": "complete",
+    "duration_reported": 223.246
+   },
+   "counts_match": true,
+   "throughput_mib_per_s": 1.15,
+   "generation_seconds": 8.3
+  },
+  {
+   "name": "normal-512mib",
+   "mode": "normal",
+   "input_mib": 512,
+   "input_bytes": 536871013,
+   "expected": {
+    "events": 2952588,
+    "groups": 61,
+    "bytes": 536871013,
+    "mode": "normal",
+    "seed": 20260913
+   },
+   "measured": {
+    "command": "/usr/local/bin/python3 <repo>/scripts/log-triage <scratch>/bench2/normal-512mib.log --format json --out <scratch>/bench2/normal-512mib-out --quiet --no-redact",
+    "exit_code": 0,
+    "elapsed_seconds": 442.55,
+    "peak_rss_kib": 52696,
+    "stderr_tail": "",
+    "events_parsed": 2952588,
+    "events_included": 2952588,
+    "groups_total": 61,
+    "spilled": false,
+    "spill_count": 0,
+    "temp_bytes_peak": 0,
+    "completion": "complete",
+    "duration_reported": 442.4
+   },
+   "counts_match": true,
+   "throughput_mib_per_s": 1.16,
+   "generation_seconds": 15.1
+  },
+  {
+   "name": "high-cardinality-256mib",
+   "mode": "high-cardinality",
+   "input_mib": 256,
+   "input_bytes": 268435474,
+   "expected": {
+    "events": 1791393,
+    "groups": 498784,
+    "bytes": 268435474,
+    "mode": "high-cardinality",
+    "seed": 20260913
+   },
+   "measured": {
+    "command": "/usr/local/bin/python3 <repo>/scripts/log-triage <scratch>/bench3/high-cardinality-256mib.log --format json --out <scratch>/bench3/high-cardinality-256mib-out --quiet --no-redact",
+    "exit_code": 0,
+    "elapsed_seconds": 596.04,
+    "peak_rss_kib": 140736,
+    "stderr_tail": "",
+    "events_parsed": 1791393,
+    "events_included": 1791393,
+    "groups_total": 498784,
+    "spilled": true,
+    "spill_count": 90,
+    "temp_bytes_peak": 1385762816,
+    "completion": "complete",
+    "duration_reported": 587.598
+   },
+   "counts_match": true,
+   "throughput_mib_per_s": 0.43,
+   "generation_seconds": 6.0
+  },
+  {
+   "name": "high-cardinality-512mib",
+   "mode": "high-cardinality",
+   "input_mib": 512,
+   "input_bytes": 536871045,
+   "expected": {
+    "events": 3580408,
+    "groups": 947519,
+    "bytes": 536871045,
+    "mode": "high-cardinality",
+    "seed": 20260913
+   },
+   "measured": {
+    "command": "/usr/local/bin/python3 <repo>/scripts/log-triage <scratch>/bench3/high-cardinality-512mib.log --format json --out <scratch>/bench3/high-cardinality-512mib-out --quiet --no-redact",
+    "exit_code": 0,
+    "elapsed_seconds": 1224.72,
+    "peak_rss_kib": 139844,
+    "stderr_tail": "",
+    "events_parsed": 3580408,
+    "events_included": 3580408,
+    "groups_total": 947519,
+    "spilled": true,
+    "spill_count": 180,
+    "temp_bytes_peak": 2509623296,
+    "completion": "complete",
+    "duration_reported": 1206.241
+   },
+   "counts_match": true,
+   "throughput_mib_per_s": 0.42,
+   "generation_seconds": 12.3
+  }
+ ],
+ "invocations": [
+  {
+   "modes": "normal",
+   "sizes_mib": "256,512",
+   "started": "2026-09-13T14:43Z"
+  },
+  {
+   "modes": "high-cardinality",
+   "sizes_mib": "256,512",
+   "started": "2026-09-13T14:55Z"
+  }
+ ]
+}

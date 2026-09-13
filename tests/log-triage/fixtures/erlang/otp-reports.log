@@ -1,0 +1,20 @@
+=CRASH REPORT==== 13-Sep-2026::12:00:02.123456 ===
+  crasher:
+    initial call: my_server:init/1
+    pid: <0.123.0>
+    registered_name: []
+    exception error: bad argument
+      in function  erlang:binary_to_list/1
+        called as erlang:binary_to_list(1)
+=SUPERVISOR REPORT==== 13-Sep-2026::12:00:03.123456 ===
+    supervisor: {local,my_sup}
+    errorContext: child_terminated
+    reason: {badarg,[{erlang,binary_to_list,[1],[]}]}
+    offender: [{pid,<0.123.0>},{id,my_server}]
+=ERROR REPORT==== 13-Sep-2026::12:00:04.123456 ===
+** Generic server my_server terminating
+** Last message in was crash
+** When Server state == {state}
+** Reason for termination ==
+** {badarg,[{erlang,binary_to_list,[1],[]}]}
+2026-09-13T12:00:05.123456+02:00 error: logger formatter default line

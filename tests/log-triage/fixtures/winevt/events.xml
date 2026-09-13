@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Events>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><Provider Name="Application Error" /><EventID Qualifiers="0">1000</EventID><Level>2</Level><Task>100</Task><Keywords>0x80000000000000</Keywords>
+<TimeCreated SystemTime="2026-09-13T12:00:00.1234567Z" /><EventRecordID>5001</EventRecordID><Channel>Application</Channel><Computer>BUILD01</Computer><Security /></System><EventData><Data>orders.exe</Data><Data>1.2.3.4</Data><Data>KERNELBASE.dll</Data><Data>0xc0000005</Data></EventData><RenderingInfo Culture="en-US"><Message>Faulting application name: orders.exe, version: 1.2.3.4, faulting module name: KERNELBASE.dll, exception code 0xc0000005</Message><Level>Error</Level></RenderingInfo></Event>
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><Provider Name="Service Control Manager" Guid="{555908d1-a6d7-4695-8e1e-26931d2012f4}" /><EventID>7034</EventID><Level>2</Level><TimeCreated SystemTime="2026-09-13T12:00:01Z" /><Computer>BUILD01</Computer></System><EventData><Data Name="param1">Orders Service</Data><Data Name="param2">1</Data></EventData></Event>
+</Events>

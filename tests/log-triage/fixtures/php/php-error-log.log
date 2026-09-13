@@ -1,0 +1,7 @@
+[13-Sep-2026 12:00:00 UTC] PHP Fatal error:  Uncaught RuntimeException: gateway down in /var/www/app/src/Billing/Gateway.php:52
+Stack trace:
+#0 /var/www/app/src/Billing/Charger.php(31): Gateway->charge()
+#1 /var/www/app/public/index.php(12): Charger->run()
+#2 {main}
+  thrown in /var/www/app/src/Billing/Gateway.php on line 52
+[13-Sep-2026 12:00:01 UTC] PHP Warning:  Undefined variable $x in /var/www/app/src/x.php on line 3

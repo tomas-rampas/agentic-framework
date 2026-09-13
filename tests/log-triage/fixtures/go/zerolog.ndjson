@@ -1,0 +1,1 @@
+{"level": "error", "time": "2026-09-13T12:00:01Z", "message": "charge failed", "error": "context deadline exceeded", "caller": "/app/main.go:42"}

@@ -1,0 +1,2 @@
+2026/09/13 12:00:03 [error] 1234#1234: *42 connect() failed (111: Connection refused) while connecting to upstream, client: 10.0.0.1, server: api, request: "GET /x HTTP/1.1", upstream: "http://10.0.0.5:8080/x", host: "api"
+2026/09/13 12:00:04 [warn] 1234#1234: *43 an upstream response is buffered to a temporary file

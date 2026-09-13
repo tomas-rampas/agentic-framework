@@ -1,0 +1,16 @@
+{
+ "events": [
+  {
+   "timestamp": 1789000000123,
+   "message": "2026-09-13 12:00:00,123 - billing.worker - ERROR - charge failed for order 42\nTraceback (most recent call last):\n  File \"/app/billing/worker.py\", line 30, in run\n    charge(order)\n  File \"/app/billing/charge.py\", line 12, in charge\n    resp = client.post(url, json=payload, timeout=5)\nrequests.exceptions.ConnectionError: HTTPConnectionPool(host='payments', port=8080): Max retries exceeded",
+   "ingestionTime": 1789000000500
+  },
+  {
+   "timestamp": 1789000001000,
+   "message": "{\"level\": \"warn\", \"msg\": \"slow\"}",
+   "ingestionTime": 1789000001500
+  }
+ ],
+ "nextForwardToken": "f/1",
+ "nextBackwardToken": "b/1"
+}

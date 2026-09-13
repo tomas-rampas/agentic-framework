@@ -1,0 +1,6 @@
+2026-09-13T12:00:00.123Z info: server listening on 3000
+2026-09-13T12:00:01.123Z error: charge failed for order 42
+TypeError: Cannot read properties of undefined (reading 'id')
+    at getUser (/app/src/users/service.js:12:18)
+    at async handler (/app/src/api/users.js:44:5)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)

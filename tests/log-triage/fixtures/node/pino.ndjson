@@ -1,0 +1,2 @@
+{"level": 50, "time": 1789000001123, "pid": 1, "hostname": "web01", "name": "api", "msg": "charge failed", "err": {"type": "Error", "message": "connect ECONNREFUSED 127.0.0.1:6379", "stack": "Error: connect ECONNREFUSED 127.0.0.1:6379\n    at connect (/app/src/redis.js:1:2)"}, "reqId": "req-1", "res": {"statusCode": 502}}
+{"level": 30, "time": 1789000002123, "pid": 1, "hostname": "web01", "name": "api", "msg": "request completed", "res": {"statusCode": 200}}

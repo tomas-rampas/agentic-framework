@@ -337,10 +337,10 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Specialized agents | 21 (7 categories, 3 model tiers) |
 | Hooks | 4 .ps1/.sh implementation pairs |
 | Skills | 9 loadable knowledge modules |
-| Commands | 10 management commands |
+| Commands | 11 management commands |
 | MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
 | Validator checks | 15, all derived at runtime |
-| Test suites | 7 automated suites under tests/ |
+| Test suites | 8 automated suites under tests/ |
 | CI jobs | 4 (consistency, lint, hooks-macos, hooks-windows) |
 <!-- END GENERATED: team-presentation-stats -->
 

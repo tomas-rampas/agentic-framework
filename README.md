@@ -305,7 +305,7 @@ The framework distributes as two plugins:
 ├── claude.json              # Agent registry (single source of truth for the tooling)
 ├── settings.template.json   # Recommended permissions + alwaysThinkingEnabled
 ├── agents/                  # 21 agent definitions (.md with YAML frontmatter)
-├── commands/                # 10 namespaced commands (delegate, spec, build, review-spec, migrate-legacy, etc.)
+├── commands/                # 11 namespaced commands (delegate, spec, build, review-spec, log-triage, etc.)
 ├── hooks/                   # Real hook scripts + hooks/hooks.json registration (peer-review Stop gate, recorder, session context, delegation hint)
 ├── skills/                  # Operational skills
 ├── scripts/                 # Validation, anti-drift consistency, and doc-generation scripts
@@ -340,6 +340,12 @@ The framework distributes as two plugins:
 | `/agentic-framework:validate-hooks` | Hook coverage and consistency verification |
 | `/agentic-framework:agent-status` | Agent configuration status and health assessment |
 | `/agentic-framework:quality-report` | Quality metrics, trend analysis, and reporting |
+
+## Analysis Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/agentic-framework:log-triage` | Local, deterministic log triage: streams large log files (text, JSON/NDJSON, CSV, XML, syslog, access logs, container/cloud exports), groups recurring issues by stable fingerprint, assesses severity with observed/inferred/unknown labels, attributes issues to Git repositories, and exports JSON, SARIF 2.1.0, HTML, Markdown, CSV and NDJSON reports — see [docs/log-triage/README.md](docs/log-triage/README.md) |
 
 ## Spec Loop Commands
 
@@ -485,5 +491,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 10 Commands • v4.1.1**
+**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 11 Commands • v4.1.1**
 <!-- END GENERATED: framework-stats -->

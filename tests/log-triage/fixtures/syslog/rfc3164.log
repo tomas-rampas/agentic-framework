@@ -1,0 +1,4 @@
+Sep 13 12:00:00 host01 sshd[999]: Failed password for invalid user admin from 10.0.0.9 port 2222 ssh2
+Sep 13 12:00:01 host01 kernel: Out of memory: Killed process 1234 (java) total-vm:2048kB
+<13>Sep 13 12:00:02 host01 orders[1234]: charge failed for order 42
+2026-09-13T12:00:03.123456+02:00 host01 orders[1234]: retrying order 42

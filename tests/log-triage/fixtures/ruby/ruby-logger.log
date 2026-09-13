@@ -1,0 +1,5 @@
+I, [2026-09-13T12:00:00.123456 #1234]  INFO -- billing: worker started
+E, [2026-09-13T12:00:01.123456 #1234] ERROR -- billing: charge failed
+/app/lib/billing.rb:12:in 'charge': undefined method 'amount' for nil (NoMethodError)
+	from /app/lib/worker.rb:30:in 'run'
+	from /usr/lib/ruby/gems/3.2.0/gems/sidekiq-7.0/lib/sidekiq/processor.rb:12:in 'process'

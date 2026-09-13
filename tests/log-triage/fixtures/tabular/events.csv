@@ -1,0 +1,7 @@
+timestamp,level,logger,message,exception
+2026-09-13T12:00:00Z,ERROR,billing,"charge failed, order 42","ValueError: bad amount
+  File ""/app/billing/charge.py"", line 3, in run"
+2026-09-13T12:00:01Z,INFO,billing,ok,
+2026-09-13T12:00:02Z,WARN,billing,"multi
+line message",
+bad,row

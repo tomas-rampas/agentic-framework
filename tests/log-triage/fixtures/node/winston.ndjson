@@ -1,0 +1,1 @@
+{"level": "error", "message": "charge failed", "timestamp": "2026-09-13T12:00:01.123Z", "service": "api", "stack": "Error: boom\n    at charge (/app/src/billing.js:3:4)"}

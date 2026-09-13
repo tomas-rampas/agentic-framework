@@ -43,3 +43,6 @@
 /hooks-v1-archived/
 /hooks-active
 /ide/
+# Python bytecode caches (log-triage tooling and tests)
+__pycache__/
+*.pyc

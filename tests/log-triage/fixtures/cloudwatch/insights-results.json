@@ -1,0 +1,1 @@
+{"results": [[{"field": "@timestamp", "value": "2026-09-13 12:00:00.123"}, {"field": "@message", "value": "ERROR charge failed for order 42"}, {"field": "@logStream", "value": "s1"}]], "statistics": {"recordsMatched": 1.0}, "status": "Complete"}

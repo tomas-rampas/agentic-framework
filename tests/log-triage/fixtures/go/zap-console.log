@@ -1,0 +1,2 @@
+2026-09-13T12:00:00.123+0200	INFO	worker/main.go:20	starting
+2026-09-13T12:00:01.123+0200	ERROR	worker/main.go:42	charge failed	{"order": 42, "error": "context deadline exceeded"}

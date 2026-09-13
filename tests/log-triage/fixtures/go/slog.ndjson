@@ -1,0 +1,1 @@
+{"time": "2026-09-13T12:00:01.123Z", "level": "ERROR", "msg": "charge failed", "source": {"function": "main.run", "file": "/app/main.go", "line": 42}, "err": "context deadline exceeded", "order": 42}

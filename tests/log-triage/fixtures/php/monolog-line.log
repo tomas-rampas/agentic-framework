@@ -1,0 +1,3 @@
+[2026-09-13T12:00:00.123456+00:00] app.INFO: request handled {"path":"/x"} []
+[2026-09-13T12:00:01.123456+00:00] app.ERROR: Payment failed {"exception":"[object] (RuntimeException(code: 0): gateway down at /var/www/app/src/Billing/Gateway.php:52)"} []
+[2026-09-13 12:00:02] laravel.ERROR: Undefined variable {"userId":42}

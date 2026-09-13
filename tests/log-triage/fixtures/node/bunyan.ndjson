@@ -1,0 +1,1 @@
+{"v": 0, "level": 50, "name": "api", "hostname": "web01", "pid": 1, "time": "2026-09-13T12:00:01.123Z", "msg": "charge failed", "err": {"message": "boom", "name": "Error", "stack": "Error: boom\n    at charge (/app/src/billing.js:3:4)"}}

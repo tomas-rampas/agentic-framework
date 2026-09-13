@@ -1,0 +1,11 @@
+2026-09-13 12:00:00.123 [main] INFO  com.acme.orders.App - Starting
+2026-09-13 12:00:01.123 [http-nio-8080-exec-1] ERROR com.acme.orders.OrderService - Failed to place order 42
+java.lang.IllegalStateException: Sequence contains no elements
+	at com.acme.orders.OrderService.place(OrderService.java:42)
+	at com.acme.orders.api.OrdersController.post(OrdersController.java:77)
+	at org.springframework.web.method.support.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:205)
+	... 42 common frames omitted
+Caused by: java.sql.SQLTransientConnectionException: HikariPool-1 - Connection is not available, request timed out after 30000ms
+	at com.acme.orders.repo.OrderRepo.save(OrderRepo.java:88)
+	... 3 more
+12:00:02.500 [main] WARN  com.acme.orders.Cache - time-only logback default line

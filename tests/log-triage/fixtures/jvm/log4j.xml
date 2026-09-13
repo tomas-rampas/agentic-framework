@@ -1,0 +1,9 @@
+<log4j:event logger="com.acme.orders.OrderService" timestamp="1789000000123" level="ERROR" thread="main">
+<log4j:message><![CDATA[Failed to place order 42]]></log4j:message>
+<log4j:throwable><![CDATA[java.lang.IllegalStateException: boom
+	at com.acme.orders.OrderService.place(OrderService.java:42)
+]]></log4j:throwable>
+<log4j:locationInfo class="com.acme.orders.OrderService" method="place" file="OrderService.java" line="42"/>
+<log4j:properties><log4j:data name="requestId" value="r1"/></log4j:properties>
+</log4j:event>
+<log4j:event logger="com.acme.orders.App" timestamp="1789000001123" level="INFO" thread="main"><log4j:message><![CDATA[started]]></log4j:message></log4j:event>

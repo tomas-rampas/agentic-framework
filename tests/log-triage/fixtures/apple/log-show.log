@@ -1,0 +1,2 @@
+2026-09-13 12:00:00.123456+0200 0x1a2b     Default     0x0                  1234   0    MyApp: (Foundation) [com.acme:net] request started
+2026-09-13 12:00:01.123456+0200 0x1a2b     Error       0x0                  1234   0    MyApp: (Foundation) [com.acme:net] request failed: The Internet connection appears to be offline. (NSURLErrorDomain -1009)

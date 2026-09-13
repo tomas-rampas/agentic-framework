@@ -1,0 +1,26 @@
+Incident Identifier: 1A2B3C4D-0000-1111-2222-333344445555
+Hardware Model:      iPhone15,2
+Process:             MyApp [1234]
+Path:                /private/var/containers/Bundle/Application/ABC/MyApp.app/MyApp
+Identifier:          com.acme.MyApp
+Version:             2.1.0 (210)
+Code Type:           ARM-64 (Native)
+Role:                Foreground
+Date/Time:           2026-09-13 12:00:00.1234 +0200
+OS Version:          iPhone OS 17.5 (21F79)
+
+Exception Type:  EXC_BAD_ACCESS (SIGSEGV)
+Exception Subtype: KERN_INVALID_ADDRESS at 0x0000000000000010
+Termination Reason: SIGNAL 11 Segmentation fault: 11
+
+Thread 0 name:   Dispatch queue: com.apple.main-thread
+Thread 0 Crashed:
+0   MyApp                         	0x0000000104a2b3c4 -[ViewController crash] + 20 (ViewController.m:31)
+1   MyApp                         	0x0000000104a2b100 closure #1 in ViewController.viewDidLoad() + 44 (ViewController.swift:31)
+2   UIKitCore                     	0x00000001a2b3c4d5 -[UIViewController _sendViewDidLoad] + 88
+
+Thread 1:
+0   libsystem_kernel.dylib        	0x00000001a1b2c3d4 __workq_kernreturn + 8
+
+Binary Images:
+0x104a24000 - 0x104a2ffff MyApp arm64  <abc> /MyApp

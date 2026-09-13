@@ -1,0 +1,12 @@
+2026-09-13T12:00:00.123456Z  INFO myapp: starting
+thread 'main' panicked at src/worker.rs:44:9:
+index out of bounds: the len is 3 but the index is 5
+stack backtrace:
+   0: rust_begin_unwind
+             at /rustc/abc/library/std/src/panicking.rs:597:5
+   1: core::panicking::panic_fmt
+             at /rustc/abc/library/core/src/panicking.rs:72:14
+   2: myapp::worker::run
+             at ./src/worker.rs:44:9
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+thread 'main' panicked at 'called `Option::unwrap()` on a `None` value', src/main.rs:10:5

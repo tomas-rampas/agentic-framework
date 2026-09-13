@@ -1,0 +1,22 @@
+2026-09-13 12:00:00,123 - billing.worker - INFO - worker started
+2026-09-13 12:00:01,123 - billing.worker - ERROR - charge failed for order 42
+Traceback (most recent call last):
+  File "/app/billing/worker.py", line 30, in run
+    charge(order)
+  File "/app/billing/charge.py", line 12, in charge
+    resp = client.post(url, json=payload, timeout=5)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='payments', port=8080): Max retries exceeded
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/billing/worker.py", line 33, in run
+    raise ChargeFailed(order) from exc
+billing.errors.ChargeFailed: could not charge order 42
+2026-09-13 12:00:02,123 - billing.worker - ERROR - charge failed for order 43
+Traceback (most recent call last):
+  File "/app/billing/worker.py", line 30, in run
+    charge(order)
+  File "/app/billing/charge.py", line 12, in charge
+    resp = client.post(url, json=payload, timeout=5)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='payments', port=8080): Max retries exceeded

@@ -1,0 +1,41 @@
+[
+ {
+  "insertId": "1",
+  "timestamp": "2026-09-13T12:00:00.123Z",
+  "receiveTimestamp": "2026-09-13T12:00:00.500Z",
+  "severity": "ERROR",
+  "logName": "projects/p/logs/stderr",
+  "resource": {
+   "type": "k8s_container",
+   "labels": {
+    "container_name": "orders",
+    "pod_name": "orders-7f9c6d8b5-x2k4q",
+    "namespace_name": "prod"
+   }
+  },
+  "textPayload": "2026-09-13 12:00:00,123 - billing.worker - ERROR - charge failed for order 42",
+  "trace": "projects/p/traces/abc",
+  "spanId": "s1"
+ },
+ {
+  "insertId": "2",
+  "timestamp": "2026-09-13T12:00:01Z",
+  "severity": "WARNING",
+  "logName": "projects/p/logs/app",
+  "resource": {
+   "type": "cloud_run_revision",
+   "labels": {
+    "service_name": "orders"
+   }
+  },
+  "jsonPayload": {
+   "message": "slow query",
+   "duration_ms": 1200
+  },
+  "httpRequest": {
+   "status": 200,
+   "requestMethod": "GET",
+   "requestUrl": "/x"
+  }
+ }
+]

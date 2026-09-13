@@ -1,0 +1,8 @@
+#Software: Microsoft Internet Information Services 10.0
+#Version: 1.0
+#Date: 2026-09-13 12:00:00
+#Fields: date time s-ip cs-method cs-uri-stem cs-uri-query s-port cs-username c-ip cs(User-Agent) sc-status sc-substatus sc-win32-status time-taken
+2026-09-13 12:00:00 10.0.0.5 POST /api/orders/42 - 443 - 10.0.0.1 curl/8.0 500 0 0 1234
+2026-09-13 12:00:01 10.0.0.5 GET /health - 443 - 10.0.0.1 curl/8.0 200 0 0 3
+#Fields: date time cs-method cs-uri-stem sc-status
+2026-09-13 12:00:02 GET /x 404

@@ -1,0 +1,6 @@
+2026-09-13 12:00:00 ERROR <script>alert('x')</script> | =HYPERLINK("http://evil.example") | [link](http://evil.example) | `code` **bold** # heading
+2026-09-13 12:00:01 ERROR </pre></code></details><img src=x onerror=alert(1)> and a </script><script>alert(2)</script> tail
+=SUM(A1:A9) formula first line
++cmd|' /C calc'!A0
+@evil headerless
+-1234 negative-looking

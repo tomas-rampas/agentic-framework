@@ -1,0 +1,3 @@
+2026-09-13 12:00:00.1234|INFO|Acme.Orders.App|Starting
+2026-09-13 12:00:01.1234|ERROR|Acme.Orders.OrderService|Failed to place order 42|System.TimeoutException: The operation has timed out.
+   at Acme.Orders.PaymentClient.Charge() in /src/Acme.Orders/PaymentClient.cs:line 12

@@ -1,0 +1,4 @@
+time=2026-09-13T12:00:00.000Z level=ERROR msg="charge failed" err="context deadline exceeded" order=42 service=orders
+time=2026-09-13T12:00:01.000Z level=INFO msg=ok
+ts=2026-09-13T12:00:02Z lvl=warn msg="slow query" duration=1.5s trace_id=abc
+garbage line here

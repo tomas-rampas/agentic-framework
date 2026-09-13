@@ -1,0 +1,5 @@
+I0913 12:00:00.123456  4242 main.cc:42] starting
+E0913 12:00:01.123456  4242 worker.cc:88] queue overflow (size=1024)
+F0913 12:00:02.123456  4242 worker.cc:90] Check failed: q.size() < max
+*** Check failure stack trace: ***
+    @     0x55d3a1b2c3d4  google::LogMessage::Fail()

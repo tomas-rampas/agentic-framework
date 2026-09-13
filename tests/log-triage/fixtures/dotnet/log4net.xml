@@ -1,0 +1,2 @@
+<log4net:event logger="Acme.Orders.OrderService" timestamp="2026-09-13T12:00:00.123+02:00" level="ERROR" thread="1" domain="orders" username="svc"><log4net:message>Failed to place order 42</log4net:message><log4net:properties><log4net:data name="log4net:HostName" value="web01" /></log4net:properties><log4net:exception>System.InvalidOperationException: boom
+   at Acme.Orders.OrderService.Place(Order order) in /src/Acme.Orders/OrderService.cs:line 42</log4net:exception></log4net:event>

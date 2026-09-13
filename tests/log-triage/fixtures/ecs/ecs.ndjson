@@ -1,0 +1,2 @@
+{"@timestamp": "2026-09-13T12:00:00Z", "log": {"level": "error", "logger": "acme.orders"}, "message": "order failed", "error": {"type": "OrderError", "message": "no stock", "stack_trace": "OrderError: no stock\n    at place (/app/o.js:3:4)"}, "service": {"name": "orders", "environment": "prod"}, "host": {"name": "web01"}, "trace": {"id": "abc"}, "http": {"response": {"status_code": 500}}, "ecs": {"version": "8.0"}}
+{"@timestamp": "2026-09-13T12:00:01Z", "log.level": "warn", "message": "slow", "service.name": "orders", "ecs.version": "8.0"}

@@ -1,0 +1,2084 @@
+{
+ "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+ "version": "2.1.0",
+ "runs": [
+  {
+   "tool": {
+    "driver": {
+     "name": "log-triage",
+     "version": "1.0.0",
+     "informationUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+     "semanticVersion": "1.0.0",
+     "rules": [
+      {
+       "id": "LT-d35ab553479c",
+       "name": "availability",
+       "shortDescription": {
+        "text": "POST /api/orders/<n> -> <n>"
+       },
+       "fullDescription": {
+        "text": "Assessed high (availability, confidence 0.85, observed). HTTP status 502 observed -> availability occurrence count (2) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "error",
+        "enabled": true
+       },
+       "properties": {
+        "category": "availability",
+        "severity": "high",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "availability",
+         "high"
+        ]
+       }
+      },
+      {
+       "id": "LT-45812cae8cb3",
+       "name": "availability",
+       "shortDescription": {
+        "text": "Failed to process order <uuid> for user <n> status code 500 service=order-service"
+       },
+       "fullDescription": {
+        "text": "Assessed high (availability, confidence 0.85, observed). HTTP status 500 observed -> availability occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "error",
+        "enabled": true
+       },
+       "properties": {
+        "category": "availability",
+        "severity": "high",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "availability",
+         "high"
+        ]
+       }
+      },
+      {
+       "id": "LT-0b8d948bb890",
+       "name": "availability",
+       "shortDescription": {
+        "text": "Failed to process order <uuid> for user <n> status code 503 service=order-service"
+       },
+       "fullDescription": {
+        "text": "Assessed high (availability, confidence 0.85, observed). HTTP status 503 observed -> availability occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "error",
+        "enabled": true
+       },
+       "properties": {
+        "category": "availability",
+        "severity": "high",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "availability",
+         "high"
+        ]
+       }
+      },
+      {
+       "id": "LT-0687b7bfe339",
+       "name": "unknown",
+       "shortDescription": {
+        "text": "Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=order-service"
+       },
+       "fullDescription": {
+        "text": "Assessed medium (unknown, confidence 0.35, unknown). no categorical evidence; producer level indicates a failure of unknown kind severity from producer level only (ERROR) occurrence count (30) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "warning",
+        "enabled": true
+       },
+       "properties": {
+        "category": "unknown",
+        "severity": "medium",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "unknown",
+         "medium"
+        ]
+       }
+      },
+      {
+       "id": "LT-a90eef438a86",
+       "name": "network",
+       "shortDescription": {
+        "text": "Failed to place order <n> for customer <n>"
+       },
+       "fullDescription": {
+        "text": "Assessed medium (network, confidence 0.85, observed). exception type System.IO.IOException indicates network occurrence count (2) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "warning",
+        "enabled": true
+       },
+       "properties": {
+        "category": "network",
+        "severity": "medium",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "network",
+         "medium"
+        ]
+       }
+      },
+      {
+       "id": "LT-102319349c95",
+       "name": "unknown",
+       "shortDescription": {
+        "text": "charge failed"
+       },
+       "fullDescription": {
+        "text": "Assessed medium (unknown, confidence 0.35, unknown). no categorical evidence; producer level indicates a failure of unknown kind severity from producer level only (ERROR) occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "warning",
+        "enabled": true
+       },
+       "properties": {
+        "category": "unknown",
+        "severity": "medium",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "unknown",
+         "medium"
+        ]
+       }
+      },
+      {
+       "id": "LT-85f302734ac6",
+       "name": "unknown",
+       "shortDescription": {
+        "text": "Failed to place order <n>"
+       },
+       "fullDescription": {
+        "text": "Assessed medium (unknown, confidence 0.35, unknown). no categorical evidence; producer level indicates a failure of unknown kind severity from producer level only (ERROR) occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "warning",
+        "enabled": true
+       },
+       "properties": {
+        "category": "unknown",
+        "severity": "medium",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "unknown",
+         "medium"
+        ]
+       }
+      },
+      {
+       "id": "LT-bfc7484129c3",
+       "name": "network",
+       "shortDescription": {
+        "text": "charge failed for order <n>"
+       },
+       "fullDescription": {
+        "text": "Assessed medium (network, confidence 0.85, observed). exception type requests.exceptions.ConnectionError indicates network occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "warning",
+        "enabled": true
+       },
+       "properties": {
+        "category": "network",
+        "severity": "medium",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "network",
+         "medium"
+        ]
+       }
+      },
+      {
+       "id": "LT-b1d0e8dc43fc",
+       "name": "network",
+       "shortDescription": {
+        "text": "charge failed for order <n>"
+       },
+       "fullDescription": {
+        "text": "Assessed medium (network, confidence 0.85, observed). exception type requests.exceptions.ConnectionError indicates network occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "warning",
+        "enabled": true
+       },
+       "properties": {
+        "category": "network",
+        "severity": "medium",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "network",
+         "medium"
+        ]
+       }
+      },
+      {
+       "id": "LT-6d7c6a6bd062",
+       "name": "unknown",
+       "shortDescription": {
+        "text": "Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=payment-service"
+       },
+       "fullDescription": {
+        "text": "Assessed medium (unknown, confidence 0.35, unknown). no categorical evidence; producer level indicates a failure of unknown kind severity from producer level only (ERROR) occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "warning",
+        "enabled": true
+       },
+       "properties": {
+        "category": "unknown",
+        "severity": "medium",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "unknown",
+         "medium"
+        ]
+       }
+      },
+      {
+       "id": "LT-228bb4b285fb",
+       "name": "performance",
+       "shortDescription": {
+        "text": "Retrying payment (attempt <n>/<n>) after <dur>"
+       },
+       "fullDescription": {
+        "text": "Assessed low (performance, confidence 0.60, inferred). message evidence 'retrying' -> performance producer level is WARNING; severity capped at medium occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "note",
+        "enabled": true
+       },
+       "properties": {
+        "category": "performance",
+        "severity": "low",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "performance",
+         "low"
+        ]
+       }
+      },
+      {
+       "id": "LT-a0db72527b05",
+       "name": "client-error",
+       "shortDescription": {
+        "text": "GET /api/orders/<n> -> <n>"
+       },
+       "fullDescription": {
+        "text": "Assessed low (client_error, confidence 0.85, observed). HTTP status 404 observed -> client error producer level is WARNING; severity capped at medium occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "note",
+        "enabled": true
+       },
+       "properties": {
+        "category": "client_error",
+        "severity": "low",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "client_error",
+         "low"
+        ]
+       }
+      },
+      {
+       "id": "LT-4e9e698c369a",
+       "name": "operational",
+       "shortDescription": {
+        "text": "Starting Acme.Orders"
+       },
+       "fullDescription": {
+        "text": "Assessed info (operational, confidence 0.60, inferred). message evidence 'starting' -> operational occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "note",
+        "enabled": true
+       },
+       "properties": {
+        "category": "operational",
+        "severity": "info",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "operational",
+         "info"
+        ]
+       }
+      },
+      {
+       "id": "LT-abe4e469a8d3",
+       "name": "operational",
+       "shortDescription": {
+        "text": "starting"
+       },
+       "fullDescription": {
+        "text": "Assessed info (operational, confidence 0.60, inferred). message evidence 'starting' -> operational occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "note",
+        "enabled": true
+       },
+       "properties": {
+        "category": "operational",
+        "severity": "info",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "operational",
+         "info"
+        ]
+       }
+      },
+      {
+       "id": "LT-f045f3c4e056",
+       "name": "operational",
+       "shortDescription": {
+        "text": "Started App in <dur>"
+       },
+       "fullDescription": {
+        "text": "Assessed info (operational, confidence 0.60, inferred). message evidence 'started' -> operational occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "note",
+        "enabled": true
+       },
+       "properties": {
+        "category": "operational",
+        "severity": "info",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "operational",
+         "info"
+        ]
+       }
+      },
+      {
+       "id": "LT-04097dbdd0ef",
+       "name": "operational",
+       "shortDescription": {
+        "text": "worker started"
+       },
+       "fullDescription": {
+        "text": "Assessed info (operational, confidence 0.60, inferred). message evidence 'started' -> operational occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "note",
+        "enabled": true
+       },
+       "properties": {
+        "category": "operational",
+        "severity": "info",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "operational",
+         "info"
+        ]
+       }
+      },
+      {
+       "id": "LT-d46742b9402c",
+       "name": "unknown",
+       "shortDescription": {
+        "text": "GET /health -> <n>"
+       },
+       "fullDescription": {
+        "text": "Assessed info (unknown, confidence 0.35, unknown). no failure evidence in message or level severity from producer level only (INFO) occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "note",
+        "enabled": true
+       },
+       "properties": {
+        "category": "unknown",
+        "severity": "info",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "unknown",
+         "info"
+        ]
+       }
+      },
+      {
+       "id": "LT-2791132b6e6e",
+       "name": "unknown",
+       "shortDescription": {
+        "text": "time-only serilog console line"
+       },
+       "fullDescription": {
+        "text": "Assessed info (unknown, confidence 0.35, unknown). no failure evidence in message or level severity from producer level only (INFO) occurrence count (1) does not influence severity"
+       },
+       "helpUri": "https://github.com/tomas-rampas/agentic-framework/blob/main/docs/log-triage/README.md",
+       "defaultConfiguration": {
+        "level": "note",
+        "enabled": true
+       },
+       "properties": {
+        "category": "unknown",
+        "severity": "info",
+        "fingerprintVersion": "1",
+        "tags": [
+         "log-triage",
+         "unknown",
+         "info"
+        ]
+       }
+      }
+     ]
+    }
+   },
+   "invocations": [
+    {
+     "executionSuccessful": true,
+     "exitCode": 0,
+     "startTimeUtc": "2026-09-13T14:38:48.127Z",
+     "endTimeUtc": "2026-09-13T14:38:48.212Z",
+     "toolExecutionNotifications": [],
+     "properties": {
+      "completion": "complete",
+      "reasons": []
+     }
+    }
+   ],
+   "artifacts": [
+    {
+     "location": {
+      "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/access-combined.log"
+     },
+     "roles": [
+      "analysisTarget"
+     ],
+     "length": 369,
+     "properties": {
+      "format": "access-log",
+      "detectionConfidence": 0.95,
+      "status": "processed",
+      "events": 4,
+      "encoding": "utf-8",
+      "compression": null
+     }
+    },
+    {
+     "location": {
+      "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log"
+     },
+     "roles": [
+      "analysisTarget"
+     ],
+     "length": 6043,
+     "properties": {
+      "format": "text",
+      "detectionConfidence": 0.6,
+      "status": "processed",
+      "events": 33,
+      "encoding": "utf-8",
+      "compression": null
+     }
+    },
+    {
+     "location": {
+      "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/python-asctime.log"
+     },
+     "roles": [
+      "analysisTarget"
+     ],
+     "length": 1096,
+     "properties": {
+      "format": "text",
+      "detectionConfidence": 0.883,
+      "status": "processed",
+      "events": 3,
+      "encoding": "utf-8",
+      "compression": null
+     }
+    },
+    {
+     "location": {
+      "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/serilog-text.log"
+     },
+     "roles": [
+      "analysisTarget"
+     ],
+     "length": 1244,
+     "properties": {
+      "format": "text",
+      "detectionConfidence": 0.894,
+      "status": "processed",
+      "events": 5,
+      "encoding": "utf-8",
+      "compression": null
+     }
+    },
+    {
+     "location": {
+      "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/spring-boot.log"
+     },
+     "roles": [
+      "analysisTarget"
+     ],
+     "length": 338,
+     "properties": {
+      "format": "text",
+      "detectionConfidence": 0.838,
+      "status": "processed",
+      "events": 2,
+      "encoding": "utf-8",
+      "compression": null
+     }
+    },
+    {
+     "location": {
+      "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/zap-console.log"
+     },
+     "roles": [
+      "analysisTarget"
+     ],
+     "length": 180,
+     "properties": {
+      "format": "text",
+      "detectionConfidence": 0.9,
+      "status": "processed",
+      "events": 2,
+      "encoding": "utf-8",
+      "compression": null
+     }
+    }
+   ],
+   "results": [
+    {
+     "ruleId": "LT-d35ab553479c",
+     "ruleIndex": 0,
+     "level": "error",
+     "kind": "fail",
+     "message": {
+      "text": "POST /api/orders/<n> -> <n> (2 occurrences, assessed high availability)"
+     },
+     "occurrenceCount": 2,
+     "rank": 75.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "d35ab553479c215700ef81acd1b7817bc11b1ecd7ba379729588f7927e0cd1f3"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "d35ab553479c2157"
+     },
+     "properties": {
+      "severity": "high",
+      "category": "availability",
+      "confidence": 0.85,
+      "basis": "observed",
+      "firstSeen": "2026-09-13T12:00:00Z",
+      "lastSeen": "2026-09-13T12:00:03Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 2
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": 502,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": [
+        {
+         "repo": "orders",
+         "confidence": 0.1
+        }
+       ]
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/access-combined.log",
+         "index": 0
+        },
+        "region": {
+         "startLine": 1,
+         "byteOffset": 0
+        }
+       },
+       "message": {
+        "text": "POST /api/orders/42 -> 502"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:00Z",
+        "level": "error"
+       }
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/access-combined.log",
+         "index": 0
+        },
+        "region": {
+         "startLine": 4,
+         "byteOffset": 273
+        }
+       },
+       "message": {
+        "text": "POST /api/orders/44 -> 502"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:03Z",
+        "level": "error"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-45812cae8cb3",
+     "ruleIndex": 1,
+     "level": "error",
+     "kind": "fail",
+     "message": {
+      "text": "Failed to process order <uuid> for user <n> status code 500 service=order-service (1 occurrence, assessed high availability)"
+     },
+     "occurrenceCount": 1,
+     "rank": 75.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "45812cae8cb36f61f0a647b002215444460461ce28291733e596b4013a62e69e"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "45812cae8cb36f61"
+     },
+     "properties": {
+      "severity": "high",
+      "category": "availability",
+      "confidence": 0.85,
+      "basis": "observed",
+      "firstSeen": "2026-09-13T12:30:00Z",
+      "lastSeen": "2026-09-13T12:30:00Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 1
+      },
+      "services": {
+       "order-service": 1
+      },
+      "exceptionChain": null,
+      "httpStatus": 500,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log",
+         "index": 1
+        },
+        "region": {
+         "startLine": 31,
+         "byteOffset": 5588
+        }
+       },
+       "message": {
+        "text": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000042 for user 7 status code 500 service=order-service"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:30:00Z",
+        "level": "ERROR"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-0b8d948bb890",
+     "ruleIndex": 2,
+     "level": "error",
+     "kind": "fail",
+     "message": {
+      "text": "Failed to process order <uuid> for user <n> status code 503 service=order-service (1 occurrence, assessed high availability)"
+     },
+     "occurrenceCount": 1,
+     "rank": 75.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "0b8d948bb8909f78c67bda7f91629de508fd2a06f779e07a1e0d95e517e9fc8e"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "0b8d948bb8909f78"
+     },
+     "properties": {
+      "severity": "high",
+      "category": "availability",
+      "confidence": 0.85,
+      "basis": "observed",
+      "firstSeen": "2026-09-13T12:30:01Z",
+      "lastSeen": "2026-09-13T12:30:01Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 1
+      },
+      "services": {
+       "order-service": 1
+      },
+      "exceptionChain": null,
+      "httpStatus": 503,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log",
+         "index": 1
+        },
+        "region": {
+         "startLine": 32,
+         "byteOffset": 5725
+        }
+       },
+       "message": {
+        "text": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000043 for user 8 status code 503 service=order-service"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:30:01Z",
+        "level": "ERROR"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-0687b7bfe339",
+     "ruleIndex": 3,
+     "level": "warning",
+     "kind": "fail",
+     "message": {
+      "text": "Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=order-service (30 occurrences, assessed medium unknown)"
+     },
+     "occurrenceCount": 30,
+     "rank": 50.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "0687b7bfe339c3f76f0bb2781877b30b36b7b897850dc9137a119e72fc945152"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "0687b7bfe339c3f7"
+     },
+     "properties": {
+      "severity": "medium",
+      "category": "unknown",
+      "confidence": 0.35,
+      "basis": "unknown",
+      "firstSeen": "2026-09-13T12:00:00Z",
+      "lastSeen": "2026-09-13T12:00:29Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 30
+      },
+      "services": {
+       "order-service": 30
+      },
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log",
+         "index": 1
+        },
+        "region": {
+         "startLine": 1,
+         "byteOffset": 0
+        }
+       },
+       "message": {
+        "text": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000000 for user 100 from 10.1.2.0:40000 in 10ms (attempt 1/5) request_id=req-0 service=order-service"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:00Z",
+        "level": "ERROR"
+       }
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log",
+         "index": 1
+        },
+        "region": {
+         "startLine": 2,
+         "byteOffset": 182
+        }
+       },
+       "message": {
+        "text": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000001 for user 101 from 10.1.2.1:40001 in 11ms (attempt 2/5) request_id=req-1eef service=order-service"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:01Z",
+        "level": "ERROR"
+       }
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log",
+         "index": 1
+        },
+        "region": {
+         "startLine": 3,
+         "byteOffset": 367
+        }
+       },
+       "message": {
+        "text": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000002 for user 102 from 10.1.2.2:40002 in 12ms (attempt 3/5) request_id=req-3dde service=order-service"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:02Z",
+        "level": "ERROR"
+       }
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log",
+         "index": 1
+        },
+        "region": {
+         "startLine": 30,
+         "byteOffset": 5401
+        }
+       },
+       "message": {
+        "text": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000029 for user 129 from 10.1.2.29:40029 in 39ms (attempt 5/5) request_id=req-38113 service=order-service"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:29Z",
+        "level": "ERROR"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-a90eef438a86",
+     "ruleIndex": 4,
+     "level": "warning",
+     "kind": "fail",
+     "message": {
+      "text": "System.InvalidOperationException: Failed to place order <n> for customer <n> (2 occurrences, assessed medium network)"
+     },
+     "occurrenceCount": 2,
+     "rank": 50.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "a90eef438a8623bce880cc9f9a5a482fcc63107da1dd8b66c3590188000aaa13"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "a90eef438a8623bc"
+     },
+     "properties": {
+      "severity": "medium",
+      "category": "network",
+      "confidence": 0.85,
+      "basis": "observed",
+      "firstSeen": "2026-09-13T10:00:01.456Z",
+      "lastSeen": "2026-09-13T10:00:02Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERR": 2
+      },
+      "services": {},
+      "exceptionChain": [
+       "System.InvalidOperationException",
+       "System.IO.IOException"
+      ],
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "resolved",
+       "candidates": [
+        {
+         "repo": "orders",
+         "confidence": 1.0
+        }
+       ]
+      },
+      "investigationStatus": "deterministic",
+      "suggestions": [
+       {
+        "kind": "source_backed",
+        "summary": "Harden network error handling at the call site at src/Acme.Orders/OrderService.cs:42 (orders)",
+        "confidence": 0.75
+       }
+      ],
+      "groupingConfidence": 0.9
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/serilog-text.log",
+         "index": 3
+        },
+        "region": {
+         "startLine": 2,
+         "endLine": 8,
+         "byteOffset": 58
+        }
+       },
+       "message": {
+        "text": "Failed to place order 42 for customer 7"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T10:00:01.456Z",
+        "level": "ERR"
+       }
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/serilog-text.log",
+         "index": 3
+        },
+        "region": {
+         "startLine": 9,
+         "endLine": 14,
+         "byteOffset": 653
+        }
+       },
+       "message": {
+        "text": "Failed to place order 43 for customer 9"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T10:00:02Z",
+        "level": "ERR"
+       }
+      }
+     ],
+     "relatedLocations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src/Acme.Orders/OrderService.cs",
+         "uriBaseId": "REPO_R4e6e5b5c"
+        },
+        "region": {
+         "startLine": 42
+        }
+       },
+       "message": {
+        "text": "verified source reference: symbol Place found within 6 lines of line 42"
+       },
+       "properties": {
+        "locationKind": "source-verified",
+        "match": "path",
+        "function": "Acme.Orders.OrderService.Place",
+        "repository": "orders"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-102319349c95",
+     "ruleIndex": 5,
+     "level": "warning",
+     "kind": "fail",
+     "message": {
+      "text": "charge failed (1 occurrence, assessed medium unknown)"
+     },
+     "occurrenceCount": 1,
+     "rank": 50.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "102319349c9586dca92d055a14aba56cd24f458e50f5559053a4a434f99ae0b5"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "102319349c9586dc"
+     },
+     "properties": {
+      "severity": "medium",
+      "category": "unknown",
+      "confidence": 0.35,
+      "basis": "unknown",
+      "firstSeen": "2026-09-13T10:00:01.123Z",
+      "lastSeen": "2026-09-13T10:00:01.123Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.7
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/zap-console.log",
+         "index": 5
+        },
+        "region": {
+         "startLine": 2,
+         "byteOffset": 61
+        }
+       },
+       "message": {
+        "text": "charge failed"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T10:00:01.123Z",
+        "level": "ERROR"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-85f302734ac6",
+     "ruleIndex": 6,
+     "level": "warning",
+     "kind": "fail",
+     "message": {
+      "text": "java.lang.IllegalStateException: Failed to place order <n> (1 occurrence, assessed medium unknown)"
+     },
+     "occurrenceCount": 1,
+     "rank": 50.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "85f302734ac6f0ce15a20e88e268861c22a5373cef791f5c89db0025a63313c4"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "85f302734ac6f0ce"
+     },
+     "properties": {
+      "severity": "medium",
+      "category": "unknown",
+      "confidence": 0.35,
+      "basis": "unknown",
+      "firstSeen": "2026-09-13T10:00:01.123Z",
+      "lastSeen": "2026-09-13T10:00:01.123Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 1
+      },
+      "services": {},
+      "exceptionChain": [
+       "java.lang.IllegalStateException"
+      ],
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.9
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/spring-boot.log",
+         "index": 4
+        },
+        "region": {
+         "startLine": 2,
+         "endLine": 4,
+         "byteOffset": 116
+        }
+       },
+       "message": {
+        "text": "Failed to place order 42"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T10:00:01.123Z",
+        "level": "ERROR"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-bfc7484129c3",
+     "ruleIndex": 7,
+     "level": "warning",
+     "kind": "fail",
+     "message": {
+      "text": "billing.errors.ChargeFailed: charge failed for order <n> (1 occurrence, assessed medium network)"
+     },
+     "occurrenceCount": 1,
+     "rank": 50.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "bfc7484129c3cc385b75edc98307377df3330da9fe843f9c65f94edd882e0143"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "bfc7484129c3cc38"
+     },
+     "properties": {
+      "severity": "medium",
+      "category": "network",
+      "confidence": 0.85,
+      "basis": "observed",
+      "firstSeen": "2026-09-13T12:00:01.123Z",
+      "lastSeen": "2026-09-13T12:00:01.123Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 1
+      },
+      "services": {},
+      "exceptionChain": [
+       "billing.errors.ChargeFailed",
+       "requests.exceptions.ConnectionError"
+      ],
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "resolved",
+       "candidates": [
+        {
+         "repo": "billing",
+         "confidence": 1.0
+        }
+       ]
+      },
+      "investigationStatus": "deterministic",
+      "suggestions": [
+       {
+        "kind": "source_backed",
+        "summary": "Harden network error handling at the call site at billing/worker.py:33 (billing)",
+        "confidence": 0.75
+       }
+      ],
+      "groupingConfidence": 0.9
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/python-asctime.log",
+         "index": 2
+        },
+        "region": {
+         "startLine": 2,
+         "endLine": 15,
+         "byteOffset": 65
+        }
+       },
+       "message": {
+        "text": "charge failed for order 42"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:01.123Z",
+        "level": "ERROR"
+       }
+      }
+     ],
+     "relatedLocations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "billing/worker.py",
+         "uriBaseId": "REPO_R8796c199"
+        },
+        "region": {
+         "startLine": 33
+        }
+       },
+       "message": {
+        "text": "verified source reference: file and line exist in the checkout (no symbol to cross-check)"
+       },
+       "properties": {
+        "locationKind": "source-verified",
+        "match": "path",
+        "function": "run",
+        "repository": "billing"
+       }
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "billing/charge.py",
+         "uriBaseId": "REPO_R8796c199"
+        },
+        "region": {
+         "startLine": 12
+        }
+       },
+       "message": {
+        "text": "verified source reference: symbol charge found within 6 lines of line 12"
+       },
+       "properties": {
+        "locationKind": "source-verified",
+        "match": "path",
+        "function": "charge",
+        "repository": "billing"
+       }
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "billing/worker.py",
+         "uriBaseId": "REPO_R8796c199"
+        },
+        "region": {
+         "startLine": 30
+        }
+       },
+       "message": {
+        "text": "verified source reference: file and line exist in the checkout (no symbol to cross-check)"
+       },
+       "properties": {
+        "locationKind": "source-verified",
+        "match": "path",
+        "function": "run",
+        "repository": "billing"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-b1d0e8dc43fc",
+     "ruleIndex": 8,
+     "level": "warning",
+     "kind": "fail",
+     "message": {
+      "text": "requests.exceptions.ConnectionError: charge failed for order <n> (1 occurrence, assessed medium network)"
+     },
+     "occurrenceCount": 1,
+     "rank": 50.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "b1d0e8dc43fc373acddeda7cbe3dda499ed337b56819bd0d3e843fe677bd6a2e"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "b1d0e8dc43fc373a"
+     },
+     "properties": {
+      "severity": "medium",
+      "category": "network",
+      "confidence": 0.85,
+      "basis": "observed",
+      "firstSeen": "2026-09-13T12:00:02.123Z",
+      "lastSeen": "2026-09-13T12:00:02.123Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 1
+      },
+      "services": {},
+      "exceptionChain": [
+       "requests.exceptions.ConnectionError"
+      ],
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "resolved",
+       "candidates": [
+        {
+         "repo": "billing",
+         "confidence": 1.0
+        }
+       ]
+      },
+      "investigationStatus": "deterministic",
+      "suggestions": [
+       {
+        "kind": "source_backed",
+        "summary": "Harden network error handling at the call site at billing/charge.py:12 (billing)",
+        "confidence": 0.75
+       }
+      ],
+      "groupingConfidence": 0.9
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/python-asctime.log",
+         "index": 2
+        },
+        "region": {
+         "startLine": 16,
+         "endLine": 22,
+         "byteOffset": 705
+        }
+       },
+       "message": {
+        "text": "charge failed for order 43"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:02.123Z",
+        "level": "ERROR"
+       }
+      }
+     ],
+     "relatedLocations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "billing/charge.py",
+         "uriBaseId": "REPO_R8796c199"
+        },
+        "region": {
+         "startLine": 12
+        }
+       },
+       "message": {
+        "text": "verified source reference: symbol charge found within 6 lines of line 12"
+       },
+       "properties": {
+        "locationKind": "source-verified",
+        "match": "path",
+        "function": "charge",
+        "repository": "billing"
+       }
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "billing/worker.py",
+         "uriBaseId": "REPO_R8796c199"
+        },
+        "region": {
+         "startLine": 30
+        }
+       },
+       "message": {
+        "text": "verified source reference: file and line exist in the checkout (no symbol to cross-check)"
+       },
+       "properties": {
+        "locationKind": "source-verified",
+        "match": "path",
+        "function": "run",
+        "repository": "billing"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-6d7c6a6bd062",
+     "ruleIndex": 9,
+     "level": "warning",
+     "kind": "fail",
+     "message": {
+      "text": "Failed to process order <uuid> for user <n> from <ip>:<n> in <dur> (attempt <n>/<n>) request_id=req-<id> service=payment-service (1 occurrence, assessed medium unknown)"
+     },
+     "occurrenceCount": 1,
+     "rank": 50.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "6d7c6a6bd0624220de033c2e18f7c10f33412f8d94580ffc111c64de1585bcdc"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "6d7c6a6bd0624220"
+     },
+     "properties": {
+      "severity": "medium",
+      "category": "unknown",
+      "confidence": 0.35,
+      "basis": "unknown",
+      "firstSeen": "2026-09-13T12:31:00Z",
+      "lastSeen": "2026-09-13T12:31:00Z",
+      "untimedCount": 0,
+      "levels": {
+       "ERROR": 1
+      },
+      "services": {
+       "payment-service": 1
+      },
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/grouping-equivalence.log",
+         "index": 1
+        },
+        "region": {
+         "startLine": 33,
+         "byteOffset": 5862
+        }
+       },
+       "message": {
+        "text": "Failed to process order 8f3a7c2e-1234-4d5e-9abc-000000000044 for user 9 from 10.1.2.3:4444 in 12ms (attempt 1/5) request_id=req-1 service=payment-service"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:31:00Z",
+        "level": "ERROR"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-228bb4b285fb",
+     "ruleIndex": 10,
+     "level": "note",
+     "kind": "fail",
+     "message": {
+      "text": "Retrying payment (attempt <n>/<n>) after <dur> (1 occurrence, assessed low performance)"
+     },
+     "occurrenceCount": 1,
+     "rank": 25.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "228bb4b285fb81fc0a3c94fd438c1acdeab37171a8e5a9ac74fbf3b13623c84a"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "228bb4b285fb81fc"
+     },
+     "properties": {
+      "severity": "low",
+      "category": "performance",
+      "confidence": 0.6,
+      "basis": "inferred",
+      "firstSeen": "2026-09-13T10:00:03Z",
+      "lastSeen": "2026-09-13T10:00:03Z",
+      "untimedCount": 0,
+      "levels": {
+       "WRN": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/serilog-text.log",
+         "index": 3
+        },
+        "region": {
+         "startLine": 15,
+         "byteOffset": 1116
+        }
+       },
+       "message": {
+        "text": "Retrying payment (attempt 2/5) after 5000 ms"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T10:00:03Z",
+        "level": "WRN"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-a0db72527b05",
+     "ruleIndex": 11,
+     "level": "note",
+     "kind": "fail",
+     "message": {
+      "text": "GET /api/orders/<n> -> <n> (1 occurrence, assessed low client_error)"
+     },
+     "occurrenceCount": 1,
+     "rank": 25.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "a0db72527b05b7d71e7a54317185f30f1f50475aa479dbd16b783e7fa799adf3"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "a0db72527b05b7d7"
+     },
+     "properties": {
+      "severity": "low",
+      "category": "client_error",
+      "confidence": 0.85,
+      "basis": "observed",
+      "firstSeen": "2026-09-13T12:00:02Z",
+      "lastSeen": "2026-09-13T12:00:02Z",
+      "untimedCount": 0,
+      "levels": {
+       "WARNING": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": 404,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": [
+        {
+         "repo": "orders",
+         "confidence": 0.1
+        }
+       ]
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/access-combined.log",
+         "index": 0
+        },
+        "region": {
+         "startLine": 3,
+         "byteOffset": 169
+        }
+       },
+       "message": {
+        "text": "GET /api/orders/43 -> 404"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:02Z",
+        "level": "warning"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-4e9e698c369a",
+     "ruleIndex": 12,
+     "level": "note",
+     "kind": "informational",
+     "message": {
+      "text": "Starting Acme.Orders (1 occurrence, assessed info operational)"
+     },
+     "occurrenceCount": 1,
+     "rank": 5.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "4e9e698c369a55e1195ef4b83c5d05cc92487611a22b5a13e78a170d0b06c361"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "4e9e698c369a55e1"
+     },
+     "properties": {
+      "severity": "info",
+      "category": "operational",
+      "confidence": 0.6,
+      "basis": "inferred",
+      "firstSeen": "2026-09-13T10:00:00.123Z",
+      "lastSeen": "2026-09-13T10:00:00.123Z",
+      "untimedCount": 0,
+      "levels": {
+       "INF": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": [
+        {
+         "repo": "orders",
+         "confidence": 0.1
+        }
+       ]
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.7
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/serilog-text.log",
+         "index": 3
+        },
+        "region": {
+         "startLine": 1,
+         "byteOffset": 0
+        }
+       },
+       "message": {
+        "text": "Starting Acme.Orders"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T10:00:00.123Z",
+        "level": "INF"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-abe4e469a8d3",
+     "ruleIndex": 13,
+     "level": "note",
+     "kind": "informational",
+     "message": {
+      "text": "starting (1 occurrence, assessed info operational)"
+     },
+     "occurrenceCount": 1,
+     "rank": 5.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "abe4e469a8d3cf81fe0499f5711c0bf2e465ee4264090397228fb033ededec25"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "abe4e469a8d3cf81"
+     },
+     "properties": {
+      "severity": "info",
+      "category": "operational",
+      "confidence": 0.6,
+      "basis": "inferred",
+      "firstSeen": "2026-09-13T10:00:00.123Z",
+      "lastSeen": "2026-09-13T10:00:00.123Z",
+      "untimedCount": 0,
+      "levels": {
+       "INFO": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.7
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/zap-console.log",
+         "index": 5
+        },
+        "region": {
+         "startLine": 1,
+         "byteOffset": 0
+        }
+       },
+       "message": {
+        "text": "starting"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T10:00:00.123Z",
+        "level": "INFO"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-f045f3c4e056",
+     "ruleIndex": 14,
+     "level": "note",
+     "kind": "informational",
+     "message": {
+      "text": "Started App in <dur> (1 occurrence, assessed info operational)"
+     },
+     "occurrenceCount": 1,
+     "rank": 5.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "f045f3c4e05600b93faa1b4ca27631bc059a7403ec9c24c38ac96ed39eeda56a"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "f045f3c4e05600b9"
+     },
+     "properties": {
+      "severity": "info",
+      "category": "operational",
+      "confidence": 0.6,
+      "basis": "inferred",
+      "firstSeen": "2026-09-13T10:00:00.123Z",
+      "lastSeen": "2026-09-13T10:00:00.123Z",
+      "untimedCount": 0,
+      "levels": {
+       "INFO": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/spring-boot.log",
+         "index": 4
+        },
+        "region": {
+         "startLine": 1,
+         "byteOffset": 0
+        }
+       },
+       "message": {
+        "text": "Started App in 2.5 seconds"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T10:00:00.123Z",
+        "level": "INFO"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-04097dbdd0ef",
+     "ruleIndex": 15,
+     "level": "note",
+     "kind": "informational",
+     "message": {
+      "text": "worker started (1 occurrence, assessed info operational)"
+     },
+     "occurrenceCount": 1,
+     "rank": 5.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "04097dbdd0effc6a306e698096413fd50e7f22e9555b3752c5cf4aa2877b3650"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "04097dbdd0effc6a"
+     },
+     "properties": {
+      "severity": "info",
+      "category": "operational",
+      "confidence": 0.6,
+      "basis": "inferred",
+      "firstSeen": "2026-09-13T12:00:00.123Z",
+      "lastSeen": "2026-09-13T12:00:00.123Z",
+      "untimedCount": 0,
+      "levels": {
+       "INFO": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": [
+        {
+         "repo": "billing",
+         "confidence": 0.3
+        }
+       ]
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.7
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/python-asctime.log",
+         "index": 2
+        },
+        "region": {
+         "startLine": 1,
+         "byteOffset": 0
+        }
+       },
+       "message": {
+        "text": "worker started"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:00.123Z",
+        "level": "INFO"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-d46742b9402c",
+     "ruleIndex": 16,
+     "level": "note",
+     "kind": "informational",
+     "message": {
+      "text": "GET /health -> <n> (1 occurrence, assessed info unknown)"
+     },
+     "occurrenceCount": 1,
+     "rank": 5.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "d46742b9402c993db9b68905e5242ef9d5375979552a85b29dcf4e3b409b251d"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "d46742b9402c993d"
+     },
+     "properties": {
+      "severity": "info",
+      "category": "unknown",
+      "confidence": 0.35,
+      "basis": "unknown",
+      "firstSeen": "2026-09-13T12:00:01Z",
+      "lastSeen": "2026-09-13T12:00:01Z",
+      "untimedCount": 0,
+      "levels": {
+       "INFO": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": 200,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.8
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/access-combined.log",
+         "index": 0
+        },
+        "region": {
+         "startLine": 2,
+         "byteOffset": 96
+        }
+       },
+       "message": {
+        "text": "GET /health -> 200"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": "2026-09-13T12:00:01Z",
+        "level": "info"
+       }
+      }
+     ]
+    },
+    {
+     "ruleId": "LT-2791132b6e6e",
+     "ruleIndex": 17,
+     "level": "note",
+     "kind": "informational",
+     "message": {
+      "text": "time-only serilog console line (1 occurrence, assessed info unknown)"
+     },
+     "occurrenceCount": 1,
+     "rank": 5.0,
+     "fingerprints": {
+      "logTriage/fingerprint/v1": "2791132b6e6ead9f773fffa6ead547d2b3a25ec6bdac8696d556731b2b51d813"
+     },
+     "partialFingerprints": {
+      "logTriage/template/v1": "2791132b6e6ead9f"
+     },
+     "properties": {
+      "severity": "info",
+      "category": "unknown",
+      "confidence": 0.35,
+      "basis": "unknown",
+      "firstSeen": null,
+      "lastSeen": null,
+      "untimedCount": 1,
+      "levels": {
+       "INF": 1
+      },
+      "services": {},
+      "exceptionChain": null,
+      "httpStatus": null,
+      "errorCode": null,
+      "attribution": {
+       "status": "unresolved",
+       "candidates": []
+      },
+      "investigationStatus": "insufficient_evidence",
+      "suggestions": [],
+      "groupingConfidence": 0.7
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/logs/serilog-text.log",
+         "index": 3
+        },
+        "region": {
+         "startLine": 16,
+         "byteOffset": 1198
+        }
+       },
+       "message": {
+        "text": "time-only serilog console line"
+       },
+       "properties": {
+        "locationKind": "log-evidence",
+        "timestamp": null,
+        "level": "INF"
+       }
+      }
+     ]
+    }
+   ],
+   "columnKind": "utf16CodeUnits",
+   "properties": {
+    "schemaVersion": "1.0.0",
+    "coverage": {
+     "events_parsed": 49,
+     "events_included": 49,
+     "events_filtered_by_since": 0,
+     "events_untimed_excluded_by_since": 0,
+     "events_untimed_included": 0,
+     "events_with_timestamp": 48,
+     "events_without_timestamp": 1,
+     "lines_total": 81,
+     "bytes_read": 9270,
+     "bytes_compressed": 9270,
+     "parse_failures": 0,
+     "truncated_lines": 0,
+     "discarded_bytes": 0,
+     "encoding_replacements": 0,
+     "time_range": {
+      "first": "2026-09-13T10:00:00.123Z",
+      "last": "2026-09-13T12:31:00Z"
+     },
+     "redaction": {
+      "enabled": true,
+      "counts": {},
+      "ips_pseudonymized": false
+     }
+    },
+    "filtering": {
+     "since": null,
+     "since_epoch_utc": null,
+     "min_severity": "info",
+     "groups_total": 18,
+     "groups_reported": 18,
+     "groups_filtered_by_severity": 0,
+     "max_output_groups": 100000,
+     "groups_written": 18,
+     "groups_omitted_by_output_limit": 0,
+     "events_in_reported_groups": 49,
+     "events_in_filtered_groups": 0,
+     "by_severity": {
+      "info": {
+       "groups": 6,
+       "events": 6
+      },
+      "low": {
+       "groups": 2,
+       "events": 2
+      },
+      "medium": {
+       "groups": 7,
+       "events": 37
+      },
+      "high": {
+       "groups": 3,
+       "events": 4
+      },
+      "critical": {
+       "groups": 0,
+       "events": 0
+      }
+     }
+    },
+    "note": "Results describe runtime log issue groups, not static-analysis findings. Locations point into the analysed log files; source locations appear only as relatedLocations and only when verified in a repository checkout. Not every SARIF consumer renders runtime-log results meaningfully."
+   },
+   "originalUriBaseIds": {
+    "REPO_R8796c199": {
+     "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/billing/",
+     "description": {
+      "text": "billing (repository, HEAD 7ae7b2e8156a)"
+     }
+    },
+    "REPO_R4e6e5b5c": {
+     "uri": "file:///tmp/claude-0/-home-user-agentic-framework/752d3580-5b8e-5790-a14c-991adfde97c8/scratchpad/samples-work/repos/orders/",
+     "description": {
+      "text": "orders (repository, HEAD 7ab99b3bd21d)"
+     }
+    }
+   }
+  }
+ ]
+}

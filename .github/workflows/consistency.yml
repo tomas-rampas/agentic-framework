@@ -47,6 +47,9 @@ jobs:
       - name: Run plugin manifest test harness
         run: bash tests/plugin-manifests.test.sh
 
+      - name: Run log-triage engine test harness (python3 stdlib only)
+        run: bash tests/log-triage.test.sh
+
       - name: Run hooks test harness
         run: bash tests/hooks.test.sh
 
@@ -124,6 +127,9 @@ jobs:
 
       - name: Plugin manifest tests (pure bash/jq)
         run: bash tests/plugin-manifests.test.sh
+
+      - name: Log-triage engine tests (macOS python3)
+        run: bash tests/log-triage.test.sh
 
       - name: Check generated docs are fresh (pure bash/jq)
         run: bash scripts/generate-docs.sh --check

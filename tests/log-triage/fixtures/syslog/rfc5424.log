@@ -1,0 +1,2 @@
+<34>1 2026-09-13T12:00:00.123Z host01 orders 1234 ID47 [exampleSDID@32473 iut="3" eventSource="Application"] charge failed for order 42
+<165>1 2026-09-13T12:00:01Z host01 orders - - - started

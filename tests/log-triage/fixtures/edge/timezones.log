@@ -1,0 +1,5 @@
+2026-09-13T12:00:00Z ERROR utc explicit
+2026-09-13T14:00:00+02:00 ERROR offset explicit (same instant as above)
+2026-09-13 12:00:00 ERROR naive local-looking
+Sep 13 11:59:59 host app[1]: missing year
+12:00:00.123 [main] ERROR c.a.X - time only

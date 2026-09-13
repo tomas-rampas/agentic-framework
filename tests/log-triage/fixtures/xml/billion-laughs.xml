@@ -1,0 +1,3 @@
+<?xml version="1.0"?>
+<!DOCTYPE lolz [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;">]>
+<logs><entry><message>&lol2;</message></entry></logs>
