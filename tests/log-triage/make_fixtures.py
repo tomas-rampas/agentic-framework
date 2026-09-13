@@ -500,10 +500,10 @@ w("edge/spaces in name.log", "2026-09-13 12:00:00,123 - app - ERROR - path with 
 w("edge/bzip2-magic.log", b"BZh91AY&SY" + b"\x00" * 32, binary=True)   # bzip2 magic under a .log name
 w("edge/prose.log", "the quick brown fox jumps over the lazy dog\nnothing here looks like a log header at all\njust free text lines\n")
 gz_content = ("2026-09-13 12:00:00,123 - app - ERROR - gzipped line 1\n" * 200 + "2026-09-13 12:00:01,123 - app - INFO - gzipped line 2\n").encode("utf-8")
-w("edge/plain.log.gz", gzip.compress(gz_content), binary=True)
-full = gzip.compress(("2026-09-13 12:00:00,123 - app - ERROR - truncated gzip line\n" * 5000).encode("utf-8"))
+w("edge/plain.log.gz", gzip.compress(gz_content, mtime=0), binary=True)
+full = gzip.compress(("2026-09-13 12:00:00,123 - app - ERROR - truncated gzip line\n" * 5000).encode("utf-8"), mtime=0)
 w("edge/truncated.log.gz", full[: len(full) // 2], binary=True)
-w("edge/multi-member.log.gz", gzip.compress(b"2026-09-13 12:00:00,123 - app - ERROR - member one\n") + gzip.compress(b"2026-09-13 12:00:01,123 - app - ERROR - member two\n"), binary=True)
+w("edge/multi-member.log.gz", gzip.compress(b"2026-09-13 12:00:00,123 - app - ERROR - member one\n", mtime=0) + gzip.compress(b"2026-09-13 12:00:01,123 - app - ERROR - member two\n", mtime=0), binary=True)
 w("edge/oversized-line.log", "2026-09-13 12:00:00,123 - app - ERROR - short line\n2026-09-13 12:00:01,123 - app - ERROR - " + "x" * 5000 + "\n2026-09-13 12:00:02,123 - app - INFO - after\n")
 w("edge/grouping-equivalence.log", "".join(
   "2026-09-13T12:%02d:%02dZ ERROR Failed to process order %s for user %d from 10.1.2.%d:%d in %dms (attempt %d/5) request_id=%s service=order-service\n" % (
