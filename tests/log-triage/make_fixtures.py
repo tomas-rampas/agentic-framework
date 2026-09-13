@@ -431,6 +431,18 @@ w("json/truncated.json", "[{\"time\":\"2026-09-13T12:00:00Z\",\"level\":\"error\
 w("cloudwatch/get-log-events.json", J({"events": [
   {"timestamp": 1789000000123, "message": "2026-09-13 12:00:00,123 - billing.worker - ERROR - charge failed for order 42\n" + PY_TB.rstrip("\n"), "ingestionTime": 1789000000500},
   {"timestamp": 1789000001000, "message": J({"level": "warn", "msg": "slow"}), "ingestionTime": 1789000001500}], "nextForwardToken": "f/1", "nextBackwardToken": "b/1"}, indent=1) + "\n")
+w("cloudwatch/lambda-python.log",
+  "START RequestId: 8f1c2c3d-1111-2222-3333-444455556666 Version: $LATEST\n"
+  "[INFO]\t2026-09-13T12:00:00.123Z\t8f1c2c3d-1111-2222-3333-444455556666\tprocessing order 42\n"
+  "[ERROR]\t2026-09-13T12:00:00.456Z\t8f1c2c3d-1111-2222-3333-444455556666\tcharge failed for order 42\n"
+  "Traceback (most recent call last):\n"
+  "  File \"/var/task/handler.py\", line 12, in handler\n"
+  "    charge(order)\n"
+  "  File \"/var/task/billing/charge.py\", line 12, in charge\n"
+  "    raise ValueError(\"boom\")\n"
+  "ValueError: boom\n"
+  "END RequestId: 8f1c2c3d-1111-2222-3333-444455556666\n"
+  "REPORT RequestId: 8f1c2c3d-1111-2222-3333-444455556666\tDuration: 12.34 ms\tBilled Duration: 13 ms\tMemory Size: 128 MB\tMax Memory Used: 64 MB\n")
 w("cloudwatch/subscription-data-message.json", J({"messageType": "DATA_MESSAGE", "owner": "123456789012", "logGroup": "/aws/lambda/orders", "logStream": "2026/09/13/[$LATEST]abc",
   "subscriptionFilters": ["f"], "logEvents": [{"id": "1", "timestamp": 1789000000123, "message": "START RequestId: abc Version: $LATEST"},
                                                {"id": "2", "timestamp": 1789000000456, "message": "2026-09-13T12:00:00.456Z\t8f1c2c3d-1111-2222-3333-444455556666\tERROR\tInvoke Error\t{\"errorType\":\"Error\",\"errorMessage\":\"boom\"}"},

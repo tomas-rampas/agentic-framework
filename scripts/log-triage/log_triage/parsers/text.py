@@ -223,6 +223,10 @@ LAYOUTS: List[Layout] = [
            r"^\[(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL)\]\t(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\t(?P<req>[0-9a-fA-F-]{8,36})\t(?P<msg>.*)$",
            "[ERROR]\t2026-09-13T12:00:00.456Z\t8f1c2c3d-1111-2222-3333-444455556666\tcharge failed", weight=1.5,
            notes="`[LEVEL]\\ttimestamp\\trequestId\\tmessage` lines; tracebacks printed by the runtime follow as continuation"),
+    Layout("aws-lambda-lifecycle", "AWS Lambda invocation lifecycle lines", "AWS Lambda",
+           r"^(?P<msg>(?P<kind>START|END|REPORT) RequestId: (?P<req>[0-9a-fA-F-]{8,36}).*)$",
+           "REPORT RequestId: 8f1c2c3d-1111-2222-3333-444455556666\tDuration: 12.34 ms\tBilled Duration: 13 ms", weight=1.2,
+           notes="START/END/REPORT lines are their own informational (operational) events, never continuation of the previous record"),
     # --- generic fallbacks ------------------------------------------------------
     Layout("generic-ts", "generic timestamp-first line", "any",
            r"^\[?(?P<ts>" + _TS + r")\]?\s*[|:-]?\s*(?:\[(?P<thread>[^\]\s]{1,40})\]\s*)?(?:\[?(?P<level>" + _LEVELS + r")\]?\s*[:|-]?\s+)?(?P<msg>.*)$",
@@ -589,6 +593,9 @@ class TextEngine:
             if rm:
                 ev.http_method = rm.group("m")
                 ev.http_path = rm.group("p").split("?", 1)[0][:300]
+        if layout is not None and layout.id == "aws-lambda-lifecycle":
+            ev.set_level("INFO")
+            ev.category_hint = "operational"
         if layout is not None and layout.id == "apache-error":
             if f.get("module"):
                 ev.logger = f["module"]

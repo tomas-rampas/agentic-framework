@@ -92,6 +92,7 @@ CASES = [
     (("json", "pretty-concatenated.json"), "json", 2, "root-objects", lambda e: e[1].message == "b"),
     (("json", "es-hits.json"), "ecs-json", 1, "envelope", lambda e: e[0].service == "orders" and e[0].level_text == "error"),
     (("cloudwatch", "get-log-events.json"), "cloudwatch-json", 2, "envelope", lambda e: e[0].exceptions[0].type == "requests.exceptions.ConnectionError" and e[0].ts_observed is None and e[1].level_text == "warn"),
+    (("cloudwatch", "lambda-python.log"), "text", 5, "aws-lambda-python", lambda e: e[0].layout == "aws-lambda-lifecycle" and e[0].level_text == "INFO" and e[0].request_id == "8f1c2c3d-1111-2222-3333-444455556666" and e[2].level_text == "ERROR" and e[2].exceptions[0].type == "ValueError" and e[2].exceptions[0].frames[0].file == "/var/task/billing/charge.py" and e[3].message.startswith("END RequestId") and e[4].message.startswith("REPORT RequestId")),
     (("cloudwatch", "subscription-data-message.json"), "cloudwatch-json", 3, "envelope", lambda e: e[0].service == "orders" and e[0].attrs.get("logGroup") == "/aws/lambda/orders" and e[1].level_text == "ERROR" and e[1].request_id == "8f1c2c3d-1111-2222-3333-444455556666" and e[1].message.startswith("Invoke Error") and e[1].layout == "aws-lambda-node" and e[2].level_text == "warning" and "timed out" in e[2].message),
     (("cloudwatch", "insights-results.json"), "cloudwatch-json", 1, "envelope", lambda e: e[0].message.startswith("charge failed") and e[0].level_text == "ERROR" and e[0].attrs.get("logStreamName") == "s1"),
     (("azure", "query-tables.json"), "azure-json", 2, "envelope", lambda e: e[0].level_text == "Error" and e[0].service == "orders" and e[0].request_id == "op1" and e[1].level_text == "Information"),
@@ -129,6 +130,22 @@ class FormatMatrixTests(TriageTestCase):
                 import traceback
                 failures.append("%s: raised %s: %s\n%s" % ("/".join(parts), type(exc).__name__, exc, traceback.format_exc()[-800:]))
         self.assertEqual(failures, [], "\n".join(failures))
+
+    def test_support_matrix_claims_are_exercised(self):
+        """Every text layout and structured dialect published in the support matrix is produced by a fixture."""
+        from log_triage.parsers.structured import DIALECTS
+        from log_triage.parsers.text import LAYOUTS
+        covered = set()
+        for parts, _parser, _count, _sub, _check in CASES:
+            events, ctx, _name, _conf = parse_events(fixture(*parts))
+            covered.update((ctx.layout or "").split("+"))
+            if ctx.dialect:
+                covered.add(ctx.dialect)
+            for ev in events:
+                covered.update((ev.layout or "").replace("json-in-text:", "").split("+"))
+        fallback = {"generic-ts", "generic-level", "generic-json"}   # exercised by the fallback tests
+        self.assertEqual([l.id for l in LAYOUTS if l.id not in covered and l.id not in fallback], [])
+        self.assertEqual([d.id for d in DIALECTS if d.id not in covered and d.id not in fallback], [])
 
     def test_xml_entities_rejected(self):
         for name in ("xxe.xml", "billion-laughs.xml"):

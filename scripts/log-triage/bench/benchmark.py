@@ -90,7 +90,8 @@ def generate(path: str, target_bytes: int, mode: str, seed: int = 20260913, uniq
                 groups.add(key)
             else:
                 # unique alphabetic token (survives templating: no digits) for unique_ratio of the events,
-                # otherwise one of 1,000 repeating tokens -> groups == unique events + repeated tokens seen
+                # otherwise one of 1,000 repeating bases; the trailing word depends on the event index, so the
+                # expected group count is the number of distinct token strings emitted (each is its own template).
                 n = events if rnd.random() < unique_ratio else 10_000_000 + (events % 1000)
                 tok = []
                 while True:
@@ -100,7 +101,7 @@ def generate(path: str, target_bytes: int, mode: str, seed: int = 20260913, uniq
                         break
                 token = "-".join(tok) + "-" + _WORDS[(events * 13) % len(_WORDS)]
                 line = "%s ERROR 1234 --- [orders] [nio-8080-exec-%d] c.a.hc.Worker : queue %s stalled for %dms\n" % (stamp, rnd.randrange(1, 50), token, rnd.randrange(1, 9999))
-                groups.add(n)
+                groups.add(token)
             fh.write(line)
             written += len(line.encode("utf-8"))
             events += 1
@@ -134,17 +135,49 @@ def run_once(input_path: str, out_dir: str, limits: List[str], quiet: bool = Tru
     return result
 
 
+def render_report(paths: List[str]) -> str:
+    """Markdown table of measured runs (one row per run) plus the measurement method."""
+    rows = ["| Run | Input | Events | Groups (expected) | Counts exact | Elapsed | Throughput | Peak RSS | Spilled (spills) | Temp disk peak | Exit |",
+            "|---|---|---|---|---|---|---|---|---|---|---|"]
+    method = None
+    for path in paths:
+        with open(path, "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+        method = method or doc.get("measurement")
+        for r in doc.get("results", []):
+            m = r.get("measured", {})
+            exp = r.get("expected", {})
+            rows.append("| %s | %.0f MiB (%s bytes) | %s | %s (%s) | %s | %.1f s | %.2f MiB/s | %.1f MiB | %s (%s) | %s | %s |" % (
+                r.get("name"), r.get("input_bytes", 0) / 1048576.0, "{:,}".format(r.get("input_bytes", 0)),
+                "{:,}".format(m.get("events_included", 0)), "{:,}".format(m.get("groups_total", 0)), "{:,}".format(exp.get("groups", 0)),
+                "yes" if r.get("counts_match") else "NO", m.get("elapsed_seconds", 0.0), r.get("throughput_mib_per_s", 0.0),
+                m.get("peak_rss_kib", 0) / 1024.0, "yes" if m.get("spilled") else "no", m.get("spill_count", 0),
+                ("%.2f GiB" % (m.get("temp_bytes_peak", 0) / 1073741824.0)) if m.get("temp_bytes_peak") else "0",
+                m.get("exit_code")))
+    out = "\n".join(rows)
+    if method:
+        out += "\n\nMeasurement: " + "; ".join("%s = %s" % (k, v) for k, v in method.items())
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sizes-mib", default="256,512")
     ap.add_argument("--modes", default="normal,high-cardinality")
-    ap.add_argument("--work", required=True, help="scratch directory for generated inputs and outputs")
-    ap.add_argument("--out", required=True, help="results JSON path")
+    ap.add_argument("--work", help="scratch directory for generated inputs and outputs (required unless --report)")
+    ap.add_argument("--out", help="results JSON path (required unless --report)")
     ap.add_argument("--limit", action="append", default=[], help="extra --limit KEY=VALUE passed to the analyzer (fixed across sizes)")
     ap.add_argument("--keep-inputs", action="store_true")
     ap.add_argument("--unique-ratio", type=float, default=0.25, help="high-cardinality mode: fraction of events with a unique token (default 0.25)")
     ap.add_argument("--child", help=argparse.SUPPRESS)   # internal: run a single measurement in a fresh process
+    ap.add_argument("--report", nargs="+", metavar="RESULTS_JSON",
+                    help="render one or more results files as a Markdown table (no benchmark is run)")
     args = ap.parse_args()
+    if args.report:
+        print(render_report(args.report))
+        return 0
+    if not args.work or not args.out:
+        ap.error("--work and --out are required")
     if args.child:
         spec = json.loads(args.child)
         print(json.dumps(run_once(spec["input"], spec["out"], spec["limits"])))

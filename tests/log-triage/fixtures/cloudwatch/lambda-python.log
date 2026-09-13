@@ -1,0 +1,11 @@
+START RequestId: 8f1c2c3d-1111-2222-3333-444455556666 Version: $LATEST
+[INFO]	2026-09-13T12:00:00.123Z	8f1c2c3d-1111-2222-3333-444455556666	processing order 42
+[ERROR]	2026-09-13T12:00:00.456Z	8f1c2c3d-1111-2222-3333-444455556666	charge failed for order 42
+Traceback (most recent call last):
+  File "/var/task/handler.py", line 12, in handler
+    charge(order)
+  File "/var/task/billing/charge.py", line 12, in charge
+    raise ValueError("boom")
+ValueError: boom
+END RequestId: 8f1c2c3d-1111-2222-3333-444455556666
+REPORT RequestId: 8f1c2c3d-1111-2222-3333-444455556666	Duration: 12.34 ms	Billed Duration: 13 ms	Memory Size: 128 MB	Max Memory Used: 64 MB
