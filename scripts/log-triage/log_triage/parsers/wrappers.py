@@ -154,6 +154,7 @@ class AppleCrashParser(BaseParser):
     def parse(self, lines: Lines, ctx: ParseContext) -> Iterator[Event]:
         ctx.layout = "apple-crash"
         block: List[str] = []
+        block_bytes = 0
         start: Optional[Tuple[int, int]] = None
         seen_exception = False
         for line_no, offset, text, truncated in lines:
@@ -164,12 +165,14 @@ class AppleCrashParser(BaseParser):
                     if ev is not None:
                         yield ev
                 block = []
+                block_bytes = 0
                 start = (line_no, offset)
                 seen_exception = False
             if start is None:
                 start = (line_no, offset)
-            if len(block) < ctx.limits.max_multiline_lines:
+            if len(block) < ctx.limits.max_multiline_lines and block_bytes < ctx.limits.max_record_bytes:
                 block.append(text)
+                block_bytes += len(text)
             if text.startswith("Exception Type:") or text.startswith("Crashed Thread:"):
                 seen_exception = True
         if start is not None and block:

@@ -272,7 +272,8 @@ class LineReader:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
             text = data.decode("utf-8", "replace")
-            self.replacements += text.count("�")
+            # count only the replacements made here, not U+FFFD characters the input already contained
+            self.replacements += text.count("\ufffd") - data.count(b"\xef\xbf\xbd")
         self.lines += 1
         if truncated:
             self.truncated_lines += 1

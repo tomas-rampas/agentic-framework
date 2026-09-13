@@ -297,6 +297,29 @@ class Diagnostic:
                 "input": self.input, "line": self.line, "count": self.count}
 
 
+def safe_int(value: Any, max_digits: int = 18) -> Optional[int]:
+    """Convert log-derived text to int without ever raising.
+
+    Python (3.11+, and the security backports of 3.8-3.10) refuses ``int()`` on strings longer
+    than 4300 digits; a hostile or corrupt token must not turn into a parser error that loses the
+    whole input. Values longer than ``max_digits`` digits are not integers a log can mean.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if -10 ** max_digits < value < 10 ** max_digits else None
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")) or abs(value) >= 10 ** max_digits:
+            return None
+        return int(value)
+    if isinstance(value, str):
+        s = value.strip()
+        body = s[1:] if s[:1] in "+-" else s
+        if body.isdigit() and body.isascii() and len(body) <= max_digits:
+            return int(s)
+    return None
+
+
 class DiagnosticSink:
     """Bounded diagnostics store: keeps up to ``max_diagnostics`` records and exact per-code counts."""
 

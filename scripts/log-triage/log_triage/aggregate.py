@@ -114,6 +114,9 @@ class GroupAcc:
         for ex in other.examples:
             if len(self.examples) < limits.max_examples_per_group:
                 self.examples.append(ex)
+            else:
+                # the retained examples are full: the newest of the incoming ones becomes last-seen
+                self.last_example = ex
         if other.last_example is not None:
             self.last_example = other.last_example
         for t in other.trace_ids:
@@ -180,6 +183,12 @@ class GroupStore:
                     ev.attrs[k] = r.redact_attr(k, v)
         if ev.http_path:
             ev.http_path = r.redact(ev.http_path)
+        if ev.raw_excerpt:
+            ev.raw_excerpt = r.redact(ev.raw_excerpt)
+        for exc in ev.exceptions:
+            for fr in exc.frames:
+                if fr.raw and r.prefilter_hit(fr.raw):
+                    fr.raw = r.redact(fr.raw)
 
     def add(self, ev: Event) -> str:
         limits = self.limits

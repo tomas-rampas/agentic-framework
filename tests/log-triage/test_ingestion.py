@@ -140,3 +140,34 @@ class ReaderTests(TriageTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HostileTokenTests(TriageTestCase):
+    def test_huge_numeric_tokens_do_not_fail_the_input(self):
+        big = "9" * 5000
+        node = ("2026-09-13T12:00:00.000Z error: boom\n"
+                "Error: boom\n"
+                "    at handler (/app/src/x.js:" + big + ":5)\n"
+                "2026-09-13T12:00:01.000Z info: ok\n")
+        rails = ("Started GET \"/x\" for 127.0.0.1 at 2026-09-13 12:00:00 +0000\n"
+                 "Completed 500 Internal Server Error in " + big + "ms (Allocations: 1)\n")
+        access = "10.0.0.1 - - [13/Sep/2026:12:00:00 +0000] \"GET /x HTTP/1.1\" 502 " + big + " \"-\" \"curl\"\n"
+        csv = "time,level,message,status\n2026-09-13T12:00:00Z,ERROR,\"charge failed\"," + big + "\n"
+        paths = [self.write("node.log", node), self.write("rails.log", rails), self.write("access.log", access), self.write("events.csv", csv)]
+        doc = self.analyze(paths, formats=["json"])
+        by_path = {f["path"]: f for f in doc["inputs"]["files"]}
+        for p in paths:
+            self.assertEqual(by_path[p]["status"], "processed", by_path[p])
+            self.assertGreaterEqual(by_path[p]["events"], 1, by_path[p])
+        self.assertEqual(doc["status"]["completion"], "complete", doc["status"])
+        self.assertEqual(doc["diagnostics"]["counts_by_code"].get("parser-error", 0), 0)
+
+    def test_nul_bytes_in_text_do_not_alias_the_template_sentinel(self):
+        line = "2026-09-13 12:00:00,123 - app - ERROR - request \x00zz\x00 to backend returned status 500 for user 42\n"
+        path = self.write("nul.log", (line * 3).encode("utf-8"), binary=True)
+        doc = self.analyze([path], formats=["json"])
+        self.assertEqual(doc["status"]["completion"], "complete", doc["status"])
+        self.assertEqual(doc["coverage"]["events_included"], 3)
+        self.assertEqual(len(doc["groups"]), 1)
+        self.assertIn("status 500", doc["groups"][0]["template"])
+

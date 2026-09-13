@@ -321,8 +321,11 @@ def investigate_all(store, repos: RepoSet, limits, options) -> Dict[str, Any]:
     queue: List[Dict[str, Any]] = []
     if not repos.repos:
         return summary
+    import itertools
     n = 0
-    for acc in list(store.iter_accs()):
+    # attribution only exists on the first max_attributed_groups groups, so that prefix is all that
+    # can be investigated; it is materialised as a bounded list (the store may be disk-backed)
+    for acc in list(itertools.islice(store.iter_accs(), limits.max_attributed_groups)):
         att = acc.attribution or {}
         if n >= limits.max_investigations:
             if att.get("status") in ("resolved", "ambiguous"):

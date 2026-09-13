@@ -17,7 +17,7 @@ import re
 from typing import Any, Dict, Iterator, List, Optional
 from xml.parsers import expat
 
-from ..model import Event, ExceptionInfo, Frame, level_from_text, level_from_winevt
+from ..model import Event, ExceptionInfo, Frame, level_from_text, level_from_winevt, safe_int
 from .base import BaseParser, Lines, ParseContext, set_ts
 from .exceptions import parse_exception_block, _in_app
 from .text import _promote_attrs
@@ -275,8 +275,8 @@ class XmlParser(BaseParser):
         if ex is not None:
             ev.process = ex.attrs.get("ProcessID")
             ev.thread = ex.attrs.get("ThreadID")
-        if lvl and lvl.isdigit():
-            num, text = level_from_winevt(int(lvl))
+        if safe_int(lvl) is not None:
+            num, text = level_from_winevt(safe_int(lvl))
             ri = node.child("RenderingInfo")
             rtext = ri.child("Level").get_text() if ri is not None and ri.child("Level") is not None else None
             ev.set_level(rtext or text, num)
@@ -380,8 +380,8 @@ class XmlParser(BaseParser):
         ms = node.child("millis")
         if d is not None and d.get_text():
             set_ts(ev, ctx, d.get_text())
-        elif ms is not None and ms.get_text().isdigit():
-            set_ts(ev, ctx, int(ms.get_text()))
+        elif ms is not None and safe_int(ms.get_text()) is not None:
+            set_ts(ev, ctx, safe_int(ms.get_text()))
         lg = node.child("logger")
         ev.logger = lg.get_text() if lg is not None else None
         lv = node.child("level")
@@ -400,7 +400,7 @@ class XmlParser(BaseParser):
             for fr in ex.children_named("frame")[: limits.max_frames]:
                 c, mm, ln = fr.child("class"), fr.child("method"), fr.child("line")
                 func = "%s.%s" % (c.get_text() if c else "?", mm.get_text() if mm else "?")
-                line_i = int(ln.get_text()) if ln is not None and ln.get_text().isdigit() else None
+                line_i = safe_int(ln.get_text()) if ln is not None else None
                 frames.append(Frame(func, None, line_i, _in_app(func, None)))
             text = em.get_text() if em is not None else ""
             typ, _, msg = text.partition(": ")

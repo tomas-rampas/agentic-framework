@@ -5,7 +5,7 @@ import csv
 import re
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from ..model import Event, level_from_text
+from ..model import Event, level_from_text, safe_int
 from .base import BaseParser, Lines, ParseContext, set_ts
 from .exceptions import parse_exception_block
 from .text import _HTTP_STATUS_RE, _promote_attrs
@@ -236,8 +236,9 @@ class TabularParser(BaseParser):
             ev.host = cell("host")
             ev.request_id = cell("req")
             st = cell("status")
-            if st and st.isdigit() and 100 <= int(st) <= 599:
-                ev.http_status = int(st)
+            st_i = safe_int(st)
+            if st_i is not None and 100 <= st_i <= 599:
+                ev.http_status = st_i
             ev.http_method = cell("method")
             ev.http_path = cell("path")
             exc = cell("exc")
@@ -335,7 +336,7 @@ class IisW3cParser(BaseParser):
             elif date or time_:
                 set_ts(ev, ctx, date or time_)
             status = rec.get("sc-status")
-            st = int(status) if status and status.isdigit() else None
+            st = safe_int(status)
             ev.http_status = st
             ev.http_method = rec.get("cs-method")
             ev.http_path = (rec.get("cs-uri-stem") or "")[:300] or None

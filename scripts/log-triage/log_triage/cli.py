@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
 import time
 from typing import Any, Dict, List, Optional
@@ -100,6 +101,8 @@ def _parse_formats(values: Optional[List[str]]) -> List[str]:
     for c in chosen:
         if c not in out:
             out.append(c)
+    if not out:
+        raise UsageError("--format selected no report format (use auto or a comma-separated list)")
     return out
 
 
@@ -280,7 +283,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         try:
             analysis = run_analysis(options)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, sqlite3.Error) as exc:
             sys.stderr.write("log-triage: error: %s\n" % exc)
             return EXIT_FAILURE
     try:

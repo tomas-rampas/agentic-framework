@@ -46,6 +46,11 @@ class TriageTestCase(unittest.TestCase):
     def out_dir(self, name: str = "out") -> str:
         return os.path.join(self.tmp, name)
 
+    @staticmethod
+    def read_text(path: str) -> str:
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read()
+
     def analyze(self, inputs: List[str], extra: Optional[List[str]] = None, formats: Optional[List[str]] = None,
                 expect_code: Optional[int] = 0, env: Optional[Dict[str, str]] = None, out: Optional[str] = None) -> Dict[str, Any]:
         out = out or self.out_dir()

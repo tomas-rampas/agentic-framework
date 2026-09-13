@@ -175,11 +175,9 @@ def attribute_all(store, repos: RepoSet, limits) -> Dict[str, Any]:
     if not repos.repos:
         return summary
     from .aggregate import acc_to_dict
-    n = 0
-    for acc in list(store.iter_accs()):
-        if n >= limits.max_attributed_groups:
-            break
-        n += 1
+    import itertools
+    # only the top max_attributed_groups groups are materialised (the store may hold millions on disk)
+    for acc in list(itertools.islice(store.iter_accs(), limits.max_attributed_groups)):
         g = acc_to_dict(acc, store.input_paths)
         res = attribute_group(g, repos, limits)
         acc.attribution = res

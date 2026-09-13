@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from ..model import Event, level_from_syslog, level_from_text
+from ..model import Event, level_from_syslog, level_from_text, safe_int
 from .base import BaseParser, Lines, ParseContext, set_ts
 from .exceptions import (CONTINUATION_RE, EXCEPTION_START_RE, HEADLINE_EXPECTS_BODY_RE, TERMINATION_RE,
                          is_exception_headline, parse_exception_block)
@@ -549,12 +549,12 @@ class TextEngine:
             msg = _erlang_report_message(kind, cont)
             ev.category_hint = "application_crash" if kind in ("CRASH", "SUPERVISOR") else None
         if layout is not None and layout.ecosystem == "syslog":
-            pri = f.get("pri")
+            pri = safe_int(f.get("pri"))
             if pri is not None:
-                sev = int(pri) % 8
+                sev = pri % 8
                 num, text = level_from_syslog(sev)
                 ev.set_level(text, num)
-                ev.add_attr("syslog.facility", int(pri) // 8, self.limits)
+                ev.add_attr("syslog.facility", pri // 8, self.limits)
             tag = f.get("tag") or f.get("app")
             if tag and tag != "-":
                 ev.service = tag
@@ -576,8 +576,8 @@ class TextEngine:
             ev.http_path = path.split("?", 1)[0][:300]
             ev.host = None
             ev.add_attr("client_ip", f.get("client"), self.limits)
-            if f.get("bytes") and f["bytes"].isdigit():
-                ev.add_attr("bytes", int(f["bytes"]), self.limits)
+            if safe_int(f.get("bytes")) is not None:
+                ev.add_attr("bytes", safe_int(f["bytes"]), self.limits)
             if f.get("ua"):
                 ev.add_attr("user_agent", f["ua"], self.limits)
             msg = "%s %s -> %d" % (method or "?", ev.http_path, status)
@@ -615,7 +615,8 @@ class TextEngine:
                 mm = _RAILS_COMPLETED.match(c.strip())
                 if mm:
                     status = int(mm.group("status"))
-                    ev.add_attr("duration_ms", int(mm.group("dur")), self.limits)
+                    if safe_int(mm.group("dur")) is not None:
+                        ev.add_attr("duration_ms", safe_int(mm.group("dur")), self.limits)
                 pm = _RAILS_PROCESSING.match(c.strip())
                 if pm:
                     ev.add_attr("controller", pm.group("ctrl"), self.limits)
@@ -830,11 +831,13 @@ class TextParser(BaseParser):
         if not layouts and not self.layout_id:
             head: List[str] = []
             buffered: List[Tuple[int, int, str, bool]] = []
+            head_bytes = 0
             it = iter(lines)
             for item in it:
                 buffered.append(item)
                 head.append(item[2])
-                if len(head) >= ctx.limits.detect_sample_lines:
+                head_bytes += len(item[2])
+                if len(head) >= ctx.limits.detect_sample_lines or head_bytes >= ctx.limits.detect_sample_bytes:
                     break
             layouts, conf, _ = choose_layouts(head, ctx)
             if layouts and conf < 0.3:
@@ -878,6 +881,7 @@ class LazyTextEngine:
         self.ctx = ctx
         self.parser_name = parser_name
         self._buffer: List[Tuple[int, int, str, bool, Optional[dict]]] = []
+        self._buffer_bytes = 0
         self._engine: Optional[TextEngine] = None
         self.layout_ids: Optional[str] = None
 
@@ -894,7 +898,8 @@ class LazyTextEngine:
              base: Optional[dict] = None) -> List[Event]:
         if self._engine is None:
             self._buffer.append((line_no, offset, text, truncated, base))
-            if len(self._buffer) < self.ctx.limits.detect_sample_lines:
+            self._buffer_bytes += len(text)
+            if len(self._buffer) < self.ctx.limits.detect_sample_lines and self._buffer_bytes < self.ctx.limits.detect_sample_bytes:
                 return []
             return self._replay()
         return self._engine.feed(line_no, offset, text, truncated, base)

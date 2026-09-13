@@ -62,7 +62,8 @@ class RepoTests(TriageTestCase):
             self.assertIn(r["working_tree_dirty"], (True, False, None))
             self.assertGreater(r["inventory"]["files_indexed"], 0)
         orders = next(r for r in repos["discovered"] if r["name"] == "orders")
-        self.assertEqual(orders["branch"], "master" if orders["branch"] == "master" else orders["branch"])
+        self.assertTrue(orders["branch"], "branch name recorded")
+        self.assertRegex(orders["head"], r"^[0-9a-f]{40}$")
         self.assertIn("Acme.Orders", orders["inventory"]["namespaces"])
 
     def test_discovery_limits_reported(self):

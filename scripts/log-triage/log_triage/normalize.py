@@ -106,6 +106,8 @@ def _norm_url(m: "re.Match") -> str:
 
 def template(text: Optional[str], max_chars: int = 1000) -> str:
     """Normalize ``text`` into a message template (deterministic, version 1)."""
+    if text and "\x00" in text:
+        text = text.replace("\x00", "")   # NUL is the protect sentinel; log NULs must not alias it
     if not text:
         return ""
     s = text
@@ -142,7 +144,7 @@ def template(text: Optional[str], max_chars: int = 1000) -> str:
     s = _WORDDIGITS.sub("<n>", s)
     s = _WS.sub(" ", s).strip()
     if protected:
-        s = re.sub(r"\x00([a-z]+)\x00", lambda m: protected[_from_alpha(m.group(1))], s)
+        s = re.sub(r"\x00([a-z]+)\x00", lambda m: protected[_from_alpha(m.group(1))] if _from_alpha(m.group(1)) < len(protected) else "", s)
     if len(s) > max_chars:
         s = s[:max_chars]
     return s

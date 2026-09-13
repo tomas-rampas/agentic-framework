@@ -157,3 +157,26 @@ class CliContractTests(TriageTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InvocationEdgeTests(TriageTestCase):
+    def test_only_excluded_inputs_is_a_processing_failure(self):
+        path = self.write("photo.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 64, binary=True)
+        doc = self.analyze([path], formats=["json"], expect_code=1)
+        self.assertEqual(doc["status"]["completion"], "failed")
+        self.assertEqual(doc["status"]["exit_code"], 1)
+        self.assertTrue(any("excluded" in r for r in doc["status"]["reasons"]), doc["status"]["reasons"])
+        self.assertEqual(doc["coverage"]["events_included"], 0)
+
+    def test_empty_format_list_is_a_usage_error(self):
+        path = self.write("a.log", "2026-09-13 12:00:00 ERROR boom\n")
+        for value in (",", ""):
+            code, so, se = run_cli([path, "--out", self.out_dir("fmt"), "--format", value, "--quiet"])
+            self.assertEqual(code, 2, se)
+            self.assertIn("format", se.lower())
+
+    def test_generated_at_honours_now(self):
+        path = self.write("a.log", "2026-09-13 12:00:00 ERROR boom\n")
+        doc = self.analyze([path], formats=["json"])
+        self.assertEqual(doc["generated_at"], "2026-09-14T00:00:00Z")
+

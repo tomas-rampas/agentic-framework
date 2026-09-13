@@ -211,7 +211,7 @@ class HtmlExporter(Exporter):
         if meta.get("diagnostics", {}).get("total"):
             lim_notes.append("%s diagnostic(s) were recorded during parsing; see section 7." % _fmt_int(meta["diagnostics"]["total"]))
         if repos.get("incomplete"):
-            lim_notes.append("Repository discovery was incomplete: %s." % esc("; ".join(repos.get("incomplete_reasons", []))))
+            lim_notes.append("Repository discovery was incomplete: %s." % "; ".join(repos.get("incomplete_reasons", [])))
         if repos.get("discovered"):
             lim_notes.append("Source references were checked against the current checkouts, which may not match the version that produced the logs.")
         if lim_notes:
@@ -394,7 +394,7 @@ class HtmlExporter(Exporter):
             o.append('<div>Services</div><div>%s</div>' % esc(svc))
         hosts = g.get("hosts") or {}
         if hosts.get("distinct"):
-            o.append('<div>Hosts</div><div>%s distinct%s</div>' % (hosts["distinct"], " (bounded sample)" if hosts.get("truncated") else ""))
+            o.append('<div>Hosts</div><div>%s distinct%s</div>' % (esc(hosts["distinct"]), " (bounded sample)" if hosts.get("truncated") else ""))
         if g.get("logger"):
             o.append('<div>Logger</div><div><code>%s</code></div>' % esc(g["logger"]))
         if g.get("http"):

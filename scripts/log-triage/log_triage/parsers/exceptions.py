@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import List, Optional, Tuple
 
-from ..model import ExceptionInfo, Frame
+from ..model import safe_int, ExceptionInfo, Frame
 
 # ---------------------------------------------------------------------------
 # Headlines
@@ -126,7 +126,7 @@ def _in_app(func: Optional[str], file: Optional[str]) -> bool:
 
 
 def _mk_frame(func: Optional[str], file: Optional[str], line: Optional[str], raw: str) -> Frame:
-    ln = int(line) if line and line.isdigit() else None
+    ln = safe_int(line) if line else None
     return Frame(func, file, ln, _in_app(func, file), raw if len(raw) < 400 else raw[:400])
 
 

@@ -57,12 +57,12 @@ class RedactionTests(unittest.TestCase):
 class HostileContentTests(TriageTestCase):
     def test_reports_escape_log_content(self):
         secret_line = "2026-09-13 12:00:02 ERROR login user=eve@example.com password=" + "hunter2secret" + " token=" + "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijklmnop" + "\n"
-        path = self.write("hostile.log", open(fixture("edge", "hostile.log"), encoding="utf-8").read() + secret_line)
+        path = self.write("hostile.log", self.read_text(fixture("edge", "hostile.log")) + secret_line)
         doc = self.analyze([path], formats=["json", "html", "markdown", "csv", "ndjson", "sarif"])
         out = self.out_dir()
-        html = open(os.path.join(out, "report.html"), encoding="utf-8").read()
-        md = open(os.path.join(out, "report.md"), encoding="utf-8").read()
-        raw_json = open(os.path.join(out, "analysis.json"), encoding="utf-8").read()
+        html = self.read_text(os.path.join(out, "report.html"))
+        md = self.read_text(os.path.join(out, "report.md"))
+        raw_json = self.read_text(os.path.join(out, "analysis.json"))
         # nothing from the log is rendered as markup
         self.assertNotIn("<script>alert", html)
         # parse the DOM: no element from the log content, no event-handler attributes anywhere
@@ -136,9 +136,48 @@ class HostileContentTests(TriageTestCase):
         doc = self.analyze([path], formats=["json", "html", "markdown"])
         self.assertFalse(os.path.exists("/tmp/pwned-log-triage"))
         self.assertEqual(doc["coverage"]["events_included"], 1)
-        md = open(os.path.join(self.out_dir(), "report.md"), encoding="utf-8").read()
+        md = self.read_text(os.path.join(self.out_dir(), "report.md"))
         self.assertIn("rm -rf", md)   # rendered as text
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RedactionCoverageTests(TriageTestCase):
+    def test_multiline_continuation_text_is_redacted(self):
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijklmnop"
+        secret = "hunter2" + "secret"
+        body = ("2026-09-13 12:00:00,123 - app - ERROR - request failed\n"
+                "    payload: password=%s token=%s\n" % (secret, jwt) +
+                "    contact: eve@example.com card 4111 1111 1111 1111\n"
+                "2026-09-13 12:00:01,123 - app - ERROR - stack follows\n"
+                "Traceback (most recent call last):\n"
+                "  File \"/app/x.py\", line 1, in <module>\n"
+                "    raise ValueError(\"secret=" + "hunter2secret" + "\")\n"
+                "ValueError: secret=" + "hunter2secret" + "\n")
+        path = self.write("multiline-secrets.log", body)
+        doc = self.analyze([path], formats=["json", "html", "markdown", "ndjson", "csv", "sarif"])
+        out = self.out_dir()
+        blobs = [self.read_text(os.path.join(out, n)) for n in ("analysis.json", "report.html", "report.md", "groups.ndjson", "groups.csv", "analysis.sarif")]
+        for blob in blobs:
+            self.assertNotIn("hunter2secret", blob)
+            self.assertNotIn(jwt, blob)
+            self.assertNotIn("eve@example.com", blob)
+            self.assertNotIn("4111 1111 1111 1111", blob)
+        self.assertGreater(sum(doc["coverage"]["redaction"]["counts"].values()), 0)
+        bodies = [ex.get("body") or "" for g in doc["groups"] for ex in g["examples"]]
+        self.assertTrue(any("<redacted:" in b for b in bodies), bodies)
+
+    def test_flattened_attribute_keys_are_redacted(self):
+        rec = {"level": "error", "time": "2026-09-13T12:00:00Z", "msg": "login failed",
+               "ctx": {"password": "hunter2" + "secret", "api_key": "sk_" + "live_0123456789abcdef0123"},
+               "http": {"request": {"headers": {"authorization": "Basic " + "aGVsbG86d29ybGQ="}}}}
+        path = self.write("nested.ndjson", json.dumps(rec) + "\n")
+        doc = self.analyze([path], formats=["json"])
+        raw = self.read_text(os.path.join(self.out_dir(), "analysis.json"))
+        self.assertNotIn("hunter2secret", raw)
+        self.assertNotIn("sk_live_0123456789abcdef0123", raw)
+        self.assertNotIn("aGVsbG86d29ybGQ=", raw)
+        self.assertGreaterEqual(doc["coverage"]["redaction"]["counts"].get("key-value-secret", 0), 2)
+

@@ -147,7 +147,10 @@ def _git(args: List[str], cwd: str, timeout: float = 20.0) -> Optional[str]:
     if shutil.which("git") is None:
         return None
     try:
-        res = subprocess.run(["git"] + args, cwd=cwd, capture_output=True, timeout=timeout, check=False,
+        # A discovered repository's own .git/config is untrusted: core.fsmonitor (and hooks) could run a
+        # program during `git status`; disable them explicitly for every invocation.
+        res = subprocess.run(["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"] + args,
+                             cwd=cwd, capture_output=True, timeout=timeout, check=False,
                              env=dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0"))
     except (OSError, subprocess.SubprocessError):
         return None

@@ -156,10 +156,15 @@ class Redactor:
         """Attribute values are redacted with their key as context (``password=...`` style)."""
         if not self.enabled or not isinstance(value, str) or not value:
             return value
-        if _SENSITIVE_KEY.match(key) and value.lower() not in _PLACEHOLDER_VALUES:
+        leaf = re.split(r"[.@/:]", key)[-1] if key else key   # flattened keys: ctx.password, http.request.headers.authorization
+        if (_SENSITIVE_KEY.match(key) or (leaf and _SENSITIVE_KEY.match(leaf))) and value.lower() not in _PLACEHOLDER_VALUES:
             self._bump("key-value-secret")
             return "<redacted:%s>" % key.lower()
         return self.redact(value)
+
+    def prefilter_hit(self, text: str) -> bool:
+        """Cheap check whether ``text`` could contain something the redactor would touch."""
+        return bool(self.enabled and text and _PREFILTER.search(text))
 
     def summary(self) -> Dict[str, int]:
         return dict(sorted(self.counts.items()))

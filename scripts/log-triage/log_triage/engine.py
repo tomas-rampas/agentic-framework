@@ -250,6 +250,16 @@ def run_analysis(options: Options, stderr=sys.stderr) -> Analysis:
 
     temp_root = tempfile.mkdtemp(prefix="log-triage-", dir=options.temp_dir)
     os.chmod(temp_root, 0o700)
+    try:
+        return _run_with_temp(options, limits, inputs, diagnostics, now, started, temp_root)
+    except BaseException:
+        # any failure that escapes (sqlite errors, bugs, interrupts during export) must not leak the
+        # private temp directory; cleanup() handles the success path
+        shutil.rmtree(temp_root, ignore_errors=True)
+        raise
+
+
+def _run_with_temp(options: Options, limits, inputs, diagnostics, now, started, temp_root: str) -> "Analysis":
     redactor = Redactor(options.redact, options.redact_ips, options.redaction_salt)
     timeline = Timeline(limits.max_timeline_buckets)
     input_paths = {f.id: f.path for f in inputs.files}
@@ -323,10 +333,11 @@ def run_analysis(options: Options, stderr=sys.stderr) -> Analysis:
         completion = "partial"
     if repos.incomplete:
         completion = "partial"
-    if not inputs.files and not inputs.excluded:
+    if not inputs.files:
         completion = "failed"
-        reasons.append("no input files")
-    if all(f.status in ("failed", "excluded") for f in inputs.files) and inputs.files:
+        reasons.append("no input files" if not inputs.excluded else
+                       "no input could be processed: every matched file was excluded (%d)" % len(inputs.excluded))
+    elif all(f.status in ("failed", "excluded") for f in inputs.files):
         completion = "failed"
         reasons.append("no input could be processed")
     reasons = reasons[:50]
@@ -350,7 +361,7 @@ def run_analysis(options: Options, stderr=sys.stderr) -> Analysis:
         "schema_version": SCHEMA_VERSION,
         "tool": {"name": TOOL_NAME, "version": TOOL_VERSION, "fingerprint_version": FINGERPRINT_VERSION,
                  "template_version": TEMPLATE_VERSION, "python": platform.python_version(), "platform": platform.platform()},
-        "generated_at": format_iso(time.time()),
+        "generated_at": format_iso(options.now_epoch or time.time()),
         "analysis_started_at": format_iso(started),
         "duration_seconds": round(time.time() - started, 3),
         "status": {"completion": completion, "reasons": reasons, "interrupted": counters.interrupted,

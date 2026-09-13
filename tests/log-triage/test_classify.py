@@ -6,6 +6,13 @@ from log_triage.model import LEVEL_ERROR, LEVEL_FATAL, LEVEL_INFO, LEVEL_WARN
 
 
 class ClassifyTests(unittest.TestCase):
+    def test_optional_literal_suffix_does_not_break_triggers(self):
+        from log_triage.classify import classify
+        a = classify("connection time out after <dur>", [], None, 13, None, None, None, 1)
+        self.assertEqual(a.category, "timeout")
+        a = classify("request timed out", [], None, 13, None, None, None, 1)
+        self.assertEqual(a.category, "timeout")
+
     def test_observed_crash_is_critical(self):
         a = classify("Unhandled exception. System.NullReferenceException: x", ["System.NullReferenceException"], "", LEVEL_FATAL, None, None, "application_crash")
         self.assertEqual((a.category, a.severity, a.basis), ("application_crash", "critical", "observed"))

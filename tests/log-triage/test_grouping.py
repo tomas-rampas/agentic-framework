@@ -44,6 +44,18 @@ class GroupingTests(TriageTestCase):
         self.assertIn("exc=java.lang.IllegalStateException>java.sql.SQLTransientConnectionException", exc_group["grouping"]["key_components"])
         self.assertEqual(exc_group["fingerprint"], "3852f6e44e77626e85a00a93549fc7716852030753cd75c17978cea3b2859a5c")
 
+    def test_last_seen_example_survives_spill(self):
+        lines = ["2026-09-13 12:00:0%d,000 - app - ERROR - same message %d\n" % (i, i) for i in range(3)]
+        lines.insert(1, "2026-09-13 12:00:05,000 - app - ERROR - other message\n")
+        path = self.write("spill-examples.log", "".join(lines))
+        doc = self.analyze([path], formats=["json"], extra=["--max-groups-in-memory", "1", "--max-examples", "1"])
+        g = next(g for g in doc["groups"] if g["template"].startswith("same message"))
+        self.assertEqual(g["count"], 3)
+        last = [ex for ex in g["examples"] if ex.get("is_last_seen")]
+        self.assertEqual(len(last), 1, g["examples"])
+        self.assertEqual(last[0]["timestamp"], "2026-09-13T12:00:02Z")
+        self.assertTrue(doc["aggregation"]["spilled_to_disk"])
+
     def test_spill_to_disk_matches_in_memory(self):
         inputs = [fixture("edge", "grouping-equivalence.log"), fixture("jvm", "jvm-classic.log"), fixture("web", "access-combined.log")]
         mem = self.analyze(inputs)

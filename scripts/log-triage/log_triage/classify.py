@@ -182,7 +182,11 @@ def _derive_triggers(src: str) -> Optional[set]:
         m = re.match(r"^([a-z0-9 _-]+)", a)
         if not m:
             return None
-        words = [w for w in _WORD_RE.findall(m.group(1)) if len(w) >= 2]
+        lit = m.group(1)
+        rest = a[len(lit):]
+        if rest[:1] in ("?", "*") or rest.startswith("{0"):
+            lit = lit[:-1]     # the last literal char is optional ("timed? ?out" -> "time")
+        words = [w for w in _WORD_RE.findall(lit) if len(w) >= 2]
         if not words:
             return None
         # the leading literal run ends before a metacharacter; the last word may be a prefix of a longer

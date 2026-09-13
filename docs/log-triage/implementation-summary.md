@@ -30,7 +30,7 @@ scripts/log-triage/
     ├── timestamps.py           ISO/CLF/syslog/JUL/glog/epoch parsing, zone/year inference, --since
     ├── model.py                canonical Event/Frame/ExceptionInfo, level scale, DiagnosticSink
     ├── parsers/                registry + bounded-sample detection
-    │   ├── text.py             layout engine (41 layouts, mixed layouts, multiline records), generic fallback
+    │   ├── text.py             layout engine (38 producer layouts + 2 generic fallbacks, mixed layouts, multiline records)
     │   ├── exceptions.py       exception/crash/backtrace parsing for every ecosystem
     │   ├── structured.py       JSON/NDJSON dialects, envelopes, platform exports (CloudWatch, Azure, GCP, Loki, ES)
     │   ├── jsonstream.py       incremental JSON item scanner (documents, arrays, envelopes) without loading files
@@ -113,8 +113,12 @@ exercised manually or partially, listed limitations apply; **future** = not impl
   omission is disclosed; HTML/Markdown are bounded separately.
 * **XML** is parsed with entity expansion disabled; documents that rely on entities (DOCTYPE with entity
   declarations) are rejected rather than partially parsed.
-* **Windows**: the engine is pure Python and path handling is cross-platform, but the automated suite has only
-  been executed on Linux in this repository's CI; PowerShell transcript/error-record fixtures are tested there.
+* **Windows**: the engine is pure Python and path handling is cross-platform, but the automated suite runs on the
+  Linux and macOS CI jobs only (the Windows job runs the PowerShell harnesses); PowerShell transcript/error-record
+  fixtures are exercised on the POSIX jobs.
+* **Hostile input is data, not a crash.** Tokens with thousands of digits, NUL bytes in text, and secrets inside
+  multi-line continuation text are handled and tested; a parser bug on an unforeseen input is reported as a
+  `parser-error` diagnostic for that input (status `failed`), never as a traceback, and never silently.
 
 ## Measured performance
 

@@ -100,12 +100,14 @@ order, omission disclosed in `filtering.groups_omitted_by_output_limit`); HTML/M
 | Code | Meaning | Outputs |
 |---|---|---|
 | `0` | analysis complete (findings or not) | written |
-| `1` | processing failure: no input could be processed, or no output file could be written | none / incomplete set |
+| `1` | processing failure: no input could be processed (every matched file was excluded, unreadable or unparseable), or no output file could be written | written when possible (`status.completion = "failed"` with the reason) |
 | `2` | invalid invocation: bad option/format/limit, `auto` mixed with explicit formats, both repository options, no input, nothing matched | none |
 | `3` | partial analysis: outputs written but something is incomplete — an input failed/was excluded as unsupported or changed during analysis, an unmatched argument, a limit was hit, repository discovery was incomplete, temporary storage ran out, or the run was interrupted (Ctrl-C) | written; `status.completion = "partial"` and `status.reasons` list why |
 | `4` | `--fail-on-severity` threshold met by a reported group (takes precedence over 3) | written |
 
-The JSON `status.exit_code` mirrors the process exit code.
+The JSON `status.exit_code` mirrors the process exit code, with one exception: when writing a *later* output file fails
+after `analysis.json` was already written, the process exits 3 (or 1) while the JSON still carries the code computed before
+the export loop; stderr and the process exit code are authoritative in that case.
 
 ### Examples
 
@@ -208,7 +210,10 @@ pattern-based; secrets in unusual formats, split across lines, or in free prose 
 See [canonical-model.md](canonical-model.md#repository-attribution) for the evidence weights. In short: `--repo` validates a repository or worktree;
 `--repos-dir` discovers repositories with bounded traversal (depth, directories, count), skipping dependency/build directories and never following
 directory symlinks by default; nested repositories are not searched unless `--include-nested-repos`. Each repository's HEAD, branch and working-tree
-state (via `git status`, when git is available) are recorded because the checkout may not be the version that produced the logs. Attribution uses
+state (via `git status`, when git is available) are recorded because the checkout may not be the version that produced the logs.
+A discovered repository's own `.git/config` is treated as untrusted: every git invocation disables `core.fsmonitor` and
+`core.hooksPath` so that repository configuration cannot execute a program during discovery, and the engine never writes
+into a repository. Attribution uses
 path, namespace/symbol and service-name evidence; a basename match alone never resolves. Deterministic investigation verifies frame references
 (file exists, line exists, symbol nearby) and searches message literals; suggestions are `source_backed` only when a reference was verified,
 otherwise `generic`. No source file is ever modified.

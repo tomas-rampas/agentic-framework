@@ -220,7 +220,7 @@ def parse_offset_spec(spec: str) -> int:
     s = spec.strip()
     if s.lower() in ("utc", "z", "gmt", "local"):
         if s.lower() == "local":
-            return -time.timezone if not time.daylight else -time.altzone
+            return time.localtime().tm_gmtoff   # the offset in effect now, DST included
         return 0
     m = re.match(r"^([+-])(\d{2}):?(\d{2})$", s)
     if not m:
