@@ -495,5 +495,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 12 Commands • v4.3.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 12 Commands • v5.0.0**
 <!-- END GENERATED: framework-stats -->
