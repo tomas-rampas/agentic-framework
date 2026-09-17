@@ -196,7 +196,7 @@ foreach ($tool in @('jq', 'node', 'npx')) {
     }
 }
 if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) {
-    Write-Warning 'uvx (uv) not found on PATH - the serena, fetch and code-review-graph MCP servers will not start without it.'
+    Write-Warning 'uvx (uv) not found on PATH - the serena, fetch, and code-review-graph MCP servers will not start without it.'
 }
 
 $summary = [ordered]@{}

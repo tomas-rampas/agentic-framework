@@ -59,8 +59,8 @@ Write-Host "idempotent re-run"
 $r = Invoke-Installer -ExtraArgs @('-Force')
 Assert 'exits 0' ($r.Code -eq 0)
 Assert 'all hooks unchanged' (([regex]::Matches($r.Out, '(?m)\.ps1\s+unchanged$')).Count -eq $repoHookCount)
-# FIX 1: filesystem was skipped in first run; now skipped again; other 4 servers identical
-Assert 'servers already present (4 identical, 1 skipped again)' (([regex]::Matches($r.Out, 'already present \(identical\)')).Count -eq ($repoMcpNames.Count - 1) -and $r.Out -match 'filesystem.*skipped')
+# FIX 1: filesystem was skipped in the first run and is skipped again; every other server reports identical
+Assert 'servers already present (all but filesystem identical, filesystem skipped again)' (([regex]::Matches($r.Out, 'already present \(identical\)')).Count -eq ($repoMcpNames.Count - 1) -and $r.Out -match 'filesystem.*skipped')
 Assert 'does not rewrite .claude.json' ($r.Out -match 'nothing to add' -and -not (Get-ChildItem $sandboxDir -Filter '.claude.json.bak-*'))
 
 Write-Host "MCP merge never clobbers user definitions"
@@ -79,8 +79,8 @@ $userCfg | ConvertTo-Json -Depth 16 | Set-Content $claudeJson -NoNewline
 $r = Invoke-Installer
 $cfg = Get-Content $claudeJson -Raw | ConvertFrom-Json
 Assert 'exits 0' ($r.Code -eq 0)
-# FIX 1: filesystem skipped due to unresolvable placeholder; expect every framework server except fetch (user's) and filesystem (skipped) added
-Assert 'adds the missing framework servers (filesystem skipped, fetch kept)' ((@($cfg.mcpServers.PSObject.Properties.Name | Where-Object { $_ -in @('context7', 'serena', 'sequential-thinking') }).Count -eq 3) -and $cfg.mcpServers.fetch.command -eq 'my-custom-fetch')
+# FIX 1: filesystem skipped due to unresolvable placeholder; every repo server except fetch (user's) and filesystem (skipped) must be added; the user's own github entry stays identical
+Assert 'adds the missing framework servers (filesystem skipped, fetch kept)' ((@($cfg.mcpServers.PSObject.Properties.Name | Where-Object { $_ -in $repoMcpNames -and $_ -notin @('fetch', 'filesystem') }).Count -eq ($repoMcpCount - 2)) -and $cfg.mcpServers.fetch.command -eq 'my-custom-fetch')
 Assert 'reports the conflicting server as kept' ($r.Out -match 'fetch\s+kept yours')
 Assert 'user definition of conflicting server survives' ($cfg.mcpServers.fetch.command -eq 'my-custom-fetch')
 Assert 'personal (non-framework) server survives' ($cfg.mcpServers.github.command -eq 'my-github-mcp')
@@ -107,8 +107,8 @@ Write-Host "mcpServers present but null (post-reset shape)"
 $r = Invoke-Installer
 $cfg = Get-Content $claudeJson -Raw | ConvertFrom-Json
 Assert 'null mcpServers: exit 0, no crash' ($r.Code -eq 0)
-# FIX 1: filesystem skipped; expect the named non-filesystem servers added
-Assert 'null mcpServers: re-initialized and the named framework servers added (filesystem skipped)' (@($cfg.mcpServers.PSObject.Properties.Name | Where-Object { $_ -in @('context7', 'serena', 'sequential-thinking', 'fetch') }).Count -eq 4 -and $r.Out -match 'filesystem.*skipped')
+# FIX 1: filesystem skipped; every other repo server must be re-added
+Assert 'null mcpServers: re-initialized and every non-filesystem framework server added' (@($cfg.mcpServers.PSObject.Properties.Name | Where-Object { $_ -in $repoMcpNames -and $_ -ne 'filesystem' }).Count -eq ($repoMcpCount - 1) -and $r.Out -match 'filesystem.*skipped')
 Assert 'null mcpServers: unrelated user state survives' ($cfg.userKey -eq 42)
 
 Write-Host "case-colliding keys (real-world Windows projects map)"
@@ -180,7 +180,7 @@ Assert 'exits 0 with MCP_FS_ROOT unset' ($r.Code -eq 0)
 Assert 'filesystem server skipped (MCP_FS_ROOT unset)' ($cfg['mcpServers']['filesystem'] -eq $null -and $r.Out -match 'filesystem.*skipped')
 Assert 'warning message names the unresolved variable' ($r.Out -match 'MCP_FS_ROOT is not set')
 $otherServers = @($cfg['mcpServers'].Keys | Where-Object { $_ -ne 'filesystem' })
-Assert "other servers added ($($otherServers.Count) servers)" (@($repoMcpNames | Where-Object { $_ -ne 'filesystem' } | Where-Object { $cfg['mcpServers'].Contains($_) }).Count -ge 4)
+Assert "other servers added ($($otherServers.Count) servers)" (@($repoMcpNames | Where-Object { $_ -ne 'filesystem' } | Where-Object { $cfg['mcpServers'].Contains($_) }).Count -eq ($repoMcpCount - 1))
 
 # Test 3: empty-arg resolve - set MCP_FS_ROOT means filesystem added with exact path
 $testRootPath = Join-Path $workRoot 'test-fs-root'
