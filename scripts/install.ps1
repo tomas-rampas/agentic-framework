@@ -281,7 +281,7 @@ if ($SkipMcp) {
     Write-Host '  skipped (-SkipMcp).'
     $summary['mcp'] = 'skipped'
 } else {
-    $mcpSourcePath = Join-Path $repoRoot 'mcp-plugin/.mcp.json'
+    $mcpSourcePath = Join-Path $repoRoot '.mcp.json'
     $frameworkMcp  = (Get-Content $mcpSourcePath -Raw | ConvertFrom-Json -AsHashtable).mcpServers
 
     # -AsHashtable everywhere in this section: real-world ~/.claude.json files

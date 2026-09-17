@@ -1,9 +1,9 @@
 ---
-description: Configure environment variables for the agentic-framework-mcp servers (Context7 API key, filesystem root)
+description: Configure environment variables for the agentic-framework MCP servers (Context7 API key, filesystem root)
 argument-hint: (no arguments)
 ---
 
-# /agentic-framework-mcp:setup — Configure MCP Environment
+# /agentic-framework:setup — Configure MCP Environment
 
 ## Overview
 
@@ -11,7 +11,7 @@ This command configures environment variables for the agentic-framework MCP serv
 - **CONTEXT7_API_KEY** — API key for the context7 documentation server (optional; keyless operation is supported)
 - **MCP_FS_ROOT** — filesystem server root directory (optional; defaults to project directory)
 
-**Important:** This command is part of the agentic-framework-mcp plugin and works standalone, without requiring the core agentic-framework plugin. Execute all shell commands directly in your own terminal using your Bash or PowerShell tooling — do not delegate to agents.
+**Important:** This command is part of the agentic-framework plugin, whose MCP servers are built in. Execute all shell commands directly in your own terminal using your Bash or PowerShell tooling — do not delegate to agents.
 
 ---
 

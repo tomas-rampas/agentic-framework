@@ -617,18 +617,17 @@ section "[15] Plugin version mismatch (core): set .claude-plugin/plugin.json .ve
 }
 
 # ===========================================================================
-# CASE 16 - Plugin version mismatch (mcp): mcp-plugin/.claude-plugin/plugin.json
-#           has different version than expected.
+# CASE 16 - Root .mcp.json missing: check 15 can no longer resolve the set of
+#           known MCP servers, so agent mcpServers declarations are unvalidatable.
 # ===========================================================================
-section "[16] Plugin version mismatch (mcp): set mcp-plugin/.claude-plugin/plugin.json .version to 9.9.9 -> non-zero"
+section "[16] Root .mcp.json missing: delete .mcp.json in the copy -> non-zero (check 15 cannot validate mcpServers)"
 {
   copy="$(make_copy)"
   _verify_copy "$copy"
-  jq '.version = "9.9.9"' "$copy/mcp-plugin/.claude-plugin/plugin.json" > "$copy/mcp-plugin/.claude-plugin/plugin.json.tmp" \
-    && mv "$copy/mcp-plugin/.claude-plugin/plugin.json.tmp" "$copy/mcp-plugin/.claude-plugin/plugin.json"
-  run_validate "$copy" 13
-  assert_rc_nonzero "validator fails on mcp plugin version mismatch"
-  assert_out_contains "reports version mismatch for mcp plugin" "version mismatch"
+  rm "$copy/.mcp.json"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when the root .mcp.json is missing"
+  assert_out_contains "reports that no mcpServers keys could be read" "has no .mcpServers keys"
   rm -rf "$copy"
 }
 

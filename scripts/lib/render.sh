@@ -130,7 +130,7 @@ render_framework_stats() {
 #     agents/skills/commands  -> fact_counts (claude.json + filesystem)
 #     categories / tiers      -> claude.json .agent_categories / .sub_agents[].model
 #     hook pairs              -> hooks/<name>.ps1 that have a matching <name>.sh
-#     MCP servers             -> mcp-plugin/.mcp.json .mcpServers (keys_unsorted,
+#     MCP servers             -> .mcp.json .mcpServers (keys_unsorted,
 #                                so the listed order follows the file)
 #     validator checks        -> the `_check_on <n>` call registry inside
 #                                scripts/validate-consistency.sh (self-registering;
@@ -177,7 +177,7 @@ render_team_presentation_stats() {
   done
   shopt -u nullglob
 
-  local mcp_json="$root/mcp-plugin/.mcp.json"
+  local mcp_json="$root/.mcp.json"
   mcp_count="$(_facts_jq -r '.mcpServers // {} | keys | length' "$mcp_json")" || return 1
   mcp_list="$(_facts_jq -r '.mcpServers // {} | keys_unsorted | join(", ")' "$mcp_json")" || return 1
 

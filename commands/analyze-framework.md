@@ -90,7 +90,7 @@ Verifies the skills on disk parse and match the documented roster. See README's 
 ```
 ${CLAUDE_PLUGIN_ROOT}/
 ├── agents/                  ✓ (one .md per registered agent)
-├── commands/                ✓ (11 commands)
+├── commands/                ✓ (12 commands)
 ├── hooks/                   ✓ (registered hook scripts)
 ├── skills/                  ✓ (operational skills)
 ├── scripts/                 ✓ (install + validation + doc generation)

@@ -37,7 +37,7 @@ function Assert {
 }
 
 $repoHookCount = (Get-ChildItem (Join-Path $repoRoot 'hooks') -Filter '*.ps1').Count
-$repoMcpNames  = ((Get-Content (Join-Path $repoRoot 'mcp-plugin/.mcp.json') -Raw | ConvertFrom-Json).mcpServers.PSObject.Properties.Name)
+$repoMcpNames  = ((Get-Content (Join-Path $repoRoot '.mcp.json') -Raw | ConvertFrom-Json).mcpServers.PSObject.Properties.Name)
 $repoMcpCount  = $repoMcpNames.Count
 
 Write-Host "fresh install"
@@ -121,7 +121,7 @@ $r = Invoke-Installer
 $rawOut = Get-Content $claudeJson -Raw
 $cfgHt = $rawOut | ConvertFrom-Json -AsHashtable
 Assert 'case-colliding keys: exit 0 and merge performed' ($r.Code -eq 0 -and $r.Out -match 'filesystem.*skipped')
-# FIX 1: filesystem skipped; expect every other repo server added (count derived from mcp-plugin/.mcp.json)
+# FIX 1: filesystem skipped; expect every other repo server added (count derived from the root .mcp.json)
 Assert 'case-colliding keys: framework servers added (all but filesystem, which is skipped)' ((@($repoMcpNames | Where-Object { $cfgHt['mcpServers'].Contains($_) -and $_ -ne 'filesystem' }).Count -eq ($repoMcpCount - 1)) -and -not $cfgHt['mcpServers'].Contains('filesystem'))
 Assert 'both case-variant keys survive with their values' ($cfgHt['projects']['d:/repo']['n'] -eq 1 -and $cfgHt['projects']['D:/repo']['n'] -eq 2)
 

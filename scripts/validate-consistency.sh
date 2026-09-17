@@ -260,8 +260,7 @@ section "[4] JSON validity (claude.json, settings.template.json, plugin manifest
   [[ -f "$ROOT/settings.template.json" ]] && json_files+=("$ROOT/settings.template.json")
   [[ -f "$ROOT/.claude-plugin/plugin.json" ]] && json_files+=("$ROOT/.claude-plugin/plugin.json")
   [[ -f "$ROOT/.claude-plugin/marketplace.json" ]] && json_files+=("$ROOT/.claude-plugin/marketplace.json")
-  [[ -f "$ROOT/mcp-plugin/.claude-plugin/plugin.json" ]] && json_files+=("$ROOT/mcp-plugin/.claude-plugin/plugin.json")
-  [[ -f "$ROOT/mcp-plugin/.mcp.json" ]] && json_files+=("$ROOT/mcp-plugin/.mcp.json")
+  [[ -f "$ROOT/.mcp.json" ]] && json_files+=("$ROOT/.mcp.json")
   [[ -f "$ROOT/hooks/hooks.json" ]] && json_files+=("$ROOT/hooks/hooks.json")
   shopt -s nullglob
   for f in "$FACTS_HOOKS_DIR"/*.json; do
@@ -927,16 +926,15 @@ section "[12] Skills layout (skills/<name>/SKILL.md only; frontmatter name == di
 # ===========================================================================
 # CHECK 13 - Version sync (BLOCKING)
 # ===========================================================================
-# The version must be identical across three authoritative locations:
+# The version must be identical across two authoritative locations:
 #   - claude.json .version
 #   - .claude-plugin/plugin.json .version
-#   - mcp-plugin/.claude-plugin/plugin.json .version
-# All three must be identical non-empty strings; any drift is a defect.
+# Both must be identical non-empty strings; any drift is a defect.
 _check_on 13 && {
-section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/.claude-plugin/plugin.json)"
+section "[13] Version sync (claude.json, .claude-plugin/plugin.json)"
   ok=1
   versions=()
-  files=("$ROOT/claude.json" "$ROOT/.claude-plugin/plugin.json" "$ROOT/mcp-plugin/.claude-plugin/plugin.json")
+  files=("$ROOT/claude.json" "$ROOT/.claude-plugin/plugin.json")
 
   for f in "${files[@]}"; do
     if [[ ! -f "$f" ]]; then
@@ -967,7 +965,7 @@ section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/
       fi
     done
     if [[ "$ok" -eq 1 ]]; then
-      pass "all three version fields are identical: $first"
+      pass "all ${#files[@]} version fields are identical: $first"
     fi
   fi
 }
@@ -1042,7 +1040,7 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
 # because no gate could catch it. Rules (all blocking, all conditional on the
 # key being present, so an agent that omits a key is never penalised):
 #   (a) effort:     value must be one of the declared tiers.
-#   (b) mcpServers: every entry must be a key of mcp-plugin/.mcp.json .mcpServers.
+#   (b) mcpServers: every entry must be a key of .mcp.json .mcpServers.
 #   (c) tools + mcpServers: every mcp__<server>__* tool must have <server>
 #       declared in that agent's mcpServers (no undeclared server dependency).
 #   (d) tools: any mcp__serena__* tool implies BOTH serena bootstrap tools
@@ -1114,14 +1112,14 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     printf '%s' "${1-}" | tr -d '[]"'\''' | tr ',[:space:]' '\n' | grep -v '^$'
   }
 
-  mcp_json="$ROOT/mcp-plugin/.mcp.json"
+  mcp_json="$ROOT/.mcp.json"
   known_servers=""
   if [[ -f "$mcp_json" ]]; then
     known_servers="$(_facts_jq -r '.mcpServers // {} | keys[]' "$mcp_json" 2>/dev/null | LC_ALL=C sort)"
   fi
   if [[ -z "$known_servers" ]]; then
     ok=0
-    fail "agent frontmatter: mcp-plugin/.mcp.json has no .mcpServers keys (cannot validate mcpServers declarations)"
+    fail "agent frontmatter: .mcp.json has no .mcpServers keys (cannot validate mcpServers declarations)"
   fi
 
   shopt -s nullglob
@@ -1175,7 +1173,7 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
         [[ -z "$srv" ]] && continue
         if ! printf '%s\n' "$known_servers" | grep -qxF -- "$srv"; then
           ok=0
-          fail "$agent: mcpServers entry '$srv' is not a server in mcp-plugin/.mcp.json"
+          fail "$agent: mcpServers entry '$srv' is not a server in .mcp.json"
           detail "unknown-mcp-server: $agent -> $srv"
         fi
       done <<< "$declared_servers"
