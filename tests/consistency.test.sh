@@ -792,12 +792,17 @@ section "[25] Filter sanity: check-13 break invisible to VALIDATE_CHECKS=1, caug
 }
 
 # ===========================================================================
-# CASE 26 - Agent frontmatter keys (check 15, blocking). Four defects, each
-#           injected into a copy and each targeting one rule of check 15.
-#           Victims are DERIVED from the copy (first agent carrying the key),
-#           so the cases stay roster- and value-agnostic.
+# CASE 26 - Agent frontmatter keys (check 15, blocking). Each defect is
+#           injected into a copy and targets one rule of check 15: effort tier,
+#           mcpServers declaration, tool/server parity (across tools AND
+#           disallowedTools, wildcards included), serena bootstrap in both the
+#           bare and the plugin-prefixed spelling, and bare/prefixed twin
+#           completeness with the plugin infix DERIVED from plugin.json.
+#           26a-26j derive their victims from the copy (first agent carrying
+#           the key) and stay roster-agnostic; 26k-26p name the agents the spec
+#           names for the curated nine-agent allowlist surface.
 # ===========================================================================
-section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared tool server / missing serena bootstrap -> non-zero (check 15)"
+section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared tool server (tools + disallowedTools) / missing serena bootstrap (bare + plugin-prefixed) / missing bare-prefixed twin -> non-zero (check 15)"
 {
   # --- 26a: invalid effort tier -------------------------------------------
   copy="$(make_copy)"
@@ -840,7 +845,10 @@ section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared too
                  done | head -1)"
   if [[ -n "$victim_md" ]]; then
     victim="$(basename "$victim_md" .md)"
-    sed -i.bak -E 's/^(tools: .*)$/\1, mcp__fetch__fetch/' "$victim_md" && rm -f "$victim_md.bak"
+    # BOTH spellings are injected so rule (e) (twin completeness) stays
+    # satisfied and rule (c) is the only rule that can fire.
+    sed -i.bak -E 's/^(tools: .*)$/\1, mcp__fetch__fetch, mcp__plugin_agentic-framework_fetch__fetch/' \
+      "$victim_md" && rm -f "$victim_md.bak"
     run_validate "$copy" 15
     assert_rc_nonzero "validator fails when tools reference an undeclared mcp server"
     assert_out_contains "reports undeclared-tool-server for $victim" "undeclared-tool-server: $victim -> fetch"
@@ -855,9 +863,12 @@ section "[26] Agent frontmatter: bad effort / unknown mcpServer / undeclared too
   victim_md="$(grep -lE '^tools:.*mcp__serena__activate_project' "$copy"/agents/*.md | head -1)"
   if [[ -n "$victim_md" ]]; then
     victim="$(basename "$victim_md" .md)"
-    # Drop ONLY the activate_project token (other serena tools remain, so the
-    # bootstrap rule is the sole break).
-    sed -i.bak -E 's/, ?mcp__serena__activate_project//' "$victim_md" && rm -f "$victim_md.bak"
+    # Drop ONLY the activate_project token, in BOTH spellings (other serena
+    # tools remain, and the twin rule stays satisfied, so the bootstrap rule is
+    # the sole break).
+    sed -i.bak -E 's/, ?mcp__plugin_agentic-framework_serena__activate_project//' "$victim_md" \
+      && sed -i.bak -E 's/, ?mcp__serena__activate_project//' "$victim_md" \
+      && rm -f "$victim_md.bak"
     run_validate "$copy" 15
     assert_rc_nonzero "validator fails when serena tools omit a bootstrap tool"
     assert_out_contains "reports missing-serena-bootstrap for $victim" "missing-serena-bootstrap: $victim -> mcp__serena__activate_project"
@@ -1015,6 +1026,113 @@ EOF
   else
     _fail "found an agent with an effort: key" "no agents/*.md declares effort:"
   fi
+  rm -rf "$copy"
+
+  # --- 26k: RED — a bare mcp entry whose plugin-prefixed twin is missing ---
+  # Rule (e): the curated surface must be identical in both spellings, so a
+  # deleted prefixed twin leaves its bare partner orphaned. The detail line
+  # names the ORPHAN in its bare-normalised form.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/, ?mcp__plugin_agentic-framework_context7__query-docs//' \
+    "$copy/agents/rust-expert.md" && rm -f "$copy/agents/rust-expert.md.bak"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when a prefixed twin is missing"
+  assert_out_contains "reports missing-twin for rust-expert" "missing-twin: rust-expert -> mcp__context7__query-docs"
+  rm -rf "$copy"
+
+  # --- 26l: RED — prefixed serena tools without the prefixed bootstrap -----
+  # Rule (d) applies per spelling: dropping the PREFIXED activate_project must
+  # trip the bootstrap rule against the prefixed name, not only the twin rule.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/, ?mcp__plugin_agentic-framework_serena__activate_project//' \
+    "$copy/agents/go-expert.md" && rm -f "$copy/agents/go-expert.md.bak"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when the prefixed serena bootstrap is missing"
+  assert_out_contains "reports missing-serena-bootstrap (prefixed) for go-expert" \
+    "missing-serena-bootstrap: go-expert -> mcp__plugin_agentic-framework_serena__activate_project"
+  rm -rf "$copy"
+
+  # --- 26m: RED — rule (c) applies to disallowedTools too -----------------
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/^(disallowedTools: .*)$/\1, mcp__nosuch__x/' \
+    "$copy/agents/peer-review-critic.md" && rm -f "$copy/agents/peer-review-critic.md.bak"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails on an undeclared server in disallowedTools"
+  assert_out_contains "reports undeclared-tool-server for peer-review-critic" \
+    "undeclared-tool-server: peer-review-critic -> nosuch"
+  rm -rf "$copy"
+
+  # --- 26n: RED — a server-level wildcard counts toward rule (c) ----------
+  # mcp__code-review-graph carries no '__<tool>' suffix; it must still oblige
+  # the agent to declare the server (EDGE-004).
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/^(mcpServers: .*), code-review-graph\]$/\1]/' \
+    "$copy/agents/rust-expert.md" && rm -f "$copy/agents/rust-expert.md.bak"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when a wildcard entry's server is undeclared"
+  assert_out_contains "reports undeclared-tool-server for rust-expert" \
+    "undeclared-tool-server: rust-expert -> code-review-graph"
+  rm -rf "$copy"
+
+  # --- 26o: RED — the plugin MCP prefix is DERIVED, not hard-coded --------
+  # Renaming the plugin must invalidate every stale mcp__plugin_<old>_* entry.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  jq '.name = "other"' "$copy/.claude-plugin/plugin.json" > "$copy/.claude-plugin/plugin.json.tmp" \
+    && mv "$copy/.claude-plugin/plugin.json.tmp" "$copy/.claude-plugin/plugin.json"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails on stale prefixed entries after a plugin rename"
+  assert_out_contains "reports undeclared-tool-server after the rename" "undeclared-tool-server:"
+  rm -rf "$copy"
+
+  # --- 26p: GREEN — the shipped roster satisfies every check-15 rule ------
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  run_validate "$copy" 15
+  assert_rc_zero "unmodified copy passes check 15"
+  # The count is DERIVED from the copy, so a roster change cannot break the case.
+  agent_count="$(find "$copy/agents" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')"
+  assert_out_contains "check 15 reports the full roster as valid" "$agent_count agent frontmatter block(s) valid"
+  rm -rf "$copy"
+
+  # --- 26q: RED — MCP tools with NO mcpServers key at all (rule f) --------
+  # Rule (c) can only compare against a declared list; an agent that declares
+  # none used to skip it entirely and pass vacuously. The injected entries name
+  # a REAL server and carry both spellings, so rules (b)/(c)/(e) are all
+  # satisfied and rule (f) is the only one that can fire.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  victim_md="$(grep -LE '^mcpServers:' "$copy"/agents/*.md | head -1)"
+  if [[ -n "$victim_md" ]]; then
+    victim="$(basename "$victim_md" .md)"
+    if grep -qE '^mcpServers:' "$victim_md"; then
+      _fail "26q victim must NOT declare mcpServers:" "$victim declares it; case would not discriminate"
+    fi
+    # Insert into the FIRST frontmatter block, immediately after the opening fence.
+    awk 'NR==1 { print; print "tools: Read, mcp__code-review-graph, mcp__plugin_agentic-framework_code-review-graph"; next }
+         { print }' "$victim_md" > "$victim_md.tmp" && mv "$victim_md.tmp" "$victim_md"
+    run_validate "$copy" 15
+    assert_rc_nonzero "validator fails when MCP tools are used with no mcpServers key"
+    assert_out_contains "reports missing-mcpservers for $victim" "missing-mcpservers: $victim"
+  else
+    _fail "found an agent WITHOUT an mcpServers: key" "every agents/*.md declares mcpServers:; 26q cannot discriminate"
+  fi
+  rm -rf "$copy"
+
+  # --- 26r: RED — an mcp__ entry that names no server --------------------
+  # A bare 'mcp__' token yields no server name. Dropping it silently would be
+  # the same vacuous-pass failure mode the rest of check 15 exists to prevent.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/^(tools: .*)$/\1, mcp__/' "$copy/agents/rust-expert.md" \
+    && rm -f "$copy/agents/rust-expert.md.bak"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails on an mcp__ entry with no server name"
+  assert_out_contains "reports malformed-mcp-entry for rust-expert" "malformed-mcp-entry: rust-expert -> mcp__"
   rm -rf "$copy"
 }
 
