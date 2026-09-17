@@ -61,8 +61,8 @@ Write-Host '║                                                                 
 Write-Host '║ The supported path is the plugin pipeline:                             ║'
 Write-Host '║   /plugin marketplace add tomas-rampas/agentic-framework              ║'
 Write-Host '║   /plugin install agentic-framework@agentic-framework                 ║'
-Write-Host '║   (optionally) /plugin install agentic-framework-mcp@...              ║'
-Write-Host '║   (then) /agentic-framework-mcp:setup                                 ║'
+Write-Host '║   (optional) /agentic-framework:setup                                 ║'
+Write-Host '║   (MCP servers ship inside the plugin)                                ║'
 Write-Host '║                                                                        ║'
 Write-Host '║ For migration of existing installs, see the migration section in      ║'
 Write-Host '║ README.md                                                              ║'
@@ -315,6 +315,7 @@ if ($SkipMcp) {
         }
         $added = 0; $identical = 0; $kept = 0; $skipped = 0
         $envPlaceholderServers = @()
+        $addedNames = @(); $keptNames = @(); $identicalNames = @()
         foreach ($entry in $frameworkMcp.GetEnumerator()) {
             $name     = [string]$entry.Key
             # Remove env entries containing placeholders BEFORE expansion
@@ -352,12 +353,24 @@ if ($SkipMcp) {
             $userKey = @($userConfig['mcpServers'].Keys) | Where-Object { [string]$_ -ieq $name } | Select-Object -First 1
             if ($null -eq $userKey) {
                 $userConfig['mcpServers'][$name] = $resolved
-                Write-Host ("  {0,-22} added" -f $name); $added++
+                Write-Host ("  {0,-22} added" -f $name); $added++; $addedNames += $name
             } elseif ((Get-CanonJson $userConfig['mcpServers'][$userKey]) -eq (Get-CanonJson $resolved)) {
-                Write-Host ("  {0,-22} already present (identical)" -f $name); $identical++
+                Write-Host ("  {0,-22} already present (identical)" -f $name); $identical++; $identicalNames += $name
             } else {
-                Write-Host ("  {0,-22} kept yours (differs from framework definition - never overwritten)" -f $name); $kept++
+                Write-Host ("  {0,-22} kept yours (differs from framework definition - never overwritten)" -f $name); $kept++; $keptNames += $name
             }
+        }
+
+        # The core plugin now ships these same servers pinned in its own .mcp.json.
+        # Claude Code scope precedence is local > project > user > plugin, so any
+        # user-scope entry of the same name SHADOWS the plugin's pinned copy -
+        # whether this run added it, kept a pre-existing one, or found one already
+        # byte-identical - an identical user-scope entry shadows just as hard.
+        if ($added -gt 0 -or $kept -gt 0 -or $identical -gt 0) {
+            $addedList     = $addedNames.Count     ? ($addedNames     -join ', ') : 'none'
+            $keptList      = $keptNames.Count      ? ($keptNames      -join ', ') : 'none'
+            $identicalList = $identicalNames.Count ? ($identicalNames -join ', ') : 'none'
+            Write-Warning "user-scope entries shadow the plugin's pinned MCP servers (added: $addedList; kept: $keptList; identical: $identicalList) - delete them from ~/.claude.json to use the plugin's copies."
         }
 
         # Report env placeholder removals once per affected server
@@ -542,8 +555,11 @@ Write-Host ''
 Write-Host 'Reminders:'
 Write-Host '  - Best run with no Claude Code session active: ~/.claude.json is Claude Code''s'
 Write-Host '    live config, and a session writing it concurrently could lose the merge.'
-Write-Host '  - MCP servers merged into the user scope apply everywhere; the project-level'
-Write-Host '    .mcp.json still applies to sessions started in the repo directory.'
+Write-Host '  - The core plugin now ships these same MCP servers pinned in its own .mcp.json.'
+Write-Host '    Scope precedence is local > project > user > plugin, so the user-scope copies'
+Write-Host '    this installer merges shadow the plugin''s pinned servers - delete them from'
+Write-Host '    ~/.claude.json to use the plugin''s copies, and run /agentic-framework:setup'
+Write-Host '    for the optional env vars (CONTEXT7_API_KEY, MCP_FS_ROOT).'
 Write-Host '  - Servers that have unresolved env variables in their args (defaults are'
 Write-Host '    session-runtime variables like ${CLAUDE_PROJECT_DIR}) are skipped; set the'
 Write-Host '    missing variables and re-run, or use the plugin pipeline for automated setup.'

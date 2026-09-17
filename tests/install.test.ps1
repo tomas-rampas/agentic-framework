@@ -53,6 +53,11 @@ $addedCount = @($cfg.mcpServers.PSObject.Properties.Name | Where-Object { $_ -in
 Assert 'adds framework servers (filesystem skipped due to unresolvable placeholder)' ($addedCount -eq ($repoMcpCount - 1) -and $r.Out -match 'filesystem.*skipped')
 Assert 'context7 server added (env placeholder removed, not baked)' ($cfg.mcpServers.PSObject.Properties.Name -contains 'context7')
 Assert 'reports surfaces not a git clone' ($r.Out -match 'not a git clone')
+# EDGE-007: exactly one shadowing warning per run when servers were added
+Assert 'warns once that user-scope entries shadow the plugin servers' (([regex]::Matches(($r.Out -replace "\s+", " "), 'entries shadow the plugin')).Count -eq 1)
+$shadowMsg      = [regex]::Match(($r.Out -replace "\s+", " "), 'shadow.*?\)').Value
+$expectedAdded  = @($repoMcpNames | Where-Object { $_ -ne 'filesystem' })
+Assert 'shadow warning names every added server' ($shadowMsg -and @($expectedAdded | Where-Object { $shadowMsg -match ('added:[^;]*' + [regex]::Escape($_)) }).Count -eq $expectedAdded.Count)
 
 Write-Host "idempotent re-run"
 
@@ -62,6 +67,11 @@ Assert 'all hooks unchanged' (([regex]::Matches($r.Out, '(?m)\.ps1\s+unchanged$'
 # FIX 1: filesystem was skipped in the first run and is skipped again; every other server reports identical
 Assert 'servers already present (all but filesystem identical, filesystem skipped again)' (([regex]::Matches($r.Out, 'already present \(identical\)')).Count -eq ($repoMcpNames.Count - 1) -and $r.Out -match 'filesystem.*skipped')
 Assert 'does not rewrite .claude.json' ($r.Out -match 'nothing to add' -and -not (Get-ChildItem $sandboxDir -Filter '.claude.json.bak-*'))
+# EDGE-007 (amended): an already-identical user-scope entry shadows the plugin's pinned copy too
+Assert 'warns once about shadowing on the idempotent re-run' (([regex]::Matches(($r.Out -replace "\s+", " "), 'entries shadow the plugin')).Count -eq 1)
+$idemShadowMsg   = [regex]::Match(($r.Out -replace "\s+", " "), 'shadow.*?\)').Value
+$expectedIdent   = @($repoMcpNames | Where-Object { $_ -ne 'filesystem' })
+Assert 'shadow warning names every identical server' ($idemShadowMsg -and @($expectedIdent | Where-Object { $idemShadowMsg -match ('identical:[^)]*' + [regex]::Escape($_)) }).Count -eq $expectedIdent.Count)
 
 Write-Host "MCP merge never clobbers user definitions"
 
@@ -86,6 +96,10 @@ Assert 'user definition of conflicting server survives' ($cfg.mcpServers.fetch.c
 Assert 'personal (non-framework) server survives' ($cfg.mcpServers.github.command -eq 'my-github-mcp')
 Assert 'unrelated user state survives the round-trip' ($cfg.someUserState.keep -eq $true)
 Assert 'backup written before modifying an existing file' ((Get-ChildItem $sandboxDir -Filter '.claude.json.bak-*').Count -ge 1)
+# EDGE-007 (amended): the kept branch shadows the plugin's pinned copy too - one warning naming the kept server
+Assert 'warns once about shadowing when a server was kept' (([regex]::Matches(($r.Out -replace "\s+", " "), 'entries shadow the plugin')).Count -eq 1)
+$keptShadowMsg = [regex]::Match(($r.Out -replace "\s+", " "), 'shadow.*?\)').Value
+Assert 'shadow warning names the kept server' ($keptShadowMsg -match 'kept:[^)]*fetch')
 
 # The headline guarantee: existing definitions are never overwritten EVEN WITH
 # -Force. Seed a config that is simultaneously MISSING one framework server and
