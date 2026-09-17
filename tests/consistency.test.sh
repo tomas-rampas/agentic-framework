@@ -202,9 +202,17 @@ assert_rc_nonzero() {
   else _fail "$label" "expected non-zero exit, got 0"; fi
 }
 # assert_out_contains <label> <needle>
+#
+# A HERE-STRING, never a pipe. `printf '%s' "$RUN_OUT" | grep -qF` is wrong under
+# `set -o pipefail`: grep -q exits at the FIRST match and closes the pipe, printf
+# then dies of EPIPE, and pipefail reddens the pipeline even though the needle was
+# found. It only shows up once $RUN_OUT exceeds the pipe buffer (~64 KiB on Linux),
+# which is why a ~300-line validator run failed on ubuntu CI while Windows, with a
+# different buffer size, passed. The here-string's added trailing newline is
+# harmless to a fixed-string line search.
 assert_out_contains() {
   local label="$1" needle="$2"
-  if printf '%s' "$RUN_OUT" | grep -qF -- "$needle"; then _pass "$label"
+  if grep -qF -- "$needle" <<< "$RUN_OUT"; then _pass "$label"
   else _fail "$label" "expected output to contain: $needle"; fi
 }
 
