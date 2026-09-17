@@ -531,6 +531,16 @@ export FRAMEWORK_ROOT
   fi
 }
 
+# --- Assertion 14a: fetch launcher carries the mcp<2 guard ---
+{
+  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | .[$i+1]' "$copy/.mcp.json" | tr -d '\r')"
+  if [[ "$guard_val" == 'mcp<2' ]]; then
+    _pass "fetch launcher args carry the 'mcp<2' guard"
+  else
+    _fail "fetch launcher args carry the 'mcp<2' guard" "expected 'mcp<2', got '$guard_val'"
+  fi
+}
+
 rm -rf "$copy"
 
 # ===========================================================================
@@ -829,6 +839,31 @@ section "[RED-19] Fixture: recreate mcp-plugin/.mcp.json (Assertion 2's red path
     _pass "RED-19: fixture: mcp-plugin/.mcp.json recreated in copy"
   else
     _fail "RED-19: fixture: mcp-plugin/.mcp.json recreated in copy" "file not created"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 20: Strip the mcp<2 guard from fetch's args (Assertion 14a's
+#                   red path, verified externally)
+# ===========================================================================
+section "[RED-20] Fixture: strip mcp<2 guard from fetch args (should fail guard check)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  tmp_json="$(mktemp)"
+  jq '.mcpServers.fetch.args = ["mcp-server-fetch==2026.7.10"]' "$copy/.mcp.json" > "$tmp_json" && mv "$tmp_json" "$copy/.mcp.json"
+
+  # This case verifies the FIXTURE only; it does not re-run Assertion 14a. The
+  # discriminating behaviour — this suite exiting 1 with "fetch launcher args
+  # carry the 'mcp<2' guard" failing on a tree whose fetch args lack the guard —
+  # was verified by the external red run recorded in the spec's REQ-006 evidence.
+  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | if $i == null then "" else .[$i+1] end' "$copy/.mcp.json" | tr -d '\r')"
+  if [[ "$guard_val" != 'mcp<2' ]]; then
+    _pass "RED-20: fixture: fetch args no longer carry the 'mcp<2' guard"
+  else
+    _fail "RED-20: fixture: fetch args no longer carry the 'mcp<2' guard" "guard still present"
   fi
 
   rm -rf "$copy"
