@@ -482,29 +482,29 @@ export FRAMEWORK_ROOT
   assert_file_not_exists "$copy/.mcp.json" "no tracked root .mcp.json exists"
 }
 
-# --- Assertion 11: mcp-plugin/.mcp.json has exactly 5 server keys ---
+# --- Assertion 11: mcp-plugin/.mcp.json has exactly 6 server keys ---
 {
   count="$(jq '.mcpServers | keys | length' "$copy/mcp-plugin/.mcp.json")"
-  if [[ "$count" -eq 5 ]]; then
-    _pass "mcp-plugin/.mcp.json has exactly 5 mcpServers keys"
+  if [[ "$count" -eq 6 ]]; then
+    _pass "mcp-plugin/.mcp.json has exactly 6 mcpServers keys"
   else
-    _fail "mcp-plugin/.mcp.json has exactly 5 mcpServers keys" "found $count keys"
+    _fail "mcp-plugin/.mcp.json has exactly 6 mcpServers keys" "found $count keys"
   fi
 }
 
-# --- Assertion 12: mcp-plugin/.mcp.json has the expected 5 servers ---
+# --- Assertion 12: mcp-plugin/.mcp.json has the expected 6 servers ---
 {
   # Extract and sort actual servers, removing carriage returns
   actual_sorted="$(jq -r '.mcpServers | keys[]' "$copy/mcp-plugin/.mcp.json" | tr -d '\r' | LC_ALL=C sort)"
 
   # Define expected servers
-  expected_sorted="$(printf '%s\n' "context7" "fetch" "filesystem" "sequential-thinking" "serena" | LC_ALL=C sort)"
+  expected_sorted="$(printf '%s\n' "code-review-graph" "context7" "fetch" "filesystem" "sequential-thinking" "serena" | LC_ALL=C sort)"
 
   # Do line-by-line comparison using comm (only show lines in actual but not expected or vice versa)
   diff_lines="$(comm -3 <(printf '%s' "$expected_sorted") <(printf '%s' "$actual_sorted") | grep -c . || true)"
 
   if [[ "$diff_lines" -eq 0 ]]; then
-    _pass "mcp-plugin/.mcp.json has exactly the expected 5 servers"
+    _pass "mcp-plugin/.mcp.json has exactly the expected 6 servers"
   else
     _fail "mcp-plugin/.mcp.json server keys" "expected: $expected_sorted, got: $actual_sorted"
   fi
