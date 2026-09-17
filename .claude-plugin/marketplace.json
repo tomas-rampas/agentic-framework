@@ -11,7 +11,7 @@
     {
       "name": "agentic-framework-mcp",
       "source": "./mcp-plugin",
-      "description": "Optional MCP server bundle: context7, filesystem, serena, sequential-thinking, fetch."
+      "description": "Optional MCP server bundle: context7, filesystem, serena, sequential-thinking, fetch, code-review-graph."
     }
   ]
 }

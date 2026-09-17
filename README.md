@@ -13,7 +13,7 @@ This framework extends Claude Code CLI with:
 - **21 Specialized Agents** covering the full development lifecycle
 - **Real Enforcement Hooks** — a blocking peer-review Stop gate plus session-context and delegation-hint hooks, registered via the plugin's `hooks/hooks.json` and covered by tests
 - **Anti-Drift Consistency System** — dynamic validator, doc generator, and CI gate that keep the registry, docs, and filesystem in lockstep
-- **MCP Integration** — 5 MCP servers for code intelligence, file operations, documentation lookup, structured reasoning, and web fetching
+- **MCP Integration** — 6 MCP servers for code intelligence, file operations, documentation lookup, structured reasoning, web fetching, and a persistent code-review knowledge graph
 
 ---
 
@@ -27,7 +27,7 @@ This framework extends Claude Code CLI with:
 | **bash + jq** | Validation and doc-generation tooling (Git Bash works on Windows). On Linux/macOS, `sh` + `jq` + `git` are the complete hook runtime — nothing else needed. If `jq` is missing on POSIX hosts, enforcement is disarmed — hooks fire without enforcing anything, including the peer-review Stop gate |
 | **gh + yq** | Command-line executor agents (bash-expert / powershell-expert): GitHub CLI queries and YAML processing; run `gh auth login` once. yq is mikefarah v4 |
 | **Node.js/npm** | filesystem, context7, sequential-thinking MCP servers via `npx` |
-| **uv (`uvx`)** | serena + fetch MCP servers |
+| **uv (`uvx`)** | serena + fetch + code-review-graph MCP servers |
 | **shellcheck** | Shell-script linting (optional, used by CI) |
 
 ### Install Claude Code CLI
@@ -48,7 +48,7 @@ claude --version
 
 ### MCP Servers
 
-The optional `agentic-framework-mcp` plugin ships five MCP servers. They are provided by the plugin and become visible via `claude mcp list` after the plugin is installed (even if setup is skipped). Running `/agentic-framework-mcp:setup` configures their runtime environment variables.
+The optional `agentic-framework-mcp` plugin ships six MCP servers. They are provided by the plugin and become visible via `claude mcp list` after the plugin is installed (even if setup is skipped). Running `/agentic-framework-mcp:setup` configures their runtime environment variables.
 
 Set these runtime environment variables (globally via shell profile or system settings; copy `.env.example` for placeholders):
 
@@ -66,10 +66,13 @@ Set these runtime environment variables (globally via shell profile or system se
 | **serena** | Semantic code intelligence and symbol operations | Python (`uvx`) |
 | **sequential-thinking** | Structured step-by-step reasoning for complex problem decomposition | Node.js (`npx`) |
 | **fetch** | Web content fetching and conversion for efficient page consumption | Python (`uvx`) |
+| **code-review-graph** | Persistent incremental code knowledge graph for reviews: change impact, dead code, execution flows, semantic search (after an initial graph build — see the note below) | Python (`uvx`) |
 
 Note: to check which servers are available in your session, run `claude mcp list`.
 
-All five launchers are version-pinned (serena by commit SHA, matching its v1.6.1 release), so `npx`/`uvx` resolve from local cache instead of hitting the network at every session start — an unpinned serena re-resolved its git repository on each launch. Cost note: serena is the heavyweight of the bundle (it boots language servers for the project); if you don't use its semantic-code tools, remove it from your installed plugin's `.mcp.json` to cut session-start latency and per-request tool-schema weight.
+All six launchers are version-pinned (serena by commit SHA, matching its v1.6.1 release; code-review-graph to 2.3.8), so `npx`/`uvx` resolve from local cache instead of hitting the network at every session start — an unpinned serena re-resolved its git repository on each launch. The cache helps only after the first resolution: a fresh install or a cleared `uv`/`npm` cache downloads each pinned launcher, plus its unpinned dependency closure, from PyPI/npm and executes it with your user privileges. Cost note: serena is the bundle's session-start heavyweight (it boots language servers for the project) and code-review-graph is its per-request heavyweight (30 tools, about 37 KB of tool schema advertised to every session); if you don't use one of them, remove it from your installed plugin's `.mcp.json`.
+
+**About code-review-graph.** It is a solo-maintained community package (MIT, no PyPI attestations as of 2.3.8), so review it before enabling the bundle in sensitive repositories. Its tools return nothing until a graph exists — call `build_or_update_graph_tool` once, or run `uvx code-review-graph==2.3.8 build` in the repo (same pin as the manifest, so the CLI and the server share one database schema); the graph lives in `<repo>/.code-review-graph/` (the package gitignores it) and `CRG_DATA_DIR` relocates it. The bundle ships the server with its full tool set, which is not read-only: `apply_refactor_tool` writes source files into whatever directory the model passes as `repo_root` — every tool that targets a single repository accepts that parameter (28 of the 30), an explicit value overrides the `--repo` launch flag, and the package's only guard on that root is that the target contains a `.git`, `.svn`, or `.code-review-graph` directory, so any checkout on your machine is reachable. `cross_repo_search_tool` / `list_repos_tool` read any other repositories registered with the tool. The only containment is the tool allowlist: append `"--tools", "<comma-separated tool names>"` to the server's `args` in your installed plugin's `.mcp.json`, or set `CRG_TOOLS` in your environment — unlisted tools are removed.
 
 ---
 
@@ -93,7 +96,7 @@ claude plugin install agentic-framework@agentic-framework
 
 ### 2. (Optional) Install the MCP Servers Plugin
 
-The optional `agentic-framework-mcp` plugin provides 5 MCP servers (context7, filesystem, serena, sequential-thinking, fetch):
+The optional `agentic-framework-mcp` plugin provides 6 MCP servers (context7, filesystem, serena, sequential-thinking, fetch, code-review-graph):
 
 ```
 /plugin install agentic-framework-mcp@agentic-framework
@@ -319,7 +322,7 @@ The framework distributes as two plugins:
 **agentic-framework-mcp** (optional):
 ```
 <plugin root>*                      # ~/.claude/plugins/cache/agentic-framework/agentic-framework-mcp/<version>/
-├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch)
+├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph)
 ├── commands/
 │   └── setup.md             # Registration command for MCP servers
 └── [other plugin files]
@@ -491,5 +494,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 11 Commands • v4.2.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 11 Commands • v4.3.0**
 <!-- END GENERATED: framework-stats -->

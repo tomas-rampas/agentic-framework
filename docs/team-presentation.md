@@ -249,29 +249,30 @@ Loaded on demand when a task matches. An agent is *someone to delegate to*; a sk
 | refactoring-advisor | Spot code smells, prioritize refactorings |
 | self-scoring-loop | Rubric-score a non-code deliverable, rewrite the weakest parts, rescore until it plateaus |
 
-### 3.5 MCP servers — senses and instruments (5)
+### 3.5 MCP servers — senses and instruments (6)
 
 MCP (Model Context Protocol) = the open standard for plugging external tools into the model.
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"background": "transparent", "lineColor": "#898781", "textColor": "#0b0b0b"}}}%%
 block-beta
-    columns 5
-    C["Claude Code session — one MCP protocol, five instruments"]:5
-    space:5
-    FS["filesystem<br/>bulk & atomic file ops<br/>Node · npx"] C7["context7<br/>live library docs<br/>Node · npx"] SE["serena<br/>semantic code intel<br/>Python · uvx"] ST["sequential-thinking<br/>stepwise reasoning<br/>Node · npx"] FE["fetch<br/>web → markdown<br/>Python · uvx"]
+    columns 6
+    C["Claude Code session — one MCP protocol, six instruments"]:6
+    space:6
+    FS["filesystem<br/>bulk & atomic file ops<br/>Node · npx"] C7["context7<br/>live library docs<br/>Node · npx"] SE["serena<br/>semantic code intel<br/>Python · uvx"] ST["sequential-thinking<br/>stepwise reasoning<br/>Node · npx"] FE["fetch<br/>web → markdown<br/>Python · uvx"] CR["code-review-graph<br/>code knowledge graph<br/>Python · uvx"]
     C --> FS
     C --> C7
     C --> SE
     C --> ST
     C --> FE
+    C --> CR
     classDef hub fill:#cde2fb,stroke:#2a78d6,color:#0b0b0b
     classDef srv fill:#ddd8f3,stroke:#4a3aa7,color:#0b0b0b
     class C hub
-    class FS,C7,SE,ST,FE srv
+    class FS,C7,SE,ST,FE,CR srv
 ```
 
-`context7` beats training-data recall with current docs; `serena` gives LSP-grade navigation instead of text grep; `sequential-thinking` scaffolds explicit reasoning chains for hard problems; `fetch` turns web pages into clean markdown.
+`context7` beats training-data recall with current docs; `serena` gives LSP-grade navigation instead of text grep; `sequential-thinking` scaffolds explicit reasoning chains for hard problems; `fetch` turns web pages into clean markdown; `code-review-graph` keeps a persistent, incrementally updated graph of the codebase so reviews can query change impact, dead code and execution flows.
 
 ### 3.6 Anti-drift consistency system — the immune system
 
@@ -338,7 +339,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Hooks | 4 .ps1/.sh implementation pairs |
 | Skills | 9 loadable knowledge modules |
 | Commands | 11 management commands |
-| MCP servers | 5 (filesystem, context7, serena, sequential-thinking, fetch) |
+| MCP servers | 6 (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph) |
 | Validator checks | 15, all derived at runtime |
 | Test suites | 8 automated suites under tests/ |
 | CI jobs | 4 (consistency, lint, hooks-macos, hooks-windows) |
