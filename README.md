@@ -66,11 +66,13 @@ Set these runtime environment variables (globally via shell profile or system se
 | **serena** | Semantic code intelligence and symbol operations | Python (`uvx`) |
 | **sequential-thinking** | Structured step-by-step reasoning for complex problem decomposition | Node.js (`npx`) |
 | **fetch** | Web content fetching and conversion for efficient page consumption | Python (`uvx`) |
-| **code-review-graph** | Persistent incremental code knowledge graph for reviews: change impact, dead code, execution flows, semantic search | Python (`uvx`) |
+| **code-review-graph** | Persistent incremental code knowledge graph for reviews: change impact, dead code, execution flows, semantic search (after an initial graph build — see the note below) | Python (`uvx`) |
 
 Note: to check which servers are available in your session, run `claude mcp list`.
 
-All six launchers are version-pinned (serena by commit SHA, matching its v1.6.1 release; code-review-graph to 2.3.8), so `npx`/`uvx` resolve from local cache instead of hitting the network at every session start — an unpinned serena re-resolved its git repository on each launch. Cost note: serena is the heavyweight of the bundle (it boots language servers for the project); if you don't use its semantic-code tools, remove it from your installed plugin's `.mcp.json` to cut session-start latency and per-request tool-schema weight.
+All six launchers are version-pinned (serena by commit SHA, matching its v1.6.1 release; code-review-graph to 2.3.8), so `npx`/`uvx` resolve from local cache instead of hitting the network at every session start — an unpinned serena re-resolved its git repository on each launch. The cache helps only after the first resolution: a fresh install or a cleared `uv`/`npm` cache downloads each pinned package from PyPI/npm and executes it with your user privileges. Cost note: serena is the bundle's session-start heavyweight (it boots language servers for the project) and code-review-graph is its per-request heavyweight (30 tools, about 37 KB of tool schema advertised to every session); if you don't use one of them, remove it from your installed plugin's `.mcp.json`.
+
+**About code-review-graph.** It is a solo-maintained community package (MIT, no PyPI attestations as of 2.3.8), so review it before enabling the bundle in sensitive repositories. Its tools return nothing until a graph exists — call `build_or_update_graph_tool` once, or run `uvx code-review-graph build` in the repo; the graph lives in `<repo>/.code-review-graph/` (the package gitignores it) and `CRG_DATA_DIR` relocates it. The bundle ships the server with its full tool set, which is not read-only: `apply_refactor_tool` writes source files in the current repository, and `cross_repo_search_tool` / `list_repos_tool` read any other repositories registered with the tool. To trim the surface, append `"--tools", "<comma-separated tool names>"` to the server's `args` in your installed plugin's `.mcp.json`, or set `CRG_TOOLS` in your environment — unlisted tools are removed.
 
 ---
 

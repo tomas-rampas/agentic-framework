@@ -26,7 +26,7 @@ Verify that every external tool this framework actually depends on is installed,
 | yq (mikefarah v4) | The executor agents: YAML processing and agent-frontmatter extraction (`yq --front-matter=extract`) |
 | PowerShell 7+ (`pwsh`) | **Windows**: installer scripts require pwsh 7, and the hook chain falls back to it (hooks/dispatch.sh runs the POSIX .sh directly when jq is on PATH in Git Bash; .ps1 via pwsh otherwise). **Linux/macOS**: optional — hooks run as POSIX shell; pwsh only needed for the optional .ps1 test suite (`tests/hooks.test.ps1`). |
 | Node.js + npx | The `filesystem`, `context7`, and `sequential-thinking` MCP servers (launched via `npx -y`) — only needed if the optional agentic-framework-mcp plugin is installed |
-| uv (`uvx`) | The `serena`, `fetch` and `code-review-graph` MCP servers — only needed if the optional agentic-framework-mcp plugin is installed |
+| uv (`uvx`) | The `serena`, `fetch`, and `code-review-graph` MCP servers — only needed if the optional agentic-framework-mcp plugin is installed |
 | Claude Code CLI | Host runtime that loads the agentic-framework plugin and executes hooks |
 | shellcheck (optional) | Linting `scripts/*.sh`; nice-to-have, nothing hard-fails without it |
 
@@ -67,7 +67,7 @@ Run each probe and classify the result as OK (with version), MISSING, or WRONG V
 
 ### uv / uvx
 - Probe: `uvx --version` (or `uv --version`)
-- Pass: any recent release. Without it the serena MCP server silently fails to start.
+- Pass: any recent release. Without it the serena, fetch, and code-review-graph MCP servers silently fail to start.
 
 ### Claude Code CLI
 - Probe: `claude --version`
