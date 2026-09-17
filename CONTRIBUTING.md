@@ -19,6 +19,8 @@ Do not hand-edit agent counts, rosters, or model assignments in documentation or
 
 Framework agents are part of the agentic-framework plugin and are distributed via the marketplace. This guide covers contribution to the repository. Changes you commit become part of the next plugin release.
 
+One thing to know before you open a session in a clone of this repository: the tracked root `.mcp.json` ships as the plugin's MCP server definitions, but inside the clone it is also a project-scope config, and project scope outranks both your user scope and the installed plugin — so the six servers you get while working here come from the working tree, not from the plugin you have installed.
+
 Follow these steps in order:
 
 ### 1. Create the agent prompt file
@@ -34,6 +36,7 @@ color: <color-name>
 effort: <reasoning-effort>         # optional: low | medium | high | xhigh | max
 mcpServers: [<server-name>, ...]   # optional: MCP servers available to the agent
 tools: <tool1>,<tool2>,...         # optional: comma-separated explicit tool allowlist
+disallowedTools: <tool1>,...       # optional: comma-separated tool denylist
 ---
 
 ## Core Expertise
@@ -52,6 +55,16 @@ value; strict YAML parsers only accept the quoted form when colons appear.
 Per Claude Code's documentation, `mcpServers` is not applied to plugin-shipped agents;
 treat it as effective only for user-scope agent files. `tools` gives an explicit
 comma-separated tool allowlist, overriding the default full tool access for that agent.
+
+**MCP tool names come in twins.** The same server is addressable under two prefixes:
+the bare `mcp__<server>__<tool>` form and the plugin-served
+`mcp__plugin_agentic-framework_<server>__<tool>` form. A `tools:` allowlist must name
+every MCP tool in both forms — validator check 15 rejects an entry whose twin is
+missing, because an allowlist carrying only one form silently loses the tool in half
+the installs. Dropping the `__<tool>` suffix grants a whole server: `mcp__<server>` and
+`mcp__plugin_agentic-framework_<server>` are wildcard entries and also come in pairs.
+`disallowedTools:` uses the same syntax to remove tools an agent would otherwise get,
+and the validator applies the same twin rules to it.
 
 ### 2. Register in `claude.json`
 
@@ -105,18 +118,16 @@ Additional validation and testing:
 
 - `bash tests/plugin-manifests.test.sh` — plugin manifest validation
 - `claude plugin validate .` — validate agentic-framework plugin
-- `claude plugin validate ./mcp-plugin` — validate agentic-framework-mcp plugin (if present)
 - `pwsh -NoProfile -File tests/migrate.test.ps1` — legacy migration dry-run validation
 
 All blocking checks must pass (exit 0). **Note:** The consistency and plugin-manifests test harnesses build per-case repository copies from `git ls-files`, so new or renamed files must be staged with `git add` before running these suites — untracked files are invisible to them.
 
 ### 5b. Plugin manifest consistency
 
-Releases must maintain version consistency across three manifest files:
+Releases must maintain version consistency across two manifest files:
 
 - `claude.json` → `.version` field
 - `.claude-plugin/plugin.json` → `version` field
-- `mcp-plugin/.claude-plugin/plugin.json` → `version` field (if agentic-framework-mcp is shipped)
 
 The validator enforces this parity with a blocking check (check 13).
 
