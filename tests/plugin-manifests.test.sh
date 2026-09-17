@@ -533,7 +533,7 @@ export FRAMEWORK_ROOT
 
 # --- Assertion 14a: fetch launcher carries the mcp<2 guard ---
 {
-  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | .[$i+1]' "$copy/.mcp.json" | tr -d '\r')"
+  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | if $i == null then "" else .[$i+1] end' "$copy/.mcp.json" | tr -d '\r')"
   if [[ "$guard_val" == 'mcp<2' ]]; then
     _pass "fetch launcher args carry the 'mcp<2' guard"
   else

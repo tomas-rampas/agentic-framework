@@ -1062,15 +1062,18 @@ EOF
     "missing-serena-bootstrap: go-expert -> mcp__plugin_agentic-framework_serena__activate_project"
   rm -rf "$copy"
 
-  # --- 26m: RED — rule (c) applies to disallowedTools too -----------------
+  # --- 26m: RED — a denylist server must at least EXIST (rule g) ----------
+  # Rules (c)/(f) deliberately do NOT apply to disallowedTools (denying a server
+  # you never granted is the defensive spelling), so the obligation a denylist
+  # entry carries is existence in .mcp.json — which still catches a typo.
   copy="$(make_copy)"
   _verify_copy "$copy"
   sed -i.bak -E 's/^(disallowedTools: .*)$/\1, mcp__nosuch__x/' \
     "$copy/agents/peer-review-critic.md" && rm -f "$copy/agents/peer-review-critic.md.bak"
   run_validate "$copy" 15
-  assert_rc_nonzero "validator fails on an undeclared server in disallowedTools"
-  assert_out_contains "reports undeclared-tool-server for peer-review-critic" \
-    "undeclared-tool-server: peer-review-critic -> nosuch"
+  assert_rc_nonzero "validator fails on a disallowedTools server absent from .mcp.json"
+  assert_out_contains "reports unknown-disallowed-server for peer-review-critic" \
+    "unknown-disallowed-server: peer-review-critic -> nosuch"
   rm -rf "$copy"
 
   # --- 26n: RED — a server-level wildcard counts toward rule (c) ----------
@@ -1080,6 +1083,13 @@ EOF
   _verify_copy "$copy"
   sed -i.bak -E 's/^(mcpServers: .*), code-review-graph\]$/\1]/' \
     "$copy/agents/rust-expert.md" && rm -f "$copy/agents/rust-expert.md.bak"
+  # The sed assumes code-review-graph is the LAST element of the flow list.
+  # Assert the EFFECT loudly rather than let a reordered list silently turn this
+  # into a no-op case that "passes" because nothing was mutated.
+  if grep -qE '^mcpServers:.*code-review-graph' "$copy/agents/rust-expert.md"; then
+    _fail "26n mutation must remove code-review-graph from mcpServers" \
+      "rust-expert still declares it; the sed did not apply (list reordered?)"
+  fi
   run_validate "$copy" 15
   assert_rc_nonzero "validator fails when a wildcard entry's server is undeclared"
   assert_out_contains "reports undeclared-tool-server for rust-expert" \
@@ -1141,6 +1151,47 @@ EOF
   run_validate "$copy" 15
   assert_rc_nonzero "validator fails on an mcp__ entry with no server name"
   assert_out_contains "reports malformed-mcp-entry for rust-expert" "malformed-mcp-entry: rust-expert -> mcp__"
+  rm -rf "$copy"
+
+  # --- 26s: RED — block-style disallowedTools: ---------------------------
+  # Mirrors 26f/26g for the third single-line list. A block value yields no
+  # tokens, which would silently skip rules (e)/(g) on the denylist.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  awk '
+    /^disallowedTools:/ && !done {
+      line=$0; sub(/^disallowedTools:[ \t]*/, "", line)
+      print "disallowedTools:"
+      n=split(line, t, /,[ \t]*/)
+      for (i=1; i<=n; i++) if (t[i] != "") print "  - " t[i]
+      done=1; next
+    }
+    { print }
+  ' "$copy/agents/peer-review-critic.md" > "$copy/agents/peer-review-critic.md.tmp" \
+    && mv "$copy/agents/peer-review-critic.md.tmp" "$copy/agents/peer-review-critic.md"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails on a block-style disallowedTools list"
+  assert_out_contains "reports unparseable-disallowedtools for peer-review-critic" \
+    "unparseable-disallowedtools: peer-review-critic"
+  rm -rf "$copy"
+
+  # --- 26t: RED — an underivable prefix reports ONCE ---------------------
+  # With no infix, every prefixed entry in the roster would look undeclared and
+  # every twin orphaned (~300 derived failures). The root cause must stand alone,
+  # so rules (c)/(f)/(g)/(e) and the prefixed half of (d) are skipped for the run.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  jq '.name = ""' "$copy/.claude-plugin/plugin.json" > "$copy/.claude-plugin/plugin.json.tmp" \
+    && mv "$copy/.claude-plugin/plugin.json.tmp" "$copy/.claude-plugin/plugin.json"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when the plugin MCP prefix cannot be derived"
+  assert_out_contains "reports the underivable prefix" "cannot derive the plugin MCP prefix"
+  fail_lines="$(grep -c '^  FAIL' <<< "$RUN_OUT")"
+  if [[ "$fail_lines" -eq 1 ]]; then
+    _pass "an underivable prefix produces exactly one FAIL line (no derived cascade)"
+  else
+    _fail "an underivable prefix produces exactly one FAIL line" "got $fail_lines FAIL line(s)"
+  fi
   rm -rf "$copy"
 }
 

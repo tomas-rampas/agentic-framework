@@ -1041,18 +1041,23 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
 # key being present, so an agent that omits a key is never penalised):
 #   (a) effort:     value must be one of the declared tiers.
 #   (b) mcpServers: every entry must be a key of .mcp.json .mcpServers.
-#   (c) tools + disallowedTools + mcpServers: every mcp__<server>__* tool must
-#       have <server> declared in that agent's mcpServers (no undeclared server
-#       dependency). A server-level wildcard (mcp__<server>, no __<tool>) counts.
+#   (c) tools + mcpServers: every mcp__<server>__* tool must have <server>
+#       declared in that agent's mcpServers (no undeclared server dependency).
+#       A server-level wildcard (mcp__<server>, no __<tool>) counts.
 #   (d) tools: any mcp__serena__* tool implies BOTH serena bootstrap tools
 #       (activate_project + initial_instructions) are allowlisted too. The rule
 #       applies independently to the bare and the plugin-prefixed spelling.
 #   (e) tools / disallowedTools: every bare mcp__* entry must have its
 #       plugin-prefixed twin and vice versa, so the curated surface is identical
 #       whether a server comes from the plugin or from a user-scope copy.
-#   (f) tools / disallowedTools: an agent that references ANY MCP server must
-#       declare mcpServers at all. Without this, rule (c) had nothing to compare
-#       against and an agent with no mcpServers key passed vacuously.
+#   (f) tools: an agent whose tools reference ANY MCP server must declare
+#       mcpServers at all. Without this, rule (c) had nothing to compare against
+#       and an agent with no mcpServers key passed vacuously.
+#   (g) disallowedTools: the referenced server must merely EXIST in .mcp.json.
+#       Rules (c)/(f) deliberately do NOT apply to a denylist: denying a server
+#       the agent never granted is the defensive spelling, and demanding the
+#       agent declare that server in mcpServers to deny it would invert the
+#       intent. Typos are still caught, by existence alone.
 # An entry that names no server at all (a bare 'mcp__') is malformed and is
 # reported (malformed-mcp-entry) rather than silently discarded.
 #
@@ -1177,7 +1182,11 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     prefix_ok=0
     fail "agent frontmatter: cannot derive the plugin MCP prefix (.claude-plugin/plugin.json .name is empty)"
   else
-    plugin_infix="plugin_${plugin_name}_"
+    # Claude Code sanitises the plugin name the same way it sanitises tool names:
+    # every character outside [A-Za-z0-9_-] becomes '_' before it is spliced into
+    # mcp__plugin_<plugin-name>_<server>__<tool>. Derive the infix identically, or
+    # a plugin whose name carries a dot or a space would never match its own tools.
+    plugin_infix="plugin_$(printf '%s' "$plugin_name" | sed 's/[^A-Za-z0-9_-]/_/g')_"
   fi
 
   mcp_json="$ROOT/.mcp.json"
@@ -1295,12 +1304,12 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     # Skipped wholesale when the plugin prefix could not be derived — every
     # prefixed entry would otherwise be reported as its own undeclared server,
     # burying the single root-cause failure under hundreds of derived ones.
-    tool_servers="$(printf '%s\n%s\n' "$tools_scan" "$dis_scan" \
+    tool_servers="$(printf '%s\n' "$tools_scan" \
                     | awk -F'\t' 'NF>=2 && $2 != "" { print $2 }' | LC_ALL=C sort -u)"
     if [[ "$prefix_ok" -eq 1 && -n "$tool_servers" ]]; then
       if [[ -z "$declared_servers" ]]; then
         ok=0
-        fail "$agent: tools/disallowedTools reference MCP servers but the agent declares no mcpServers"
+        fail "$agent: tools reference MCP servers but the agent declares no mcpServers"
         detail "missing-mcpservers: $agent"
       else
         while IFS= read -r srv; do
@@ -1312,6 +1321,24 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
           fi
         done <<< "$tool_servers"
       fi
+    fi
+
+    # --- (g) disallowedTools servers only have to EXIST --------------------
+    # Denying a server the agent never granted is the defensive spelling, so a
+    # denylist entry must not oblige the agent to declare that server in its own
+    # mcpServers. The weaker obligation still catches typos: the server has to be
+    # a key of .mcp.json.
+    dis_servers="$(printf '%s\n' "$dis_scan" \
+                   | awk -F'\t' 'NF>=2 && $2 != "" { print $2 }' | LC_ALL=C sort -u)"
+    if [[ "$prefix_ok" -eq 1 && -n "$dis_servers" && -n "$known_servers" ]]; then
+      while IFS= read -r srv; do
+        [[ -z "$srv" ]] && continue
+        if ! printf '%s\n' "$known_servers" | grep -qxF -- "$srv"; then
+          ok=0
+          fail "$agent: disallowedTools reference server '$srv' that is not in .mcp.json"
+          detail "unknown-disallowed-server: $agent -> $srv"
+        fi
+      done <<< "$dis_servers"
     fi
 
     # --- (d) serena tools require both bootstrap tools ---------------------
@@ -1368,7 +1395,7 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   shopt -u nullglob
 
   if [[ "$ok" -eq 1 ]]; then
-    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity across tools + disallowedTools with mcpServers declared wherever MCP tools are used, serena bootstrap present in both spellings, bare/plugin-prefixed twins complete)"
+    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity with mcpServers declared wherever tools use MCP, disallowedTools servers known to .mcp.json, serena bootstrap present in both spellings, bare/plugin-prefixed twins complete)"
   fi
 }
 
