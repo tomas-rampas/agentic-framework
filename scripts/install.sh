@@ -51,7 +51,7 @@ command -v git >/dev/null 2>&1 || { echo "ERROR: git is required" >&2; exit 1; }
 command -v jq  >/dev/null 2>&1 || { echo "ERROR: jq is required for settings merging" >&2; exit 1; }
 command -v pwsh >/dev/null 2>&1 || echo "WARNING: pwsh (PowerShell 7+) not found - the hook scripts will not run without it." >&2
 command -v npx >/dev/null 2>&1 || echo "WARNING: npx not found - the filesystem/context7/sequential-thinking MCP servers need Node.js." >&2
-command -v uvx >/dev/null 2>&1 || echo "WARNING: uvx (uv) not found - the serena/fetch MCP servers need it." >&2
+command -v uvx >/dev/null 2>&1 || echo "WARNING: uvx (uv) not found - the serena/fetch/code-review-graph MCP servers need it." >&2
 
 # ── Hooks ──────────────────────────────────────────────────────────────────────
 mkdir -p "$CLAUDE_HOME/hooks"
