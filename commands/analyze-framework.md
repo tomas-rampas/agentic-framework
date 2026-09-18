@@ -45,7 +45,7 @@ bash "${CLAUDE_PLUGIN_ROOT:-.}/tests/hooks.test.sh"                     # hook b
 
 - **${CLAUDE_PLUGIN_ROOT}/claude.json**: registry parses, all registered agents resolve to `${CLAUDE_PLUGIN_ROOT}/agents/*.md` files (and vice versa), categories partition the roster
 - **${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json**: valid JSON; its `hooks` block is the canonical hook registration
-- **${CLAUDE_PLUGIN_ROOT}/mcp-plugin/.mcp.json**: valid JSON; servers are launchable specs (optional agentic-framework-mcp plugin)
+- **${CLAUDE_PLUGIN_ROOT}/.mcp.json**: valid JSON; servers are launchable specs (six MCP servers bundled in the plugin)
 
 ```bash
 # Check claude.json structure (expected: matches `ls -1 ${CLAUDE_PLUGIN_ROOT}/agents/*.md | wc -l`)
@@ -90,7 +90,7 @@ Verifies the skills on disk parse and match the documented roster. See README's 
 ```
 ${CLAUDE_PLUGIN_ROOT}/
 ├── agents/                  ✓ (one .md per registered agent)
-├── commands/                ✓ (11 commands)
+├── commands/                ✓ (12 commands)
 ├── hooks/                   ✓ (registered hook scripts)
 ├── skills/                  ✓ (operational skills)
 ├── scripts/                 ✓ (install + validation + doc generation)
@@ -101,7 +101,7 @@ ${CLAUDE_PLUGIN_ROOT}/
 ├── claude.json              ✓ (agent registry)
 ├── hooks/hooks.json         ✓ (hook registration)
 ├── settings.template.json   ✓ (recommended user settings: permissions)
-└── mcp-plugin/.mcp.json     ✓ (MCP servers, optional plugin)
+└── .mcp.json                ✓ (MCP servers, bundled)
 ```
 
 ### 6. Script Validation
@@ -123,7 +123,7 @@ Claude Code CLI Framework Health Analysis
 CONFIGURATION
    • claude.json: valid, registry == filesystem
    • hooks/hooks.json: registration parity OK
-   • mcp-plugin/.mcp.json: valid server specs
+   • .mcp.json: valid server specs
 
 AGENTS
    • Registry == filesystem; all categories partition the roster; model parity OK

@@ -25,8 +25,8 @@ Verify that every external tool this framework actually depends on is installed,
 | gh (GitHub CLI) | The command-line executor agents (bash-expert, powershell-expert): PR/issue/run queries, log grinding, `gh api` reads; must be authenticated |
 | yq (mikefarah v4) | The executor agents: YAML processing and agent-frontmatter extraction (`yq --front-matter=extract`) |
 | PowerShell 7+ (`pwsh`) | **Windows**: installer scripts require pwsh 7, and the hook chain falls back to it (hooks/dispatch.sh runs the POSIX .sh directly when jq is on PATH in Git Bash; .ps1 via pwsh otherwise). **Linux/macOS**: optional — hooks run as POSIX shell; pwsh only needed for the optional .ps1 test suite (`tests/hooks.test.ps1`). |
-| Node.js + npx | The `filesystem`, `context7`, and `sequential-thinking` MCP servers (launched via `npx -y`) — only needed if the optional agentic-framework-mcp plugin is installed |
-| uv (`uvx`) | The `serena`, `fetch`, and `code-review-graph` MCP servers — only needed if the optional agentic-framework-mcp plugin is installed |
+| Node.js + npx | The `filesystem`, `context7`, and `sequential-thinking` MCP servers (launched via `npx -y`), which are part of the agentic-framework plugin — needed unless the user has disabled those servers |
+| uv (`uvx`) | The `serena`, `fetch`, and `code-review-graph` MCP servers, which are part of the agentic-framework plugin — needed unless the user has disabled those servers |
 | Claude Code CLI | Host runtime that loads the agentic-framework plugin and executes hooks |
 | shellcheck (optional) | Linting `scripts/*.sh`; nice-to-have, nothing hard-fails without it |
 
@@ -71,7 +71,7 @@ Run each probe and classify the result as OK (with version), MISSING, or WRONG V
 
 ### Claude Code CLI
 - Probe: `claude --version`
-- Pass: any current release. If the optional agentic-framework-mcp plugin is installed, `claude mcp list` should show filesystem, context7, serena, sequential-thinking, fetch, and code-review-graph.
+- Pass: any current release. With the agentic-framework plugin installed, `claude mcp list` should show filesystem, context7, serena, sequential-thinking, fetch, and code-review-graph — they ship with the plugin, so a missing one means a disabled server or a failed launch.
 
 ### shellcheck (optional)
 - Probe: `shellcheck --version`
@@ -120,7 +120,7 @@ Present results as a single table: Tool | Status | Version found | Needed by | F
 
 - All required tools OK → framework is fully operational; install the agentic-framework plugin if not already done.
 - Any of git / bash / jq / pwsh missing → validators or hooks WILL fail; list the exact install command for the user's platform.
-- node/npx or uvx missing → core framework works, but the optional agentic-framework-mcp plugin's MCP servers will not start; this is non-blocking if the user doesn't need those servers.
+- node/npx or uvx missing → core framework works, but the plugin's bundled MCP servers will not start; this is non-blocking if the user has disabled them or does not need them.
 - gh or yq missing (or gh unauthenticated, or yq is the Python wrapper) → the command-line executor agents degrade: GitHub queries and YAML processing fail; give the platform install command.
 - Only shellcheck missing → note it as optional and move on.
 

@@ -260,8 +260,7 @@ section "[4] JSON validity (claude.json, settings.template.json, plugin manifest
   [[ -f "$ROOT/settings.template.json" ]] && json_files+=("$ROOT/settings.template.json")
   [[ -f "$ROOT/.claude-plugin/plugin.json" ]] && json_files+=("$ROOT/.claude-plugin/plugin.json")
   [[ -f "$ROOT/.claude-plugin/marketplace.json" ]] && json_files+=("$ROOT/.claude-plugin/marketplace.json")
-  [[ -f "$ROOT/mcp-plugin/.claude-plugin/plugin.json" ]] && json_files+=("$ROOT/mcp-plugin/.claude-plugin/plugin.json")
-  [[ -f "$ROOT/mcp-plugin/.mcp.json" ]] && json_files+=("$ROOT/mcp-plugin/.mcp.json")
+  [[ -f "$ROOT/.mcp.json" ]] && json_files+=("$ROOT/.mcp.json")
   [[ -f "$ROOT/hooks/hooks.json" ]] && json_files+=("$ROOT/hooks/hooks.json")
   shopt -s nullglob
   for f in "$FACTS_HOOKS_DIR"/*.json; do
@@ -927,16 +926,15 @@ section "[12] Skills layout (skills/<name>/SKILL.md only; frontmatter name == di
 # ===========================================================================
 # CHECK 13 - Version sync (BLOCKING)
 # ===========================================================================
-# The version must be identical across three authoritative locations:
+# The version must be identical across two authoritative locations:
 #   - claude.json .version
 #   - .claude-plugin/plugin.json .version
-#   - mcp-plugin/.claude-plugin/plugin.json .version
-# All three must be identical non-empty strings; any drift is a defect.
+# Both must be identical non-empty strings; any drift is a defect.
 _check_on 13 && {
-section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/.claude-plugin/plugin.json)"
+section "[13] Version sync (claude.json, .claude-plugin/plugin.json)"
   ok=1
   versions=()
-  files=("$ROOT/claude.json" "$ROOT/.claude-plugin/plugin.json" "$ROOT/mcp-plugin/.claude-plugin/plugin.json")
+  files=("$ROOT/claude.json" "$ROOT/.claude-plugin/plugin.json")
 
   for f in "${files[@]}"; do
     if [[ ! -f "$f" ]]; then
@@ -967,7 +965,7 @@ section "[13] Version sync (claude.json, .claude-plugin/plugin.json, mcp-plugin/
       fi
     done
     if [[ "$ok" -eq 1 ]]; then
-      pass "all three version fields are identical: $first"
+      pass "all ${#files[@]} version fields are identical: $first"
     fi
   fi
 }
@@ -1042,11 +1040,44 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
 # because no gate could catch it. Rules (all blocking, all conditional on the
 # key being present, so an agent that omits a key is never penalised):
 #   (a) effort:     value must be one of the declared tiers.
-#   (b) mcpServers: every entry must be a key of mcp-plugin/.mcp.json .mcpServers.
+#   (b) mcpServers: every entry must be a key of .mcp.json .mcpServers.
 #   (c) tools + mcpServers: every mcp__<server>__* tool must have <server>
 #       declared in that agent's mcpServers (no undeclared server dependency).
+#       A server-level wildcard (mcp__<server>, no __<tool>) counts.
 #   (d) tools: any mcp__serena__* tool implies BOTH serena bootstrap tools
-#       (activate_project + initial_instructions) are allowlisted too.
+#       (activate_project + initial_instructions) are allowlisted too. The rule
+#       applies independently to the bare and the plugin-prefixed spelling.
+#   (e) tools / disallowedTools: every bare mcp__* entry must have its
+#       plugin-prefixed twin and vice versa, so the curated surface is identical
+#       whether a server comes from the plugin or from a user-scope copy.
+#   (f) tools: an agent whose tools reference ANY MCP server must declare
+#       mcpServers at all. Without this, rule (c) had nothing to compare against
+#       and an agent with no mcpServers key passed vacuously.
+#   (g) disallowedTools: the referenced server must merely EXIST in .mcp.json.
+#       Rules (c)/(f) deliberately do NOT apply to a denylist: denying a server
+#       the agent never granted is the defensive spelling, and demanding the
+#       agent declare that server in mcpServers to deny it would invert the
+#       intent. Typos are still caught, by existence alone.
+# An entry that names no server at all (a bare 'mcp__') is malformed and is
+# reported (malformed-mcp-entry) rather than silently discarded.
+#
+# When the plugin prefix cannot be DERIVED (see below), rules (c)/(e) and the
+# prefixed half of (d) are skipped for the whole run: every prefixed entry would
+# otherwise be reported as its own undeclared server, burying the one failure
+# that actually explains the run. The run still exits non-zero.
+#
+# PLUGIN-PREFIXED NAMES: a plugin-shipped MCP server exposes its tools as
+# mcp__plugin_<plugin-name>_<server>__<tool>. The infix is DERIVED from
+# .claude-plugin/plugin.json .name, never hard-coded, so renaming the plugin
+# makes every stale prefixed entry fail rule (c) instead of passing silently.
+# mcp__plugin_<other>_... (a prefix that is not this plugin's) is therefore
+# treated as a bare entry whose "server" is plugin_<other>_<server> — which no
+# .mcp.json declares, so rule (c) rejects it.
+#
+# disallowedTools: is parsed with the SAME single-line tokenizer as tools: and
+# is subject to rules (c) and (e); a block-style value is rejected loudly as
+# unparseable-disallowedtools. Rule (d) does not apply to it (a denylist cannot
+# create a bootstrap obligation).
 # Parsing follows check 7's convention: grep -m1 the single physical line, with
 # any trailing YAML comment stripped (`effort: xhigh  # deliberate` -> xhigh).
 # Every SINGLE-LINE list spelling is accepted and normalised identically for
@@ -1114,14 +1145,58 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     printf '%s' "${1-}" | tr -d '[]"'\''' | tr ',[:space:]' '\n' | grep -v '^$'
   }
 
-  mcp_json="$ROOT/mcp-plugin/.mcp.json"
+  # _mcp_scan <entries-text> <plugin-infix> - one TSV row per mcp__ entry:
+  #   <kind>\t<server>\t<bare-normalised-entry>
+  # kind is 'prefixed' (carries THIS plugin's infix), 'foreign' (carries some
+  # other plugin_* infix) or 'bare'. <server> is the text up to the first '__'
+  # of the remainder, or the whole remainder for a server-level wildcard.
+  # <bare-normalised-entry> is the entry with this plugin's infix removed, which
+  # is what rule (e) compares between the two spellings.
+  _mcp_scan() {
+    printf '%s\n' "${1-}" | awk -v pfx="$2" '
+      /^mcp__/ {
+        rest = substr($0, 6)   # strip the leading "mcp__"
+        kind = "bare"
+        if (pfx != "" && index(rest, pfx) == 1) {
+          rest = substr(rest, length(pfx) + 1); kind = "prefixed"
+        } else if (index(rest, "plugin_") == 1) {
+          kind = "foreign"
+        }
+        i = index(rest, "__")
+        srv = (i > 0) ? substr(rest, 1, i - 1) : rest
+        # A token that yields no server name at all (a bare "mcp__", or
+        # "mcp____tool") is malformed. Report it rather than dropping it: a
+        # silently discarded entry is exactly the vacuous pass this check exists
+        # to prevent.
+        if (srv == "") { print "malformed\t\t" $0; next }
+        print kind "\t" srv "\t" "mcp__" rest
+      }'
+  }
+
+  # The plugin MCP prefix is DERIVED, never hard-coded (see the header note).
+  plugin_infix=""
+  prefix_ok=1
+  plugin_name="$(_facts_jq -r '.name // empty' "$ROOT/.claude-plugin/plugin.json" 2>/dev/null || echo "")"
+  if [[ -z "$plugin_name" ]]; then
+    ok=0
+    prefix_ok=0
+    fail "agent frontmatter: cannot derive the plugin MCP prefix (.claude-plugin/plugin.json .name is empty)"
+  else
+    # Claude Code sanitises the plugin name the same way it sanitises tool names:
+    # every character outside [A-Za-z0-9_-] becomes '_' before it is spliced into
+    # mcp__plugin_<plugin-name>_<server>__<tool>. Derive the infix identically, or
+    # a plugin whose name carries a dot or a space would never match its own tools.
+    plugin_infix="plugin_$(printf '%s' "$plugin_name" | sed 's/[^A-Za-z0-9_-]/_/g')_"
+  fi
+
+  mcp_json="$ROOT/.mcp.json"
   known_servers=""
   if [[ -f "$mcp_json" ]]; then
     known_servers="$(_facts_jq -r '.mcpServers // {} | keys[]' "$mcp_json" 2>/dev/null | LC_ALL=C sort)"
   fi
   if [[ -z "$known_servers" ]]; then
     ok=0
-    fail "agent frontmatter: mcp-plugin/.mcp.json has no .mcpServers keys (cannot validate mcpServers declarations)"
+    fail "agent frontmatter: .mcp.json has no .mcpServers keys (cannot validate mcpServers declarations)"
   fi
 
   shopt -s nullglob
@@ -1144,6 +1219,7 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
     fm_effort="$(_fm_value "$fm_text" effort)"
     fm_mcp="$(_fm_value "$fm_text" mcpServers)"
     fm_tools="$(_fm_value "$fm_text" tools)"
+    fm_dis="$(_fm_value "$fm_text" disallowedTools)"
 
     # --- (a) effort tier ---------------------------------------------------
     if [[ -n "$fm_effort" ]]; then
@@ -1175,7 +1251,7 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
         [[ -z "$srv" ]] && continue
         if ! printf '%s\n' "$known_servers" | grep -qxF -- "$srv"; then
           ok=0
-          fail "$agent: mcpServers entry '$srv' is not a server in mcp-plugin/.mcp.json"
+          fail "$agent: mcpServers entry '$srv' is not a server in .mcp.json"
           detail "unknown-mcp-server: $agent -> $srv"
         fi
       done <<< "$declared_servers"
@@ -1194,39 +1270,132 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
       fail "$agent: agents/$agent.md tools value is empty or not a single-line list"
       detail "unparseable-tools: $agent (must be a single-line list)"
     fi
-    [[ -n "$tool_entries" ]] || continue
+    # disallowedTools: is an optional single-line denylist, parsed with the
+    # SAME tokenizer as tools: and subject to the same loud-failure contract.
+    dis_entries=""
+    [[ -n "$fm_dis" ]] && dis_entries="$(_fm_list "$fm_dis")"
+    if _fm_has_key "$fm_text" disallowedTools && [[ -z "$dis_entries" ]]; then
+      ok=0
+      fail "$agent: agents/$agent.md disallowedTools value is empty or not a single-line list"
+      detail "unparseable-disallowedtools: $agent (must be a single-line list)"
+    fi
 
-    # mcp__<server>__<tool> entries used in the tools allowlist.
-    tool_servers="$(printf '%s\n' "$tool_entries" | grep -oE '^mcp__[A-Za-z0-9_-]+__' \
-                    | sed -E 's/^mcp__//; s/__$//' | LC_ALL=C sort -u)"
+    [[ -n "$tool_entries" || -n "$dis_entries" ]] || continue
 
-    # --- (c) every server used by tools is declared in mcpServers ----------
-    if [[ -n "$tool_servers" && -n "$fm_mcp" ]]; then
+    # mcp__ entries of BOTH lists, classified against the derived plugin infix.
+    tools_scan="$(_mcp_scan "$tool_entries" "$plugin_infix")"
+    dis_scan="$(_mcp_scan "$dis_entries" "$plugin_infix")"
+
+    # --- malformed mcp__ entries (no server name at all) -------------------
+    malformed="$(printf '%s\n%s\n' "$tools_scan" "$dis_scan" \
+                 | awk -F'\t' '$1 == "malformed" { print $3 }' | LC_ALL=C sort -u)"
+    if [[ -n "$malformed" ]]; then
+      while IFS= read -r tok; do
+        [[ -z "$tok" ]] && continue
+        ok=0
+        fail "$agent: tools/disallowedTools entry '$tok' names no MCP server"
+        detail "malformed-mcp-entry: $agent -> $tok"
+      done <<< "$malformed"
+    fi
+
+    # --- (c)+(f) every server used by either list is declared in mcpServers -
+    # Rule (f) closes a vacuous pass: an agent that uses mcp__ tools but
+    # declares NO mcpServers at all used to skip rule (c) entirely.
+    # Skipped wholesale when the plugin prefix could not be derived — every
+    # prefixed entry would otherwise be reported as its own undeclared server,
+    # burying the single root-cause failure under hundreds of derived ones.
+    tool_servers="$(printf '%s\n' "$tools_scan" \
+                    | awk -F'\t' 'NF>=2 && $2 != "" { print $2 }' | LC_ALL=C sort -u)"
+    if [[ "$prefix_ok" -eq 1 && -n "$tool_servers" ]]; then
+      if [[ -z "$declared_servers" ]]; then
+        ok=0
+        fail "$agent: tools reference MCP servers but the agent declares no mcpServers"
+        detail "missing-mcpservers: $agent"
+      else
+        while IFS= read -r srv; do
+          [[ -z "$srv" ]] && continue
+          if ! printf '%s\n' "$declared_servers" | grep -qxF -- "$srv"; then
+            ok=0
+            fail "$agent: tools use mcp__${srv}__* but '$srv' is not declared in mcpServers"
+            detail "undeclared-tool-server: $agent -> $srv"
+          fi
+        done <<< "$tool_servers"
+      fi
+    fi
+
+    # --- (g) disallowedTools servers only have to EXIST --------------------
+    # Denying a server the agent never granted is the defensive spelling, so a
+    # denylist entry must not oblige the agent to declare that server in its own
+    # mcpServers. The weaker obligation still catches typos: the server has to be
+    # a key of .mcp.json.
+    dis_servers="$(printf '%s\n' "$dis_scan" \
+                   | awk -F'\t' 'NF>=2 && $2 != "" { print $2 }' | LC_ALL=C sort -u)"
+    if [[ "$prefix_ok" -eq 1 && -n "$dis_servers" && -n "$known_servers" ]]; then
       while IFS= read -r srv; do
         [[ -z "$srv" ]] && continue
-        if ! printf '%s\n' "$declared_servers" | grep -qxF -- "$srv"; then
+        if ! printf '%s\n' "$known_servers" | grep -qxF -- "$srv"; then
           ok=0
-          fail "$agent: tools use mcp__${srv}__* but '$srv' is not declared in mcpServers"
-          detail "undeclared-tool-server: $agent -> $srv"
+          fail "$agent: disallowedTools reference server '$srv' that is not in .mcp.json"
+          detail "unknown-disallowed-server: $agent -> $srv"
         fi
-      done <<< "$tool_servers"
+      done <<< "$dis_servers"
     fi
 
     # --- (d) serena tools require both bootstrap tools ---------------------
-    if printf '%s\n' "$tool_entries" | grep -q '^mcp__serena__'; then
-      for boot in $SERENA_BOOTSTRAP; do
-        if ! printf '%s\n' "$tool_entries" | grep -qxF -- "$boot"; then
-          ok=0
-          fail "$agent: tools include mcp__serena__* but omit the bootstrap tool $boot"
-          detail "missing-serena-bootstrap: $agent -> $boot"
+    # Applied independently per spelling: a prefixed serena tool obliges the two
+    # PREFIXED bootstrap tools, a bare one the two bare tools.
+    # The infix is data, not a pattern: matched with awk index() exactly as
+    # _mcp_scan does, so a plugin name containing a regex metacharacter cannot
+    # make the two disagree.
+    boot_prefixes=("")
+    [[ "$prefix_ok" -eq 1 ]] && boot_prefixes+=("$plugin_infix")
+    for boot_pfx in "${boot_prefixes[@]}"; do
+      if printf '%s\n' "$tool_entries" \
+         | awk -v p="mcp__${boot_pfx}serena__" 'index($0, p) == 1 { f = 1 } END { exit !f }'; then
+        for boot in $SERENA_BOOTSTRAP; do
+          boot="mcp__${boot_pfx}${boot#mcp__}"
+          if ! printf '%s\n' "$tool_entries" | grep -qxF -- "$boot"; then
+            ok=0
+            fail "$agent: tools include mcp__${boot_pfx}serena__* but omit the bootstrap tool $boot"
+            detail "missing-serena-bootstrap: $agent -> $boot"
+          fi
+        done
+      fi
+    done
+
+    # --- (e) bare and plugin-prefixed entries must come in twins -----------
+    # Skipped when the prefix could not be derived: with no infix every prefixed
+    # entry is an orphan, which would drown the root-cause failure.
+    [[ "$prefix_ok" -eq 1 ]] || continue
+    for list_name in tools disallowedTools; do
+      if [[ "$list_name" == tools ]]; then list_scan="$tools_scan"; else list_scan="$dis_scan"; fi
+      [[ -n "$list_scan" ]] || continue
+      # One awk pass over the scan decides both directions (an allowlist runs to
+      # ~80 entries per agent; a grep per entry would cost thousands of
+      # processes per validator run). Output: '<direction>\t<entry>'.
+      orphans="$(printf '%s\n' "$list_scan" | awk -F'\t' '
+        $1 == "prefixed" { p[$3] = 1; next }
+        $1 == "bare"     { b[$3] = 1 }
+        END {
+          for (e in b) if (!(e in p)) print "bare\t" e
+          for (e in p) if (!(e in b)) print "prefixed\t" e
+        }' | LC_ALL=C sort)"
+      while IFS=$'\t' read -r dir e; do
+        [[ -z "$e" ]] && continue
+        ok=0
+        if [[ "$dir" == bare ]]; then
+          fail "$agent: $list_name entry '$e' has no plugin-prefixed twin (mcp__${plugin_infix}...)"
+        else
+          fail "$agent: $list_name entry 'mcp__${plugin_infix}${e#mcp__}' has no bare twin '$e'"
         fi
-      done
-    fi
+        detail "missing-twin: $agent -> $e"
+      done <<< "$orphans"
+    done
   done
   shopt -u nullglob
 
   if [[ "$ok" -eq 1 ]]; then
-    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity, serena bootstrap present)"
+    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity with mcpServers declared wherever tools use MCP, disallowedTools servers known to .mcp.json, serena bootstrap present in both spellings, bare/plugin-prefixed twins complete)"
   fi
 }
 

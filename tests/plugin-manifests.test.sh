@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # plugin-manifests.test.sh - Test harness for plugin manifest validation
-# (core plugin, mcp plugin, marketplace, hooks.json, mcp.json).
+# (core plugin manifest, marketplace, hooks.json, bundled root .mcp.json).
 #
 # ISOLATION CONTRACT (same as consistency.test.sh):
 #   Each test case operates on its own throwaway copy of the repo, extracted
@@ -144,10 +144,13 @@ assert_file_exists() {
   else _fail "$label" "file does not exist: $path"; fi
 }
 
+# -e, not -f: callers assert the absence of directories (e.g. the retired
+# mcp-plugin/ sub-plugin) as well as of files, and a leftover directory must
+# not read as "absent" just because it is not a regular file.
 assert_file_not_exists() {
   local path="$1" label="$2"
-  if [[ ! -f "$path" ]]; then _pass "$label"
-  else _fail "$label" "file should not exist: $path"; fi
+  if [[ ! -e "$path" ]]; then _pass "$label"
+  else _fail "$label" "path should not exist: $path"; fi
 }
 
 _verify_copy() {
@@ -256,30 +259,22 @@ export FRAMEWORK_ROOT
   fi
 }
 
-# --- Assertion 2: MCP plugin.json name is "agentic-framework-mcp" (kebab-case) ---
+# --- Assertion 2: the optional MCP sub-plugin directory is gone (servers are
+#     bundled in the core plugin now, so nothing may live under mcp-plugin/) ---
 {
-  assert_json_field_matches "$copy/mcp-plugin/.claude-plugin/plugin.json" '.name' "agentic-framework-mcp" \
-    "mcp plugin.json .name == 'agentic-framework-mcp'"
-
-  # Validate kebab-case regex
-  name="$(jq -r '.name' "$copy/mcp-plugin/.claude-plugin/plugin.json")"
-  if [[ $name =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
-    _pass "mcp plugin.json .name is kebab-case"
-  else
-    _fail "mcp plugin.json .name is kebab-case" "name '$name' does not match ^[a-z0-9]+(-[a-z0-9]+)*$"
-  fi
+  assert_file_not_exists "$copy/mcp-plugin" \
+    "mcp-plugin/ does not exist (MCP servers are bundled in the core plugin)"
 }
 
-# --- Assertion 3: Version sync (claude.json, core plugin.json, mcp plugin.json) ---
+# --- Assertion 3: Version sync (claude.json, core plugin.json) ---
 {
   cv="$(jq -r '.version' "$copy/claude.json")"
   cv_plugin="$(jq -r '.version' "$copy/.claude-plugin/plugin.json")"
-  cv_mcp="$(jq -r '.version' "$copy/mcp-plugin/.claude-plugin/plugin.json")"
 
-  if [[ -n "$cv" && "$cv" == "$cv_plugin" && "$cv" == "$cv_mcp" ]]; then
-    _pass "version sync: claude.json ($cv) == core plugin.json == mcp plugin.json"
+  if [[ -n "$cv" && "$cv" == "$cv_plugin" ]]; then
+    _pass "version sync: claude.json ($cv) == core plugin.json"
   else
-    _fail "version sync" "claude.json=$cv, core=$cv_plugin, mcp=$cv_mcp"
+    _fail "version sync" "claude.json=$cv, core=$cv_plugin"
   fi
 }
 
@@ -321,17 +316,16 @@ export FRAMEWORK_ROOT
 
 # --- Assertion 6: marketplace.json plugin names match plugin.json names ---
 {
-  # Check that each plugin in marketplace has a corresponding plugin.json
+  # The marketplace lists exactly one plugin — the core plugin — so its name
+  # must equal the core plugin.json .name.
+  mp_count="$(jq '.plugins | length' "$copy/.claude-plugin/marketplace.json")"
   mp_name_1="$(jq -r '.plugins[0].name' "$copy/.claude-plugin/marketplace.json")"
-  mp_name_2="$(jq -r '.plugins[1].name' "$copy/.claude-plugin/marketplace.json")"
-
   pj_name_1="$(jq -r '.name' "$copy/.claude-plugin/plugin.json")"
-  pj_name_2="$(jq -r '.name' "$copy/mcp-plugin/.claude-plugin/plugin.json")"
 
-  if [[ "$mp_name_1" == "$pj_name_1" && "$mp_name_2" == "$pj_name_2" ]]; then
-    _pass "marketplace.json plugin names match their plugin.json .name fields"
+  if [[ "$mp_count" -eq 1 && "$mp_name_1" == "$pj_name_1" ]]; then
+    _pass "marketplace.json lists exactly one plugin, whose name matches plugin.json .name"
   else
-    _fail "marketplace.json plugin names" "mp1=$mp_name_1 (expect $pj_name_1), mp2=$mp_name_2 (expect $pj_name_2)"
+    _fail "marketplace.json plugin names" "plugins=$mp_count, mp1=$mp_name_1 (expect $pj_name_1)"
   fi
 }
 
@@ -477,25 +471,30 @@ export FRAMEWORK_ROOT
   fi
 }
 
-# --- Assertion 10: No root .mcp.json exists ---
+# --- Assertion 10: Root .mcp.json exists (the core plugin ships the servers) ---
 {
-  assert_file_not_exists "$copy/.mcp.json" "no tracked root .mcp.json exists"
-}
-
-# --- Assertion 11: mcp-plugin/.mcp.json has exactly 6 server keys ---
-{
-  count="$(jq '.mcpServers | keys | length' "$copy/mcp-plugin/.mcp.json")"
-  if [[ "$count" -eq 6 ]]; then
-    _pass "mcp-plugin/.mcp.json has exactly 6 mcpServers keys"
+  assert_file_exists "$copy/.mcp.json" "root .mcp.json exists"
+  if jq empty "$copy/.mcp.json" >/dev/null 2>&1; then
+    _pass "root .mcp.json is valid JSON"
   else
-    _fail "mcp-plugin/.mcp.json has exactly 6 mcpServers keys" "found $count keys"
+    _fail "root .mcp.json is valid JSON" "jq could not parse $copy/.mcp.json"
   fi
 }
 
-# --- Assertion 12: mcp-plugin/.mcp.json has the expected 6 servers ---
+# --- Assertion 11: .mcp.json has exactly 6 server keys ---
+{
+  count="$(jq '.mcpServers | keys | length' "$copy/.mcp.json")"
+  if [[ "$count" -eq 6 ]]; then
+    _pass ".mcp.json has exactly 6 mcpServers keys"
+  else
+    _fail ".mcp.json has exactly 6 mcpServers keys" "found $count keys"
+  fi
+}
+
+# --- Assertion 12: .mcp.json has the expected 6 servers ---
 {
   # Extract and sort actual servers, removing carriage returns
-  actual_sorted="$(jq -r '.mcpServers | keys[]' "$copy/mcp-plugin/.mcp.json" | tr -d '\r' | LC_ALL=C sort)"
+  actual_sorted="$(jq -r '.mcpServers | keys[]' "$copy/.mcp.json" | tr -d '\r' | LC_ALL=C sort)"
 
   # Define expected servers
   expected_sorted="$(printf '%s\n' "code-review-graph" "context7" "fetch" "filesystem" "sequential-thinking" "serena" | LC_ALL=C sort)"
@@ -504,15 +503,15 @@ export FRAMEWORK_ROOT
   diff_lines="$(comm -3 <(printf '%s' "$expected_sorted") <(printf '%s' "$actual_sorted") | grep -c . || true)"
 
   if [[ "$diff_lines" -eq 0 ]]; then
-    _pass "mcp-plugin/.mcp.json has exactly the expected 6 servers"
+    _pass ".mcp.json has exactly the expected 6 servers"
   else
-    _fail "mcp-plugin/.mcp.json server keys" "expected: $expected_sorted, got: $actual_sorted"
+    _fail ".mcp.json server keys" "expected: $expected_sorted, got: $actual_sorted"
   fi
 }
 
 # --- Assertion 13: context7 env value is literal placeholder ---
 {
-  env_val="$(jq -r '.mcpServers.context7.env.CONTEXT7_API_KEY' "$copy/mcp-plugin/.mcp.json" | tr -d '\r')"
+  env_val="$(jq -r '.mcpServers.context7.env.CONTEXT7_API_KEY' "$copy/.mcp.json" | tr -d '\r')"
   if [[ "$env_val" == '${CONTEXT7_API_KEY:-}' ]]; then
     _pass "context7 env.CONTEXT7_API_KEY is literal placeholder '\${CONTEXT7_API_KEY:-}'"
   else
@@ -520,15 +519,25 @@ export FRAMEWORK_ROOT
   fi
 }
 
-# --- Assertion 14: No D:/src or D:\src strings in mcp-plugin/.mcp.json ---
+# --- Assertion 14: No D:/src or D:\src strings in .mcp.json ---
 {
-  content="$(cat "$copy/mcp-plugin/.mcp.json")"
+  content="$(cat "$copy/.mcp.json")"
   rc=0
   if printf '%s' "$content" | grep -qE 'D:/src|D:\\src'; then
-    _fail "mcp-plugin/.mcp.json has no hardcoded D:/src paths" "found D:/src or D:\\src in content"
+    _fail ".mcp.json has no hardcoded D:/src paths" "found D:/src or D:\\src in content"
     rc=1
   else
-    _pass "mcp-plugin/.mcp.json has no hardcoded D:/src paths"
+    _pass ".mcp.json has no hardcoded D:/src paths"
+  fi
+}
+
+# --- Assertion 14a: fetch launcher carries the mcp<2 guard ---
+{
+  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | if $i == null then "" else .[$i+1] end' "$copy/.mcp.json" | tr -d '\r')"
+  if [[ "$guard_val" == 'mcp<2' ]]; then
+    _pass "fetch launcher args carry the 'mcp<2' guard"
+  else
+    _fail "fetch launcher args carry the 'mcp<2' guard" "expected 'mcp<2', got '$guard_val'"
   fi
 }
 
@@ -595,18 +604,23 @@ section "[RED-8] Remove a registered hook script (should fail parity check)"
 }
 
 # ===========================================================================
-# RED PATH CASE 9: Create root .mcp.json (should fail the "no root" check)
+# RED PATH CASE 9: Fixture — delete root .mcp.json (the suite-level red behaviour
+#                  is recorded in the spec's REQ-006 evidence, not re-run here)
 # ===========================================================================
-section "[RED-9] Create root .mcp.json (should fail no-root-mcp check)"
+section "[RED-9] Fixture: delete root .mcp.json (Assertion 10's red path, verified externally)"
 {
   copy="$(make_copy)"
   _verify_copy "$copy"
-  printf '{"mcpServers":{}}\n' > "$copy/.mcp.json"
+  rm -f "$copy/.mcp.json"
 
-  if [[ -f "$copy/.mcp.json" ]]; then
-    _pass "RED-9: root .mcp.json exists (check should fail)"
+  # This case verifies the FIXTURE only; it does not re-run Assertion 10. The
+  # discriminating behaviour — this suite exiting 1 with "root .mcp.json exists"
+  # failing on a tree whose root .mcp.json is gone — was verified by the
+  # external red run recorded in the spec's REQ-006 evidence.
+  if [[ ! -f "$copy/.mcp.json" ]]; then
+    _pass "RED-9: fixture: root .mcp.json removed from copy"
   else
-    _fail "RED-9: root .mcp.json should exist" "file not created"
+    _fail "RED-9: fixture: root .mcp.json removed from copy" "file still present"
   fi
 
   rm -rf "$copy"
@@ -621,10 +635,10 @@ section "[RED-10] Replace context7 env with hardcoded token (should fail placeho
   _verify_copy "$copy"
   fv=fake-tok-12345
   jq --arg v "$fv" '.mcpServers.context7.env.CONTEXT7_API_KEY = $v' \
-    "$copy/mcp-plugin/.mcp.json" > "$copy/mcp-plugin/.mcp.json.tmp" \
-    && mv "$copy/mcp-plugin/.mcp.json.tmp" "$copy/mcp-plugin/.mcp.json"
+    "$copy/.mcp.json" > "$copy/.mcp.json.tmp" \
+    && mv "$copy/.mcp.json.tmp" "$copy/.mcp.json"
 
-  env_val="$(jq -r '.mcpServers.context7.env.CONTEXT7_API_KEY' "$copy/mcp-plugin/.mcp.json" | tr -d '\r')"
+  env_val="$(jq -r '.mcpServers.context7.env.CONTEXT7_API_KEY' "$copy/.mcp.json" | tr -d '\r')"
   if [[ "$env_val" != '${CONTEXT7_API_KEY:-}' ]]; then
     _pass "RED-10: context7 env placeholder replaced with hardcoded value (guard broken)"
   else
@@ -801,6 +815,55 @@ section "[RED-18] Non-string marketplace description (should fail type check)"
     _fail "RED-18: numeric description should fail" "but helper returned success"
   else
     _pass "RED-18: numeric description correctly fails the type check"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 19: Fixture — recreate mcp-plugin/.mcp.json (the suite-level red
+#                   behaviour is recorded in the spec's REQ-006 evidence)
+# ===========================================================================
+section "[RED-19] Fixture: recreate mcp-plugin/.mcp.json (Assertion 2's red path, verified externally)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  mkdir -p "$copy/mcp-plugin"
+  printf '{"mcpServers":{}}\n' > "$copy/mcp-plugin/.mcp.json"
+
+  # This case verifies the FIXTURE only; it does not re-run Assertion 2. The
+  # discriminating behaviour — this suite exiting 1 with "mcp-plugin/ does not
+  # exist" failing on a tree where the sub-plugin was recreated — was verified
+  # by the external red run recorded in the spec's REQ-006 evidence.
+  if [[ -e "$copy/mcp-plugin/.mcp.json" ]]; then
+    _pass "RED-19: fixture: mcp-plugin/.mcp.json recreated in copy"
+  else
+    _fail "RED-19: fixture: mcp-plugin/.mcp.json recreated in copy" "file not created"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 20: Strip the mcp<2 guard from fetch's args (Assertion 14a's
+#                   red path, verified externally)
+# ===========================================================================
+section "[RED-20] Fixture: strip mcp<2 guard from fetch args (should fail guard check)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  tmp_json="$(mktemp)"
+  jq '.mcpServers.fetch.args = ["mcp-server-fetch==2026.7.10"]' "$copy/.mcp.json" > "$tmp_json" && mv "$tmp_json" "$copy/.mcp.json"
+
+  # This case verifies the FIXTURE only; it does not re-run Assertion 14a. The
+  # discriminating behaviour — this suite exiting 1 with "fetch launcher args
+  # carry the 'mcp<2' guard" failing on a tree whose fetch args lack the guard —
+  # was verified by the external red run recorded in the spec's REQ-006 evidence.
+  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | if $i == null then "" else .[$i+1] end' "$copy/.mcp.json" | tr -d '\r')"
+  if [[ "$guard_val" != 'mcp<2' ]]; then
+    _pass "RED-20: fixture: fetch args no longer carry the 'mcp<2' guard"
+  else
+    _fail "RED-20: fixture: fetch args no longer carry the 'mcp<2' guard" "guard still present"
   fi
 
   rm -rf "$copy"

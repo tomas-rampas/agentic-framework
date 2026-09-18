@@ -153,7 +153,9 @@
       "Bash(gh repo clone:*)",
       "Bash(gh repo fork:*)",
       "Bash(gh secret:*)",
-      "Bash(gh variable:*)"
+      "Bash(gh variable:*)",
+      "mcp__code-review-graph__apply_refactor_tool",
+      "mcp__plugin_agentic-framework_code-review-graph__apply_refactor_tool"
     ],
     "deny": [
       "Bash(sudo:*)",

@@ -70,9 +70,6 @@ jobs:
         # upstream warning class must not turn the build red.
         run: claude plugin validate .
 
-      - name: Validate plugin manifest (mcp-plugin)
-        run: claude plugin validate ./mcp-plugin
-
   lint:
     name: shellcheck + PSScriptAnalyzer
     runs-on: ubuntu-latest

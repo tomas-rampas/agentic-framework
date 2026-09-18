@@ -34,7 +34,7 @@ Validate core configuration files:
 - `${CLAUDE_PLUGIN_ROOT}/claude.json` — Parse JSON, verify the registry matches `${CLAUDE_PLUGIN_ROOT}/agents/`, check required fields
 - `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` — Parse JSON, verify the hook registration block
 - `${CLAUDE_PLUGIN_ROOT}/settings.template.json` — Parse JSON, verify the recommended user settings (permissions block, `alwaysThinkingEnabled`)
-- `${CLAUDE_PLUGIN_ROOT}/mcp-plugin/.mcp.json` — Parse JSON, verify MCP server definitions (ships in the optional agentic-framework-mcp plugin)
+- `${CLAUDE_PLUGIN_ROOT}/.mcp.json` — Parse JSON, verify MCP server definitions (the six MCP servers bundled in the plugin)
 
 ### 2. Agent Coverage
 
@@ -92,7 +92,7 @@ FRAMEWORK QUALITY REPORT
 
 Configuration Integrity:  ✓ claude.json valid (registry == filesystem)
                          ✓ hooks/hooks.json valid (registration parity OK)
-                         ✓ mcp-plugin/.mcp.json valid
+                         ✓ .mcp.json valid
 
 Agent Coverage:          all registered agents have definition files
                          all agent frontmatter valid (model parity OK)

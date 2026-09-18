@@ -1,17 +1,12 @@
 {
   "name": "agentic-framework",
-  "description": "Agent execution framework for Claude Code: 21 specialized agents with task routing, spec-driven build loops, and an enforced peer-review quality gate — shipped as a core plugin plus an optional MCP server bundle.",
+  "description": "Agent execution framework for Claude Code: 21 specialized agents with task routing, spec-driven build loops, an enforced peer-review quality gate, and six bundled MCP servers (context7, filesystem, serena, sequential-thinking, fetch, code-review-graph) — shipped as a single plugin.",
   "owner": { "name": "Tomas Rampas", "url": "https://github.com/tomas-rampas" },
   "plugins": [
     {
       "name": "agentic-framework",
       "source": "./",
-      "description": "21-agent execution framework for Claude Code with specialist routing, spec-driven build loops, and an enforced peer-review quality gate."
-    },
-    {
-      "name": "agentic-framework-mcp",
-      "source": "./mcp-plugin",
-      "description": "Optional MCP server bundle: context7, filesystem, serena, sequential-thinking, fetch, code-review-graph."
+      "description": "21-agent execution framework for Claude Code with specialist routing, spec-driven build loops, an enforced peer-review quality gate, and six bundled MCP servers (context7, filesystem, serena, sequential-thinking, fetch, code-review-graph)."
     }
   ]
 }

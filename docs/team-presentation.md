@@ -317,13 +317,12 @@ sequenceDiagram
 /agentic-framework:analyze-framework
 ```
 
-Optional: install the MCP servers plugin:
+The six MCP servers are part of the plugin and connect at session start. To set their two optional environment variables:
 ```
-/plugin install agentic-framework-mcp@agentic-framework
-/agentic-framework-mcp:setup
+/agentic-framework:setup
 ```
 
-**Prerequisites:** Claude Code CLI, git, bash + jq; PowerShell 7 (Windows only; Linux/macOS optional); Node/npx and uv for the optional MCP servers.
+**Prerequisites:** Claude Code CLI, git, bash + jq; PowerShell 7 (Windows only; Linux/macOS optional); Node/npx and uv, which the plugin's MCP servers need to start.
 
 **Legacy installation (pre-4.0, historical reference):**
 See [README.md Migration section](README.md#migration-existing-local-clones) if you have an existing local clone to migrate.
@@ -338,7 +337,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Specialized agents | 21 (7 categories, 3 model tiers) |
 | Hooks | 4 .ps1/.sh implementation pairs |
 | Skills | 9 loadable knowledge modules |
-| Commands | 11 management commands |
+| Commands | 12 management commands |
 | MCP servers | 6 (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph) |
 | Validator checks | 15, all derived at runtime |
 | Test suites | 8 automated suites under tests/ |
