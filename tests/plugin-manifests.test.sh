@@ -41,6 +41,16 @@ TESTS_RUN=0
 TESTS_PASS=0
 TESTS_FAIL=0
 
+# --- shared predicate: a launcher arg that carries a version specifier -----
+# Used by Assertion 14a and its RED-20 fixture. Deliberately checks .args
+# only, not .command (commands are bare npx/uvx today). Catches PEP 440 /
+# npm range operators (==, ~=, !=, <, >) and any "@<something>" that follows
+# a name character: npm dist-tags (@next, @latest), semver (@3.2.5, @v1.7.0)
+# and git refs (@<sha>, @<tag>, with or without a #fragment). A scoped npm
+# name (@upstash/context7-mcp) starts with "@" and has no preceding
+# character, so it does not match.
+readonly MANIFEST_VERSION_SPECIFIER_FILTER='.mcpServers | to_entries[] | .key as $srv | (.value.args // [])[] | select(test("==|~=|!=|<|>|.@[A-Za-z0-9]")) | "\($srv): \(.)"'
+
 # Track every temp dir we create so the global trap can sweep them even if a
 # case dies unexpectedly. The real tree never appears in here.
 # Use a tracking file since array mutations inside subshells don't propagate to parent.
@@ -532,20 +542,22 @@ export FRAMEWORK_ROOT
 }
 
 # --- Assertion 14a: no launcher carries a version specifier ---
-# This predicate deliberately checks .args only, not .command (commands are bare npx/uvx today).
-readonly MANIFEST_VERSION_SPECIFIER_FILTER='.mcpServers | to_entries[] | .key as $srv | (.value.args // [])[] | select(test("==|~=|<|>|@v?[0-9]|@[0-9a-f]{7,40}$")) | "\($srv): \(.)"'
+# Predicate: MANIFEST_VERSION_SPECIFIER_FILTER (header). A jq error is exactly
+# one FAIL; the verdict branch is skipped so the assertion cannot also PASS.
 {
   violation=""
+  jq_ok=1
   out="$(jq -r "$MANIFEST_VERSION_SPECIFIER_FILTER" "$copy/.mcp.json" 2>&1)" || {
     _fail "no launcher carries a version specifier" "jq error: $out"
-    out=""
+    jq_ok=0
   }
-  [[ -z "$out" ]] || violation="$(printf '%s' "$out" | head -1)"
-
-  if [[ -z "$violation" ]]; then
-    _pass "no launcher carries a version specifier"
-  else
-    _fail "no launcher carries a version specifier" "found: $violation"
+  if (( jq_ok )); then
+    [[ -z "$out" ]] || violation="$(printf '%s' "$out" | head -1)"
+    if [[ -z "$violation" ]]; then
+      _pass "no launcher carries a version specifier"
+    else
+      _fail "no launcher carries a version specifier" "found: $violation"
+    fi
   fi
 }
 
@@ -866,16 +878,18 @@ section "[RED-20] Fixture: re-pin fetch to carry a version specifier (should fai
   # Red run recorded: 2026-09-18, mutated .mcpServers.fetch.args to ["mcp-server-fetch==2026.7.10"],
   # suite exited 1, Assertion 14a failed with "found: fetch: mcp-server-fetch==2026.7.10".
   violation=""
+  jq_ok=1
   out="$(jq -r "$MANIFEST_VERSION_SPECIFIER_FILTER" "$copy/.mcp.json" 2>&1)" || {
     _fail "RED-20: fixture: fetch args now carry a version specifier" "jq error: $out"
-    out=""
+    jq_ok=0
   }
-  [[ -z "$out" ]] || violation="$(printf '%s' "$out" | head -1)"
-
-  if [[ -n "$violation" ]]; then
-    _pass "RED-20: fixture: fetch args now carry a version specifier"
-  else
-    _fail "RED-20: fixture: fetch args now carry a version specifier" "no version specifier found"
+  if (( jq_ok )); then
+    [[ -z "$out" ]] || violation="$(printf '%s' "$out" | head -1)"
+    if [[ -n "$violation" ]]; then
+      _pass "RED-20: fixture: fetch args now carry a version specifier"
+    else
+      _fail "RED-20: fixture: fetch args now carry a version specifier" "no version specifier found"
+    fi
   fi
 
   rm -rf "$copy"
