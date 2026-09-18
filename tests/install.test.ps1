@@ -67,7 +67,7 @@ Assert 'all hooks unchanged' (([regex]::Matches($r.Out, '(?m)\.ps1\s+unchanged$'
 # FIX 1: filesystem was skipped in the first run and is skipped again; every other server reports identical
 Assert 'servers already present (all but filesystem identical, filesystem skipped again)' (([regex]::Matches($r.Out, 'already present \(identical\)')).Count -eq ($repoMcpNames.Count - 1) -and $r.Out -match 'filesystem.*skipped')
 Assert 'does not rewrite .claude.json' ($r.Out -match 'nothing to add' -and -not (Get-ChildItem $sandboxDir -Filter '.claude.json.bak-*'))
-# EDGE-007 (amended): an already-identical user-scope entry shadows the plugin's pinned copy too
+# EDGE-007 (amended): an already-identical user-scope entry shadows the plugin's copy too
 Assert 'warns once about shadowing on the idempotent re-run' (([regex]::Matches(($r.Out -replace "\s+", " "), 'entries shadow the plugin')).Count -eq 1)
 $idemShadowMsg   = [regex]::Match(($r.Out -replace "\s+", " "), 'shadow.*?\)').Value
 $expectedIdent   = @($repoMcpNames | Where-Object { $_ -ne 'filesystem' })
@@ -96,7 +96,7 @@ Assert 'user definition of conflicting server survives' ($cfg.mcpServers.fetch.c
 Assert 'personal (non-framework) server survives' ($cfg.mcpServers.github.command -eq 'my-github-mcp')
 Assert 'unrelated user state survives the round-trip' ($cfg.someUserState.keep -eq $true)
 Assert 'backup written before modifying an existing file' ((Get-ChildItem $sandboxDir -Filter '.claude.json.bak-*').Count -ge 1)
-# EDGE-007 (amended): the kept branch shadows the plugin's pinned copy too - one warning naming the kept server
+# EDGE-007 (amended): the kept branch shadows the plugin's copy too - one warning naming the kept server
 Assert 'warns once about shadowing when a server was kept' (([regex]::Matches(($r.Out -replace "\s+", " "), 'entries shadow the plugin')).Count -eq 1)
 $keptShadowMsg = [regex]::Match(($r.Out -replace "\s+", " "), 'shadow.*?\)').Value
 Assert 'shadow warning names the kept server' ($keptShadowMsg -match 'kept:[^)]*fetch')

@@ -41,6 +41,16 @@ TESTS_RUN=0
 TESTS_PASS=0
 TESTS_FAIL=0
 
+# --- shared predicate: a launcher arg that carries a version specifier -----
+# Used by Assertion 14a and its RED-20 fixture. Deliberately checks .args
+# only, not .command (commands are bare npx/uvx today). Catches PEP 440 /
+# npm range operators (==, ~=, !=, <, >) and any "@<something>" that follows
+# a name character: npm dist-tags (@next, @latest), semver (@3.2.5, @v1.7.0)
+# and git refs (@<sha>, @<tag>, with or without a #fragment). A scoped npm
+# name (@upstash/context7-mcp) starts with "@" and has no preceding
+# character, so it does not match.
+readonly MANIFEST_VERSION_SPECIFIER_FILTER='.mcpServers | to_entries[] | .key as $srv | (.value.args // [])[] | select(test("==|~=|!=|<|>|.@[A-Za-z0-9]")) | "\($srv): \(.)"'
+
 # Track every temp dir we create so the global trap can sweep them even if a
 # case dies unexpectedly. The real tree never appears in here.
 # Use a tracking file since array mutations inside subshells don't propagate to parent.
@@ -531,13 +541,23 @@ export FRAMEWORK_ROOT
   fi
 }
 
-# --- Assertion 14a: fetch launcher carries the mcp<2 guard ---
+# --- Assertion 14a: no launcher carries a version specifier ---
+# Predicate: MANIFEST_VERSION_SPECIFIER_FILTER (header). A jq error is exactly
+# one FAIL; the verdict branch is skipped so the assertion cannot also PASS.
 {
-  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | if $i == null then "" else .[$i+1] end' "$copy/.mcp.json" | tr -d '\r')"
-  if [[ "$guard_val" == 'mcp<2' ]]; then
-    _pass "fetch launcher args carry the 'mcp<2' guard"
-  else
-    _fail "fetch launcher args carry the 'mcp<2' guard" "expected 'mcp<2', got '$guard_val'"
+  violation=""
+  jq_ok=1
+  out="$(jq -r "$MANIFEST_VERSION_SPECIFIER_FILTER" "$copy/.mcp.json" 2>&1)" || {
+    _fail "no launcher carries a version specifier" "jq error: $out"
+    jq_ok=0
+  }
+  if (( jq_ok )); then
+    [[ -z "$out" ]] || violation="$(printf '%s' "$out" | head -1)"
+    if [[ -z "$violation" ]]; then
+      _pass "no launcher carries a version specifier"
+    else
+      _fail "no launcher carries a version specifier" "found: $violation"
+    fi
   fi
 }
 
@@ -845,25 +865,31 @@ section "[RED-19] Fixture: recreate mcp-plugin/.mcp.json (Assertion 2's red path
 }
 
 # ===========================================================================
-# RED PATH CASE 20: Strip the mcp<2 guard from fetch's args (Assertion 14a's
-#                   red path, verified externally)
+# RED PATH CASE 20: Re-pin fetch to carry a version specifier (Assertion 14a's
+#                   red path, verified by red run 2026-09-18)
 # ===========================================================================
-section "[RED-20] Fixture: strip mcp<2 guard from fetch args (should fail guard check)"
+section "[RED-20] Fixture: re-pin fetch to carry a version specifier (should fail version-specifier check)"
 {
   copy="$(make_copy)"
   _verify_copy "$copy"
   tmp_json="$(mktemp)"
   jq '.mcpServers.fetch.args = ["mcp-server-fetch==2026.7.10"]' "$copy/.mcp.json" > "$tmp_json" && mv "$tmp_json" "$copy/.mcp.json"
 
-  # This case verifies the FIXTURE only; it does not re-run Assertion 14a. The
-  # discriminating behaviour — this suite exiting 1 with "fetch launcher args
-  # carry the 'mcp<2' guard" failing on a tree whose fetch args lack the guard —
-  # was verified by the external red run recorded in the spec's REQ-006 evidence.
-  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | if $i == null then "" else .[$i+1] end' "$copy/.mcp.json" | tr -d '\r')"
-  if [[ "$guard_val" != 'mcp<2' ]]; then
-    _pass "RED-20: fixture: fetch args no longer carry the 'mcp<2' guard"
-  else
-    _fail "RED-20: fixture: fetch args no longer carry the 'mcp<2' guard" "guard still present"
+  # Red run recorded: 2026-09-18, mutated .mcpServers.fetch.args to ["mcp-server-fetch==2026.7.10"],
+  # suite exited 1, Assertion 14a failed with "found: fetch: mcp-server-fetch==2026.7.10".
+  violation=""
+  jq_ok=1
+  out="$(jq -r "$MANIFEST_VERSION_SPECIFIER_FILTER" "$copy/.mcp.json" 2>&1)" || {
+    _fail "RED-20: fixture: fetch args now carry a version specifier" "jq error: $out"
+    jq_ok=0
+  }
+  if (( jq_ok )); then
+    [[ -z "$out" ]] || violation="$(printf '%s' "$out" | head -1)"
+    if [[ -n "$violation" ]]; then
+      _pass "RED-20: fixture: fetch args now carry a version specifier"
+    else
+      _fail "RED-20: fixture: fetch args now carry a version specifier" "no version specifier found"
+    fi
   fi
 
   rm -rf "$copy"

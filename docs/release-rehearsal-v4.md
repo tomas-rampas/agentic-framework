@@ -10,6 +10,8 @@
 
 **Status (2026-08-04):** This document is the historical record of the 2026-07-25 v4.0.0 rehearsal. Since then, the validator battery has grown to 15 checks, and frontmatter canonicalization plus the v4.1.0 bump landed 2026-08-04. Checkboxes below are left untouched as the historical record.
 
+**Status (2026-09-18):** Since version 4.4.0 (PR #45, renumbered from 5.0.0 by PR #46, both merged 2026-09-18), the second plugin this rehearsal installed is retired and its servers now ship inside agentic-framework. The second install command (section 2), the "5 MCP servers" count, the `claude plugin validate ./mcp-plugin` validation step (section 4), and the setup-dialog heading under "DEVIATIONS / Pending Post-Merge" describe a layout that no longer exists. Refer to the README "Updating the Plugin" section for current instructions.
+
 ## Executed Checklist
 
 ### 1. Version Consistency (Check 13)
