@@ -135,7 +135,7 @@ User-visible changes to shipped plugin content (agents, commands, skills, hooks,
 
 ### 5c. MCP launchers are unpinned
 
-Launchers in the root `.mcp.json` are unpinned as of 2026-09-18. The manifest suite includes an assertion that fails any launcher carrying a version specifier. When an upstream release breaks a launcher, fix it upstream, or add a temporary constraint with a dated note in this subsection and remove it once upstream is fixed. The `fetch` server required `--with mcp<2` at 2026.7.10 (its `McpError` import is gone from the `mcp` 2.x SDK); 2026.8.18 starts without it, measured 2026-09-18 as exit 0 on a fresh `uvx --refresh` resolve, so no launcher carries a constraint today.
+Launchers in the root `.mcp.json` are unpinned as of 2026-09-18. The manifest suite includes an assertion that fails any launcher carrying a version specifier. When an upstream release breaks a launcher, fix it upstream, or add a temporary constraint with a dated note in this subsection and remove it once upstream is fixed. A compromised, yanked or malicious upstream release is also grounds for a constraint: pin below the bad version immediately, ship it as a patch release with the dated note, and update assertion 14a of the manifest suite in the same commit — security response takes precedence over the no-pin assertion. The `fetch` server required `--with mcp<2` at 2026.7.10 (its `McpError` import is gone from the `mcp` 2.x SDK); 2026.8.18 starts without it, measured 2026-09-18 as exit 0 on a fresh `uvx --refresh` resolve, so no launcher carries a constraint today.
 
 ### 6. Update prose tables
 

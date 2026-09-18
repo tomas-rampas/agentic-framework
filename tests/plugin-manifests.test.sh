@@ -532,12 +532,15 @@ export FRAMEWORK_ROOT
 }
 
 # --- Assertion 14a: no launcher carries a version specifier ---
+# This predicate deliberately checks .args only, not .command (commands are bare npx/uvx today).
+readonly MANIFEST_VERSION_SPECIFIER_FILTER='.mcpServers | to_entries[] | .key as $srv | (.value.args // [])[] | select(test("==|~=|<|>|@v?[0-9]|@[0-9a-f]{7,40}$")) | "\($srv): \(.)"'
 {
   violation=""
-  while IFS= read -r line; do
-    violation="$line"
-    break
-  done < <(jq -r '.mcpServers | to_entries[] | .key as $srv | .value.args[] | select(test("==|~=|<|>|@[0-9]|@[0-9a-f]{7,40}$")) | "\($srv): \(.)"' "$copy/.mcp.json" 2>/dev/null)
+  out="$(jq -r "$MANIFEST_VERSION_SPECIFIER_FILTER" "$copy/.mcp.json" 2>&1)" || {
+    _fail "no launcher carries a version specifier" "jq error: $out"
+    out=""
+  }
+  [[ -z "$out" ]] || violation="$(printf '%s' "$out" | head -1)"
 
   if [[ -z "$violation" ]]; then
     _pass "no launcher carries a version specifier"
@@ -851,7 +854,7 @@ section "[RED-19] Fixture: recreate mcp-plugin/.mcp.json (Assertion 2's red path
 
 # ===========================================================================
 # RED PATH CASE 20: Re-pin fetch to carry a version specifier (Assertion 14a's
-#                   red path, verified externally)
+#                   red path, verified by red run 2026-09-18)
 # ===========================================================================
 section "[RED-20] Fixture: re-pin fetch to carry a version specifier (should fail version-specifier check)"
 {
@@ -860,16 +863,14 @@ section "[RED-20] Fixture: re-pin fetch to carry a version specifier (should fai
   tmp_json="$(mktemp)"
   jq '.mcpServers.fetch.args = ["mcp-server-fetch==2026.7.10"]' "$copy/.mcp.json" > "$tmp_json" && mv "$tmp_json" "$copy/.mcp.json"
 
-  # This case verifies the FIXTURE only; it does not re-run Assertion 14a. The
-  # discriminating behaviour — this suite exiting 1 with "no launcher carries a
-  # version specifier" failing on a tree whose fetch args carry a version
-  # specifier — was verified by the external red run recorded in the spec's
-  # REQ-006 evidence.
+  # Red run recorded: 2026-09-18, mutated .mcpServers.fetch.args to ["mcp-server-fetch==2026.7.10"],
+  # suite exited 1, Assertion 14a failed with "found: fetch: mcp-server-fetch==2026.7.10".
   violation=""
-  while IFS= read -r line; do
-    violation="$line"
-    break
-  done < <(jq -r '.mcpServers | to_entries[] | .key as $srv | .value.args[] | select(test("==|~=|<|>|@[0-9]|@[0-9a-f]{7,40}$")) | "\($srv): \(.)"' "$copy/.mcp.json" 2>/dev/null)
+  out="$(jq -r "$MANIFEST_VERSION_SPECIFIER_FILTER" "$copy/.mcp.json" 2>&1)" || {
+    _fail "RED-20: fixture: fetch args now carry a version specifier" "jq error: $out"
+    out=""
+  }
+  [[ -z "$out" ]] || violation="$(printf '%s' "$out" | head -1)"
 
   if [[ -n "$violation" ]]; then
     _pass "RED-20: fixture: fetch args now carry a version specifier"
