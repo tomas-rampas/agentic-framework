@@ -361,16 +361,16 @@ if ($SkipMcp) {
             }
         }
 
-        # The core plugin now ships these same servers pinned in its own .mcp.json.
+        # The core plugin now ships these same servers in its own .mcp.json.
         # Claude Code scope precedence is local > project > user > plugin, so any
-        # user-scope entry of the same name SHADOWS the plugin's pinned copy -
+        # user-scope entry of the same name SHADOWS the plugin's copy -
         # whether this run added it, kept a pre-existing one, or found one already
         # byte-identical - an identical user-scope entry shadows just as hard.
         if ($added -gt 0 -or $kept -gt 0 -or $identical -gt 0) {
             $addedList     = $addedNames.Count     ? ($addedNames     -join ', ') : 'none'
             $keptList      = $keptNames.Count      ? ($keptNames      -join ', ') : 'none'
             $identicalList = $identicalNames.Count ? ($identicalNames -join ', ') : 'none'
-            Write-Warning "user-scope entries shadow the plugin's pinned MCP servers (added: $addedList; kept: $keptList; identical: $identicalList) - delete them from ~/.claude.json to use the plugin's copies."
+            Write-Warning "user-scope entries shadow the plugin's MCP servers (added: $addedList; kept: $keptList; identical: $identicalList) - delete them from ~/.claude.json to use the plugin's copies."
         }
 
         # Report env placeholder removals once per affected server
@@ -555,9 +555,9 @@ Write-Host ''
 Write-Host 'Reminders:'
 Write-Host '  - Best run with no Claude Code session active: ~/.claude.json is Claude Code''s'
 Write-Host '    live config, and a session writing it concurrently could lose the merge.'
-Write-Host '  - The core plugin now ships these same MCP servers pinned in its own .mcp.json.'
+Write-Host '  - The core plugin now ships these same MCP servers in its own .mcp.json.'
 Write-Host '    Scope precedence is local > project > user > plugin, so the user-scope copies'
-Write-Host '    this installer merges shadow the plugin''s pinned servers - delete them from'
+Write-Host '    this installer merges shadow the plugin''s servers - delete them from'
 Write-Host '    ~/.claude.json to use the plugin''s copies, and run /agentic-framework:setup'
 Write-Host '    for the optional env vars (CONTEXT7_API_KEY, MCP_FS_ROOT).'
 Write-Host '  - Servers that have unresolved env variables in their args (defaults are'

@@ -133,9 +133,9 @@ The validator enforces this parity with a blocking check (check 13).
 
 User-visible changes to shipped plugin content (agents, commands, skills, hooks, `.mcp.json`, `settings.template.json`) must include version bumps in both manifests. The `claude plugin update` command does not refresh the installed plugin cache when the marketplace version is unchanged, so a content-only release at the same version never reaches installed users. The update follows the marketplace version in both directions: measured 2026-09-18, an installed 5.0.0 was moved down to 4.4.0 once the marketplace advertised 4.4.0.
 
-### 5c. MCP launcher pins
+### 5c. MCP launchers are unpinned
 
-Every launcher in the root `.mcp.json` is version-pinned and must stay so (no validator asserts this yet). The `fetch` entry carries the argument pair `--with mcp<2` (two entries in its JSON `args` array, no shell quotes) because `mcp-server-fetch==2026.7.10` imports `McpError`, which the `mcp` 2.x SDK removed; a fresh `uvx` resolve fails without this constraint. JSON has no comments, so this rationale lives here — do not drop that argument when re-pinning unless the new fetch release has been verified against `mcp` 2.x.
+Launchers in the root `.mcp.json` are unpinned as of 2026-09-18. The manifest suite includes an assertion that fails any launcher carrying a version specifier. When an upstream release breaks a launcher, fix it upstream, or add a temporary constraint with a dated note in this subsection and remove it once upstream is fixed. The `fetch` server required `--with mcp<2` at 2026.7.10 (its `McpError` import is gone from the `mcp` 2.x SDK); 2026.8.18 starts without it, measured 2026-09-18 as exit 0 on a fresh `uvx --refresh` resolve, so no launcher carries a constraint today.
 
 ### 6. Update prose tables
 

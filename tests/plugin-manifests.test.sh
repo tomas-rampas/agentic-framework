@@ -531,13 +531,18 @@ export FRAMEWORK_ROOT
   fi
 }
 
-# --- Assertion 14a: fetch launcher carries the mcp<2 guard ---
+# --- Assertion 14a: no launcher carries a version specifier ---
 {
-  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | if $i == null then "" else .[$i+1] end' "$copy/.mcp.json" | tr -d '\r')"
-  if [[ "$guard_val" == 'mcp<2' ]]; then
-    _pass "fetch launcher args carry the 'mcp<2' guard"
+  violation=""
+  while IFS= read -r line; do
+    violation="$line"
+    break
+  done < <(jq -r '.mcpServers | to_entries[] | .key as $srv | .value.args[] | select(test("==|~=|<|>|@[0-9]|@[0-9a-f]{7,40}$")) | "\($srv): \(.)"' "$copy/.mcp.json" 2>/dev/null)
+
+  if [[ -z "$violation" ]]; then
+    _pass "no launcher carries a version specifier"
   else
-    _fail "fetch launcher args carry the 'mcp<2' guard" "expected 'mcp<2', got '$guard_val'"
+    _fail "no launcher carries a version specifier" "found: $violation"
   fi
 }
 
@@ -845,10 +850,10 @@ section "[RED-19] Fixture: recreate mcp-plugin/.mcp.json (Assertion 2's red path
 }
 
 # ===========================================================================
-# RED PATH CASE 20: Strip the mcp<2 guard from fetch's args (Assertion 14a's
+# RED PATH CASE 20: Re-pin fetch to carry a version specifier (Assertion 14a's
 #                   red path, verified externally)
 # ===========================================================================
-section "[RED-20] Fixture: strip mcp<2 guard from fetch args (should fail guard check)"
+section "[RED-20] Fixture: re-pin fetch to carry a version specifier (should fail version-specifier check)"
 {
   copy="$(make_copy)"
   _verify_copy "$copy"
@@ -856,14 +861,20 @@ section "[RED-20] Fixture: strip mcp<2 guard from fetch args (should fail guard 
   jq '.mcpServers.fetch.args = ["mcp-server-fetch==2026.7.10"]' "$copy/.mcp.json" > "$tmp_json" && mv "$tmp_json" "$copy/.mcp.json"
 
   # This case verifies the FIXTURE only; it does not re-run Assertion 14a. The
-  # discriminating behaviour — this suite exiting 1 with "fetch launcher args
-  # carry the 'mcp<2' guard" failing on a tree whose fetch args lack the guard —
-  # was verified by the external red run recorded in the spec's REQ-006 evidence.
-  guard_val="$(jq -r '.mcpServers.fetch.args | index("--with") as $i | if $i == null then "" else .[$i+1] end' "$copy/.mcp.json" | tr -d '\r')"
-  if [[ "$guard_val" != 'mcp<2' ]]; then
-    _pass "RED-20: fixture: fetch args no longer carry the 'mcp<2' guard"
+  # discriminating behaviour — this suite exiting 1 with "no launcher carries a
+  # version specifier" failing on a tree whose fetch args carry a version
+  # specifier — was verified by the external red run recorded in the spec's
+  # REQ-006 evidence.
+  violation=""
+  while IFS= read -r line; do
+    violation="$line"
+    break
+  done < <(jq -r '.mcpServers | to_entries[] | .key as $srv | .value.args[] | select(test("==|~=|<|>|@[0-9]|@[0-9a-f]{7,40}$")) | "\($srv): \(.)"' "$copy/.mcp.json" 2>/dev/null)
+
+  if [[ -n "$violation" ]]; then
+    _pass "RED-20: fixture: fetch args now carry a version specifier"
   else
-    _fail "RED-20: fixture: fetch args no longer carry the 'mcp<2' guard" "guard still present"
+    _fail "RED-20: fixture: fetch args now carry a version specifier" "no version specifier found"
   fi
 
   rm -rf "$copy"
