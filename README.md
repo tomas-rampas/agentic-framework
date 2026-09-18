@@ -174,7 +174,7 @@ If you have this framework cloned into `~/.claude`, migrate to the plugin distri
 
 ### Updating the Plugin
 
-**Upgrading from 4.x:** the six MCP servers used to live in a second, optional plugin. They are now part of `agentic-framework` itself, and the separate plugin is retired. If you installed it, uninstall it:
+**Upgrading from 4.3.0 or earlier:** the six MCP servers used to live in a second, optional plugin. They are now part of `agentic-framework` itself, and the separate plugin is retired. If you installed it, uninstall it:
 
 ```
 /plugin uninstall agentic-framework-mcp@agentic-framework
@@ -509,5 +509,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 12 Commands • v5.0.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 4 Hook Scripts • 9 Skills • 12 Commands • v4.4.0**
 <!-- END GENERATED: framework-stats -->
