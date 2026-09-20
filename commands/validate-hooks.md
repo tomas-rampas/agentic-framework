@@ -31,6 +31,7 @@ Claude Code executes only hooks registered in a settings file's `hooks` block. T
 | `record-subagent-run` (.ps1/.sh pair) | `PostToolUse` + `SubagentStop` | `Task\|Agent` / — | Records peer-review-critic runs and parses the report's `VERDICT:` line into the session marker (`APPROVED` unlocks the gate) |
 | `session-start-context` (.ps1/.sh pair) | `SessionStart` | — | Injects branch/review status into context |
 | `pretooluse-delegation-hint` (.ps1/.sh pair) | `PreToolUse` | `Write\|Edit` | Advisory specialist-agent hint |
+| `pretooluse-model-guard` (.ps1/.sh pair) | `PreToolUse` | `Task\|Agent` | Blocking model-tier ceiling: denies a sub-agent call whose `model` names the top tier (`fable`), every `fork`, and a built-in agent call with no `model` while `CLAUDE_CODE_SUBAGENT_MODEL` is unset |
 
 ## Command-line execution
 Run short shell commands inline — git/gh calls, jq one-liners, quick checks.

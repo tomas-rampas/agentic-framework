@@ -37,13 +37,13 @@ Display comprehensive information about all 21 specialized agents in the framewo
 ┌──────────────────────────┬─────────────────┬───────────┬────────────┐
 │ Agent                    │ Category        │ Model     │ Status     │
 ├──────────────────────────┼─────────────────┼───────────┼────────────┤
-│ rust-expert              │ Language        │ Opus      │ Ready      │
-│ csharp-expert            │ Language        │ Opus      │ Ready      │
-│ go-expert                │ Language        │ Opus      │ Ready      │
-│ java-expert              │ Language        │ Opus      │ Ready      │
-│ python-expert            │ Language        │ Opus      │ Ready      │
-│ typescript-expert        │ Language        │ Opus      │ Ready      │
-│ mql-trading-dev          │ Language        │ Opus      │ Ready      │
+│ rust-expert              │ Language        │ Sonnet    │ Ready      │
+│ csharp-expert            │ Language        │ Sonnet    │ Ready      │
+│ go-expert                │ Language        │ Sonnet    │ Ready      │
+│ java-expert              │ Language        │ Sonnet    │ Ready      │
+│ python-expert            │ Language        │ Sonnet    │ Ready      │
+│ typescript-expert        │ Language        │ Sonnet    │ Ready      │
+│ mql-trading-dev          │ Language        │ Sonnet    │ Ready      │
 │ bash-expert              │ Automation      │ Haiku     │ Ready      │
 │ powershell-expert        │ Automation      │ Haiku     │ Ready      │
 │ database-specialist      │ Domain          │ Sonnet    │ Ready      │
@@ -94,7 +94,7 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
 📋 BASIC INFORMATION
   • Name: rust-expert
   • Category: Language Expert
-  • Model: opus (resolves to claude-opus-4-8)
+  • Model: sonnet (resolves to claude-sonnet-4-6)
   • Specialization: rust_development_systems_programming
   • File: ${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md
   • Configuration: ${CLAUDE_PLUGIN_ROOT}/claude.json ✓
@@ -131,7 +131,7 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
     {
       "name": "rust-expert",
       "category": "language_expert",
-      "model": "opus",
+      "model": "sonnet",
       "specialization": "rust_development_systems_programming",
       "file_path": "${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md",
       "status": "ready",
