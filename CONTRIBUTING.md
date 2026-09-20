@@ -10,7 +10,7 @@ This guide explains the anti-drift consistency system and how to contribute to t
 - **`.agent_categories`** — taxonomy that partitions agents into exactly one category group
 - **`.consistency`** — metadata controlling generator and validator behavior:
   - `deprecated_agent_names` — retired agent identifiers (flagged if re-used)
-  - `model_tiers` — the list of legal tier names, `["opus", "sonnet", "haiku"]`. It records names only, deliberately no model ids: Claude Code resolves each alias to a concrete model at runtime, so an id written here is a claim the framework cannot keep true (the old `model_shorthand_map` carried ids, nothing ever read them, and they went stale). The tier names (`opus`/`sonnet`/`haiku`) are the single source of truth used in both `.sub_agents[*].model` and each agent's frontmatter; the values are the runtime model ids.
+  - `model_tiers` — the list of legal tier names, `["opus", "sonnet", "haiku"]`. It records names only, deliberately no model ids: Claude Code resolves each alias to a concrete model at runtime, so an id written here is a claim the framework cannot keep true (the old `model_shorthand_map` carried ids, nothing ever read them, and they went stale). The tier names (`opus`/`sonnet`/`haiku`) are the single source of truth used in both `.sub_agents[*].model` and each agent's frontmatter.
   - `doc_blocks` — registry of machine-generated documentation regions
 
 Do not hand-edit agent counts, rosters, or model assignments in documentation or scripts — they are derived from `claude.json` and the filesystem at validation time.

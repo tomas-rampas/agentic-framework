@@ -178,8 +178,19 @@ security or system design, costs more than the tokens the lower tier would save.
   tool-call JSON, so the escape is reachable. Now, when the payload does not parse, the
   `.sh` decides from a copy in which every surrogate escape is replaced by `�`; the two
   decision fields never contain them, so the decision is unaffected. That copy is never
-  echoed: the rewrite still serialises the original payload, and when it cannot, it prints
-  nothing. A deny never fails open on a prompt; a rewrite never alters one.
+  echoed: the rewrite still serialises the original payload. When it cannot, the hook
+  falls back to a DENIAL that names the tier to pass — a denial echoes nothing, so it is
+  always available, and going silent there would let the built-in agent inherit the
+  session's tier, the one outcome the hook exists to prevent (the first cut of this fix did
+  go silent; the final peer review caught it). The same review found the mirror-image bug
+  in the `.ps1`: `JsonElement.GetString()` throws on a lone surrogate inside `model` or
+  `subagent_type` itself, and that throw reached the outer fail-open before the fork and
+  top-tier checks, where 4.5.0's `ConvertFrom-Json` had denied. The `.ps1` now sanitises
+  that one field's raw text and decides from it, as the `.sh` does for the document. A deny
+  never fails open on content the caller controls; a rewrite never alters a prompt; and
+  only input the hook cannot understand at all — malformed stdin, a `tool_input` that is
+  not an object, a missing `jq` — still fails open, because a PreToolUse hook that denied
+  on an unrecognised payload shape would break every session the day the event JSON changes.
 - Duplicate fields in `tool_input` are collapsed to the last occurrence by both
   implementations (the `.ps1` copy loop used to echo both). Claude Code builds the payload
   from an object, so this is unreachable in practice; the two implementations agree anyway.

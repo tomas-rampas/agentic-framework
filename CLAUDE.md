@@ -159,7 +159,9 @@ and the conclusion is small.
   done. When a shell edit is genuinely the right tool (the same change across many files, a
   single-line file such as `claude.json`), match on the stable part — replace a
   `key: value` line by its key, never by its whole old value — and prove the result in the
-  same command by grepping for the NEW text and checking the count. Re-read any file
+  same command by grepping for the NEW text and checking the count (the "never shell out to
+  read or search files" rule above is about exploration; this in-command assertion is the
+  exception, and it must stay in the same command to be atomic). Re-read any file
   something else may have rewritten since you wrote it (memory files, whose frontmatter the
   harness normalises; generated doc blocks; a file a sub-agent is working on) immediately
   before editing it. This cost a stale memory file once: an anchored whole-line `sed` met a
@@ -225,8 +227,10 @@ job does the job.
   holds the exact text or the exact one-line command, doing it inline is cheaper than
   relaying it on any tier.
 - **Enforced, automatically**: the `pretooluse-model-guard` hook (`PreToolUse` on
-  `Task|Agent`) needs no setup. It denies a sub-agent call whose `model` names the top tier
-  (`model: fable`, in any spelling or as a full model id), denies every `fork`, and
+  `Task|Agent`) needs no configuration; like every hook here, on a POSIX host it needs `jq`
+  in PATH — without it the hook fires and enforces nothing. It denies a sub-agent call whose
+  `model` names the top tier (`model: fable`, in any spelling or as a full model id), denies
+  every `fork`, and
   **rewrites** a built-in agent call that carries no `model` — it sets `haiku` for `Explore`
   and `sonnet` for `Plan`, `general-purpose` and `claude`, then lets the call proceed (a
   plugin cannot ship an environment variable, so the hook does the floor's job for the agent
