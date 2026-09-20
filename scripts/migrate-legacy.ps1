@@ -110,8 +110,12 @@ function Test-FrameworkShapedServer([string]$name, $serverDef) {
         }
         'serena' = @{
             'command' = 'uvx'
-            'expectedArgs' = @('--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server', '--context', 'ide-assistant')
-            'exactArgCount' = 6  # no variable args; must be exactly 6
+            # Accepts either the legacy shape (--context ide-assistant) or the current
+            # shape (--context claude-code --project-from-cwd); no variable args in either.
+            'expectedArgsAlternatives' = @(
+                @('--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server', '--context', 'ide-assistant'),
+                @('--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server', '--context', 'claude-code', '--project-from-cwd')
+            )
         }
         'sequential-thinking' = @{
             'command' = 'npx'
@@ -145,6 +149,19 @@ function Test-FrameworkShapedServer([string]$name, $serverDef) {
             }
         }
     } else {
+        return $false
+    }
+
+    # Serena: match any one of several accepted exact arg shapes (legacy or current).
+    if ($shape.Contains('expectedArgsAlternatives')) {
+        foreach ($alt in $shape['expectedArgsAlternatives']) {
+            if ($argVals.Count -ne $alt.Count) { continue }
+            $match = $true
+            for ($i = 0; $i -lt $alt.Count; $i++) {
+                if ([string]$argVals[$i] -ne [string]$alt[$i]) { $match = $false; break }
+            }
+            if ($match) { return $true }
+        }
         return $false
     }
 

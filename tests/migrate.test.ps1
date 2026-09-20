@@ -878,6 +878,39 @@ Assert 'dry-run over unpushed clone exits 0' ($rDry.Code -eq 0)
 Assert 'dry-run over unpushed clone leaves .git intact' ((Test-Path (Join-Path $claudeHome '.git')))
 Assert 'dry-run over unpushed clone leaves tracked file intact' ((Test-Path $trackFile))
 
+# ── Test 16: SERENA DUAL-SHAPE RECOGNITION (legacy + current) ─────────────────
+# REQ-006: the migrator must recognise BOTH the legacy launcher shape
+# (--context ide-assistant) and the current shape (--context claude-code
+# --project-from-cwd) as framework-shaped, and treat a modified variant of the
+# new shape the same way it already treats a modified variant of the old shape.
+Write-Host 'serena dual-shape: legacy and current launcher shapes both recognised'
+
+foreach ($case in @(
+        @{ Server = 'serena'; Args = @("--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "ide-assistant"); ShouldRemove = $true; Label = 'legacy shape' },
+        @{ Server = 'serena'; Args = @("--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "claude-code", "--project-from-cwd"); ShouldRemove = $true; Label = 'current shape' },
+        @{ Server = 'serena'; Args = @("--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "claude-code", "--project-from-cwd", "--extra-arg"); ShouldRemove = $false; Label = 'modified current shape' }
+    )) {
+    Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
+    $workRoot   = Join-Path ([IO.Path]::GetTempPath()) ("migrate-test-" + [guid]::NewGuid().ToString('N'))
+    $sandboxDir = Join-Path $workRoot 'home'
+    $claudeHome = Join-Path $sandboxDir '.claude'
+    $claudeJson = Join-Path $sandboxDir '.claude.json'
+    New-Item -ItemType Directory -Force -Path $claudeHome | Out-Null
+
+    $mcpConfig = @{ mcpServers = @{ serena = @{ command = "uvx"; args = $case.Args } } }
+    $mcpConfig | ConvertTo-Json -Depth 32 | Set-Content $claudeJson -NoNewline
+
+    $r = Invoke-Migrator $claudeHome -ExtraArgs @('-Apply', '-RemoveMcp')
+    $mcpCfg = Get-Content $claudeJson -Raw | ConvertFrom-Json -AsHashtable
+
+    Assert "serena $($case.Label): -RemoveMcp -Apply exits 0" ($r.Code -eq 0)
+    if ($case.ShouldRemove) {
+        Assert "serena $($case.Label) recognised as framework-shaped and removed" ($null -eq $mcpCfg['mcpServers']['serena'])
+    } else {
+        Assert "serena $($case.Label) kept (not framework-shaped)" ($null -ne $mcpCfg['mcpServers']['serena'])
+    }
+}
+
 # ── Teardown ───────────────────────────────────────────────────────────────────
 Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
 
