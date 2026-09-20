@@ -621,7 +621,9 @@ section "[7] Model parity (agents/<a>.md frontmatter model: == claude.json model
 #   (c) for the textual "### Category (N agents)" sections, the stated N equals
 #       the actual number of agents listed beneath that header.
 # This catches the missing-row / wrong-header-count drift without generating
-# the prose.
+# the prose. Sub-check 9c additionally pins the CLAUDE.md table's "Default
+# tier" column (the row's LAST cell) to claude.json .sub_agents[<a>].model - see
+# that sub-check's own header comment for why.
 _check_on 9 && {
 section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents roster/categories)"
   ok=1
@@ -684,6 +686,71 @@ section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents ros
     ok=0; fail "CLAUDE.md not found at $claude_md"
   fi
 
+  # --- 9c: CLAUDE.md "Default tier" column vs claude.json (BLOCKING) --------
+  # The third column of the agent table is what the orchestrator reads AT
+  # DECISION TIME to pick a model for a delegated call (model-tiering policy);
+  # claude.json .sub_agents[<a>].model is the single source of truth for that
+  # tier. A prose column has no round-trip generator (see the header comment
+  # for check 9), so nothing else catches it drifting from the registry: an
+  # editor could bump one agent's frontmatter/registry tier and simply forget
+  # to touch the CLAUDE.md row, and the table would keep reporting a stale
+  # tier forever. We reuse fact_models (agent<TAB>model from claude.json) and
+  # the same legal-shorthand set as check 7, so a typo'd tier value here is
+  # caught the same way an invalid model shorthand is caught there. Rows for
+  # an unknown/unregistered agent are 9a's job (unknown-row) - skip them here
+  # rather than double-reporting the same defect under two check numbers.
+  if [[ -f "$claude_md" ]]; then
+    # Registry tiers, "agent<TAB>tier".
+    reg_tiers="$(fact_models)"
+    # Legal shorthand keys (reuse check 7's derivation from the same map so
+    # this sub-check never hardcodes "opus|sonnet|haiku").
+    tier_9c_valid="$(_facts_jq -r '.consistency.model_shorthand_map // {} | keys[]' \
+                     "$FACTS_CLAUDE_JSON" 2>/dev/null | LC_ALL=C sort)"
+    if [[ -z "$tier_9c_valid" ]]; then
+      ok=0
+      fail "CLAUDE.md agent table (9c): .consistency.model_shorthand_map is empty or missing (no legal tier values defined)"
+    else
+      _9c_is_valid_tier() { printf '%s\n' "$tier_9c_valid" | grep -qxF -- "$1"; }
+      tier_9c_ok=1
+      tier_9c_checked=0
+      # Row shape matches 9a exactly: "| **agent-name** | ... | <last-cell> |".
+      # Strip a trailing CR (jq/CLAUDE.md may carry CRLF on Windows checkouts)
+      # before parsing so the last-cell match is never fooled by a stray \r.
+      while IFS= read -r row; do
+        row="${row%$'\r'}"
+        [[ -z "$row" ]] && continue
+        agent="$(printf '%s' "$row" | grep -oE '^\| \*\*[a-z0-9-]+\*\*' | sed -E 's/^\| \*\*//; s/\*\*$//')"
+        [[ -z "$agent" ]] && continue
+        # Skip rows for an agent claude.json does not know (9a's job).
+        printf '%s\n' "$reg_tiers" | grep -qE "^${agent}"$'\t' || continue
+        reg_tier="$(printf '%s\n' "$reg_tiers" | awk -F'\t' -v a="$agent" '$1==a{print $2; exit}')"
+        # Last "| cell |" on the row, trimmed.
+        cell="$(printf '%s' "$row" | grep -oE '\| [^|]+ \|[[:space:]]*$' | sed -E 's/^\| //; s/ \|[[:space:]]*$//')"
+        tier_9c_checked=$((tier_9c_checked + 1))
+        if [[ -z "$cell" ]] || ! _9c_is_valid_tier "$cell"; then
+          tier_9c_ok=0; ok=0
+          fail "CLAUDE.md agent table (9c): $agent Default tier cell '${cell:-<missing>}' is not a valid tier"
+          detail "expected one of: $(printf '%s' "$tier_9c_valid" | tr '\n' ' ')"
+        elif [[ "$cell" != "$reg_tier" ]]; then
+          tier_9c_ok=0; ok=0
+          fail "CLAUDE.md agent table (9c): $agent tier mismatch (CLAUDE.md '$cell' != claude.json '$reg_tier')"
+        fi
+      done <<< "$(grep -E '^\| \*\*[a-z0-9-]+\*\* \|' "$claude_md")"
+
+      # Never pass vacuously: zero rows compared means the table or the registry
+      # yielded nothing to check (9a reports a missing table on its own, but 9c
+      # must not print a green line for a comparison that never happened).
+      if [[ "$tier_9c_checked" -eq 0 ]]; then
+        tier_9c_ok=0; ok=0
+        fail "CLAUDE.md agent table (9c): no Default tier cell could be compared (0 rows matched a registered agent)"
+      fi
+
+      if [[ "$tier_9c_ok" -eq 1 ]]; then
+        pass "CLAUDE.md agent table (9c): all $tier_9c_checked Default tier cells match claude.json"
+      fi
+    fi
+  fi
+
   # --- 9b: list-agents.md ASCII roster table --------------------------------
   # Rows look like:  | rust-expert              | Language | ...   (box-drawing
   # vertical bar U+2502). The file contains MORE THAN ONE box table (the main
@@ -721,7 +788,7 @@ section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents ros
       fi
     fi
 
-    # --- 9c: list-agents.md textual "### Category (N agents)" sections ------
+    # --- 9d: list-agents.md textual "### Category (N agents)" sections ------
     # Each header is followed by a fenced block of "agent-name -> ..." lines.
     # We (1) verify the union of all listed agents is the full roster exactly,
     # and (2) verify each header's stated N equals the agents listed beneath it.

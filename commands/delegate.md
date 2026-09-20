@@ -30,6 +30,23 @@ spans domains. Available specialists:
 - **Plan / analyze:** `system-architect`, `product-owner`, `comprehensive-analyst`
 - **Quality / docs:** `code-review-gatekeeper`, `peer-review-critic`, `technical-docs-writer`
 
+### Model tier — choose it on every delegation
+Apply the **Model Tiering Policy** in CLAUDE.md. Each agent's frontmatter `model:` is its
+default tier; the Agent tool's `model` parameter overrides it for one call.
+
+- **Default:** omit `model` for framework agents and let the frontmatter tier apply.
+- **Built-in agents** (`Explore`, `Plan`, `general-purpose`, `claude`) inherit *your* model,
+  so always pass one: `haiku` for `Explore`, `sonnet` for the others. Do not `fork`.
+- **One tier down** for mechanical work: a single-file edit with an exact spec, formatting,
+  scaffolding, applying a one-line review finding.
+- **One tier up, with the reason stated in the delegation,** for concurrency or unsafe
+  code, auth or crypto, a refactor across many files, an executor asked to author rather
+  than run, or after two failed review rounds at the default tier.
+- **Never move a reviewer or gate down. Never pass `model: fable`** — you are the only
+  session on the top tier, and the `pretooluse-model-guard` hook denies the call.
+- **Delegation must still pay for itself:** when you already hold the exact text or the
+  exact one-line command, apply it inline instead of relaying it to any tier.
+
 ## Command-line execution
 Run short shell commands inline — git/gh calls, jq one-liners, quick checks.
 Delegate only the long, output-heavy runs this workflow needs — the validator
@@ -45,6 +62,9 @@ file path(s), the behavior / acceptance criteria, the test location, and what
 "done" means. Turn *"implement auth"* into *"create `src/Auth/AuthService.cs`
 with JWT issuing/validation + ASP.NET Core identity integration, tests in
 `tests/Auth.Tests/AuthServiceTests.cs`"*. Vague tasks produce vague output.
+
+- **Model tier:** when the call runs off the agent's default tier, say which tier and why
+  in the delegation itself (see Routing → Model tier), so the reason is on the record.
 
 ---
 

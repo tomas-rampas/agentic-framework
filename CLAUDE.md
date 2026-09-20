@@ -10,29 +10,29 @@
 
 ## 🤖 AVAILABLE IMPLEMENTATION AGENTS
 
-| Agent | Implementation Domain |
-|-------|---------------------|
-| **comprehensive-analyst** | Deep analysis, evaluation, and investigation |
-| **code-review-gatekeeper** | Code review, quality validation, testing |
-| **peer-review-critic** | **Final gatekeeper** — independent, diff-scoped critical peer review of branch-vs-base before work is declared done (runs after code-review-gatekeeper) |
-| **spec-compliance-reviewer** | Requirement-by-requirement spec conformance review — verifies the build against `specs/<name>.md` in the spec → build → review loop |
-| **devops-orchestrator** | Infrastructure, CI/CD, deployment automation |
-| **rust-expert** | Rust systems programming, high-performance applications, CLI tools |
-| **csharp-expert** | C#/.NET development, ASP.NET Core, Azure solutions |
-| **go-expert** | Go development, microservices, cloud-native applications |
-| **java-expert** | Java/Spring Boot development, enterprise applications, Android |
-| **python-expert** | Python development, web frameworks, data science, automation |
-| **typescript-expert** | TypeScript/JavaScript development, React/Next.js, Node.js backends |
-| **mql-trading-dev** | MQL4/MQL5 and C/C++ development for MetaTrader, Expert Advisors, indicators, trading systems |
-| **powershell-expert** | Windows command-line executor — runs delegated long, noisy shell runs; PowerShell automation, Windows administration |
-| **bash-expert** | Command-line executor — runs delegated long, noisy shell runs; Bash/POSIX scripting, Linux/CI automation |
-| **database-specialist** | Database design, schema optimization, query optimization, SQL/NoSQL |
-| **frontend-specialist** | Frontend UI development, React/Vue/Angular, responsive design |
-| **security-specialist** | Security audits, vulnerability assessment, authentication, compliance |
-| **system-architect** | System architecture design, technical decisions, scalability patterns |
-| **technical-docs-writer** | Documentation, guides, API documentation, developer guides |
-| **uiux-specialist** | UI/UX design, accessibility, design systems, user flows |
-| **product-owner** | Requirements, user stories, project planning, backlog management |
+| Agent | Implementation Domain | Default tier |
+|-------|---------------------|--------------|
+| **comprehensive-analyst** | Deep analysis, evaluation, and investigation | sonnet |
+| **code-review-gatekeeper** | Code review, quality validation, testing | opus |
+| **peer-review-critic** | **Final gatekeeper** — independent, diff-scoped critical peer review of branch-vs-base before work is declared done (runs after code-review-gatekeeper) | opus |
+| **spec-compliance-reviewer** | Requirement-by-requirement spec conformance review — verifies the build against `specs/<name>.md` in the spec → build → review loop | opus |
+| **devops-orchestrator** | Infrastructure, CI/CD, deployment automation | sonnet |
+| **rust-expert** | Rust systems programming, high-performance applications, CLI tools | sonnet |
+| **csharp-expert** | C#/.NET development, ASP.NET Core, Azure solutions | sonnet |
+| **go-expert** | Go development, microservices, cloud-native applications | sonnet |
+| **java-expert** | Java/Spring Boot development, enterprise applications, Android | sonnet |
+| **python-expert** | Python development, web frameworks, data science, automation | sonnet |
+| **typescript-expert** | TypeScript/JavaScript development, React/Next.js, Node.js backends | sonnet |
+| **mql-trading-dev** | MQL4/MQL5 and C/C++ development for MetaTrader, Expert Advisors, indicators, trading systems | sonnet |
+| **powershell-expert** | Windows command-line executor — runs delegated long, noisy shell runs; PowerShell automation, Windows administration | haiku |
+| **bash-expert** | Command-line executor — runs delegated long, noisy shell runs; Bash/POSIX scripting, Linux/CI automation | haiku |
+| **database-specialist** | Database design, schema optimization, query optimization, SQL/NoSQL | sonnet |
+| **frontend-specialist** | Frontend UI development, React/Vue/Angular, responsive design | sonnet |
+| **security-specialist** | Security audits, vulnerability assessment, authentication, compliance | opus |
+| **system-architect** | System architecture design, technical decisions, scalability patterns | opus |
+| **technical-docs-writer** | Documentation, guides, API documentation, developer guides | haiku |
+| **uiux-specialist** | UI/UX design, accessibility, design systems, user flows | haiku |
+| **product-owner** | Requirements, user stories, project planning, backlog management | sonnet |
 
 ---
 
@@ -170,6 +170,51 @@ and the conclusion is small.
   marker, that is a failure to report and escalate — do not retry blindly. Repeated wedging
   of detached launches indicates the work belongs in CI rather than on the local host.
 
+### 🧠 Model Tiering Policy (token economy)
+
+**Principle**: The most capable model orchestrates; the cheapest model that can do the
+job does the job.
+
+- **The top-level session is the orchestrator only.** It plans, routes, reviews sub-agent
+  output, integrates results, and owns commits. It does not implement, explore broadly, or
+  grind logs itself — that work goes to a sub-agent on a lower tier. Targeted reads and
+  short inline commands stay with the orchestrator, exactly as the execution policy above
+  says.
+- **Frontmatter `model:` is each agent's default tier** (the Default tier column in the
+  agent table; the registry in `claude.json` is the source of truth and the validator keeps
+  the two in step). Gates and leveraged decisions default to `opus` — the three review agents,
+  security-specialist, system-architect. Implementation, analysis and domain work default
+  to `sonnet`. Executors and mechanical prose default to `haiku`.
+- **Choose the model on every delegation.** The Agent tool's `model` parameter overrides
+  the frontmatter default for that one call. Resolution order: per-call `model`, then
+  frontmatter `model:`, then the `CLAUDE_CODE_SUBAGENT_MODEL` environment variable, then
+  the parent's model.
+- **Move one tier down** when the task is mechanical: a single-file edit with an exact
+  spec, formatting, scaffolding, a rename, applying a reviewer's one-line finding.
+- **Move one tier up — and state the reason in the delegation** — when the task involves
+  concurrency or unsafe code, authentication or cryptography, a refactor across many files,
+  or when the default tier has already failed two review rounds. Executors asked to
+  *author* scripts or tests rather than run commands are the common case for `haiku` → `sonnet`.
+- **Reviewers and gates keep their defaults.** Never move code-review-gatekeeper,
+  peer-review-critic, spec-compliance-reviewer or security-specialist down: a false PASS
+  costs more than the tokens it saves.
+- **Never pass `model: fable`, and never let a sub-agent inherit it.** Built-in agents
+  (`Explore`, `Plan`, `general-purpose`, `claude`) carry no frontmatter tier and inherit the
+  parent's model, so every call to one MUST pass an explicit `model`: `haiku` for `Explore`,
+  `sonnet` for the others. A `fork` always runs on its parent's model and ignores the
+  override, so the orchestrator does not fork.
+- **Delegation still has to pay for itself.** A lower tier does not change the fixed
+  overhead of a sub-agent call (see the cost reason above). When the orchestrator already
+  holds the exact text or the exact one-line command, doing it inline is cheaper than
+  relaying it on any tier.
+- **User-side floor**: setting `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` in your Claude Code
+  settings `env` makes any agent without a tier resolve to sonnet instead of the parent.
+- **Enforced**: the `pretooluse-model-guard` hook (`PreToolUse` on `Task|Agent`) denies a
+  sub-agent call whose `model` names the top tier (`model: fable`, in any spelling or as a
+  full model id), denies every `fork`, and denies a built-in agent call that carries no
+  `model` while `CLAUDE_CODE_SUBAGENT_MODEL` is unset or itself names the top tier.
+  `AF_MODEL_GUARD=off` disables it.
+
 ### Orchestration Guidelines
 When delegating tasks to specialized agents:
 
@@ -187,6 +232,7 @@ When routing to an agent, provide:
 - **Constraints**: Technical limitations, standards to follow
 - **Deliverables**: Specific outputs expected (code, tests, documentation)
 - **Validation**: How to verify the implementation is correct
+- **Model**: The tier for this call when it differs from the agent's default, and why (see the Model Tiering Policy)
 
 ### Multi-Agent Coordination
 For complex tasks requiring multiple domains:

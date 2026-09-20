@@ -45,6 +45,9 @@ Read the **whole spec** before writing anything: every REQ/EDGE item and its
   user** so the spec can be amended; never silently improvise.
 - Route implementation work to specialist sub-agents per the **Routing**
   section of the `/agentic-framework:delegate` command (do not re-derive routing rules here).
+  That section's **Model tier** rule applies to every delegation here too: frontmatter
+  default, an explicit `model` for built-in agents, one-tier moves with a stated reason,
+  never `fable`.
   Frame each delegated task with the REQ-IDs it delivers and their acceptance
   criteria.
 - Honour the project's quality bar (build/lint/format/tests clean) exactly as
