@@ -43,6 +43,17 @@ Match dominant signals in the task description:
 
 Decision order: (0) the task is purely running/summarizing commands → bash-expert or powershell-expert; (1) single language implementation → that language expert; (2) clearly one specialized domain → that specialist; (3) spans domains → multi-agent workflow; (4) ambiguous or investigative → comprehensive-analyst first.
 
+## Model tier
+
+Routing picks the agent; the model tier is a second, separate decision (CLAUDE.md, Model Tiering Policy). Read the agent's default tier from the registry (`.sub_agents[<agent>].model`), then decide whether this task warrants a one-tier move:
+
+- **Keep the default** for ordinary work in the agent's domain. Gates and leveraged decisions default to `opus`, implementation/analysis/domain work to `sonnet`, executors and mechanical prose to `haiku`.
+- **One tier down** for mechanical work: a single-file edit with an exact spec, formatting, scaffolding, a rename, applying a reviewer's one-line finding.
+- **One tier up, with the reason stated,** for concurrency or unsafe code, authentication or cryptography, a refactor across many files, an executor asked to author scripts or tests rather than run commands, or a task that already failed two review rounds at the default tier.
+- **The range is `haiku` to `opus`.** `opus` is the sub-agent ceiling and `haiku` the floor; a move that would leave the range is not recommended.
+- **Never down** for code-review-gatekeeper, peer-review-critic, spec-compliance-reviewer or security-specialist.
+- **Never `fable`** for any sub-agent. Built-in agents (`Explore`, `Plan`, `general-purpose`, `claude`) have no default tier and inherit the caller's model, so a recommendation that uses one always names a tier: `haiku` for `Explore`, `sonnet` for the others.
+
 ## Review Gates (Mandatory Ending)
 
 Every workflow that produces or changes code ends with, in this order:
@@ -86,6 +97,7 @@ When handing the recommendation to `/agentic-framework:delegate` or a Task invoc
 - **Constraints**: standards, technical limits, patterns to follow.
 - **Deliverables**: code, tests, docs — be explicit.
 - **Validation**: how to verify (build passes, tests pass, lint clean).
+- **Model**: the tier for this call when it differs from the agent's default, and why.
 
 ## Recommendation Output
 
@@ -93,6 +105,7 @@ Present each recommendation as:
 
 - **Task analysis**: detected language(s), domain(s), complexity.
 - **Primary agent** with confidence (high/medium/low) and a one-line rationale.
+- **Model tier**: the agent's default tier from the registry, and whether this task warrants a one-tier move (with the trigger that justifies it).
 - **Supporting agents / workflow** if multi-domain, as an ordered sequence ending with code-review-gatekeeper → peer-review-critic.
 - **Delegation prompt** filled in from the template above.
 - **Alternatives**: when a different agent would be better (e.g., comprehensive-analyst if requirements turn out unclear).

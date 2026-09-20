@@ -33,8 +33,22 @@ NC='\033[0m' # No Color
 # Exception filters (in order): placeholder values, test fixtures, documented
 # examples, env-var expansion, template placeholders ({{ ... }}), and lines
 # explicitly marked as educational anti-patterns in agent prompts.
+# Binary files are skipped (-I) and the code graph's store is excluded:
+# .code-review-graph/ is a self-ignored tool cache whose graph.db holds
+# source-derived text in binary form, so once an agent has built the graph it
+# reported "Binary file matches" for whatever the tracked sources contain and
+# failed this scan with nothing to fix (measured). A "Binary file X matches"
+# line also slips past every exception filter below, which match line text.
+# .serena/ is deliberately NOT excluded: its cache is binary (covered by -I),
+# but .serena/project.yml and .serena/memories/ are plain text that serena
+# means to be shared, so a repository that tracks them must have them scanned.
+# DELIBERATELY ASYMMETRIC: only this generic, false-positive-prone rule skips
+# binaries and the graph store. The four literal-pattern scans below (AWS key,
+# GitHub token, private key, connection string) still read everything — they
+# have near-zero false positives, and a hit inside graph.db is a real secret
+# sitting on disk that is worth hearing about even though it cannot ship.
 _secret_scan() {
-    grep -r --exclude-dir=.git -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"'\$][^\"']{7,}[\"']" . \
+    grep -r -I --exclude-dir=.git --exclude-dir=.code-review-graph -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"'\$][^\"']{7,}[\"']" . \
         | grep -v "your-api-key" \
         | grep -v "test123" \
         | grep -v -i "example" \

@@ -50,8 +50,8 @@ Display a summary table:
 ```
 Agent                    | Model   | File | Status
 -------------------------|---------|------|-------
-rust-expert              | opus    | ✓    | Ready
-csharp-expert            | opus    | ✓    | Ready
+rust-expert              | sonnet  | ✓    | Ready
+csharp-expert            | sonnet  | ✓    | Ready
 ...
 ```
 

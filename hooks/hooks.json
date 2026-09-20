@@ -14,7 +14,8 @@
       { "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" session-start-context || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start-context.ps1\"", "timeout": 10 } ] }
     ],
     "PreToolUse": [
-      { "matcher": "Write|Edit", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" pretooluse-delegation-hint || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-delegation-hint.ps1\"", "timeout": 10 } ] }
+      { "matcher": "Write|Edit", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" pretooluse-delegation-hint || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-delegation-hint.ps1\"", "timeout": 10 } ] },
+      { "matcher": "Task|Agent", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" pretooluse-model-guard || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-model-guard.ps1\"", "timeout": 10 } ] }
     ]
   }
 }

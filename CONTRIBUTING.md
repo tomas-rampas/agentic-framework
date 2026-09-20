@@ -10,7 +10,7 @@ This guide explains the anti-drift consistency system and how to contribute to t
 - **`.agent_categories`** — taxonomy that partitions agents into exactly one category group
 - **`.consistency`** — metadata controlling generator and validator behavior:
   - `deprecated_agent_names` — retired agent identifiers (flagged if re-used)
-  - `model_shorthand_map` — maps each tier shorthand to its current pinned model id, e.g. `"opus" -> "claude-opus-4-8"`. The shorthand keys (`opus`/`sonnet`/`haiku`) are the single source of truth used in both `.sub_agents[*].model` and each agent's frontmatter; the values are the runtime model ids.
+  - `model_shorthand_map` — records the model id each tier shorthand resolved to when last measured, e.g. `"opus" -> "claude-opus-5"` (measured 2026-09-20 by asking a sub-agent launched on each alias to quote its own model line). The values are informational: Claude Code resolves the alias at runtime, so re-measure rather than assume when a new model generation ships. The shorthand keys (`opus`/`sonnet`/`haiku`) are the single source of truth used in both `.sub_agents[*].model` and each agent's frontmatter; the values are the runtime model ids.
   - `doc_blocks` — registry of machine-generated documentation regions
 
 Do not hand-edit agent counts, rosters, or model assignments in documentation or scripts — they are derived from `claude.json` and the filesystem at validation time.
@@ -32,6 +32,12 @@ Add `agents/<name>.md` (in the plugin source) with YAML frontmatter:
 name: <agent-name>
 description: <one-paragraph summary + examples>
 model: <tier-shorthand>            # opus | sonnet | haiku (must match claude.json, see check 7)
+                                    # this is the agent's DEFAULT tier only — the orchestrator
+                                    # may move one tier up or down per call via the Agent
+                                    # tool's `model` parameter (see CLAUDE.md's Model Tiering
+                                    # Policy). `fable` is never a valid subagent tier: it is
+                                    # not a key of `.consistency.model_shorthand_map`, and the
+                                    # pretooluse-model-guard hook denies it at call time.
 color: <color-name>
 effort: <reasoning-effort>         # optional: low | medium | high | xhigh | max
 mcpServers: [<server-name>, ...]   # optional: MCP servers available to the agent
@@ -50,7 +56,10 @@ in double quotes and escape interior quotes as `\"` and literal `\n` markers as
 value; strict YAML parsers only accept the quoted form when colons appear.
 
 `model` must equal the tier shorthand registered for this agent in `claude.json`
-(validator check 7) — `opus`, `sonnet`, or `haiku`, never a full model id.
+(validator check 7) — `opus`, `sonnet`, or `haiku`, never a full model id, and never
+`fable`. **Choosing a tier for a new agent**: gates and leveraged decisions (review,
+security, architecture) get `opus`; routine implementation, domain and analysis work
+gets `sonnet`; executors and mechanical prose get `haiku`.
 `effort` sets the reasoning effort the agent runs at (`low`/`medium`/`high`/`xhigh`/`max`).
 Per Claude Code's documentation, `mcpServers` is not applied to plugin-shipped agents;
 treat it as effective only for user-scope agent files. `tools` gives an explicit
@@ -79,7 +88,9 @@ In the `.sub_agents` object, add an entry with `model`, `specialization`, and `f
 }
 ```
 
-Also add the agent to exactly one group in `.agent_categories`.
+Also add the agent to exactly one group in `.agent_categories`. CLAUDE.md's agent table
+now carries a `Default tier` column that validator sub-check 9c pins to this `model`
+value, so registering a new agent also means adding its row's tier cell in CLAUDE.md.
 
 ### 3. Quality enforcement is framework-wide
 
@@ -150,7 +161,8 @@ The validator will tell you exactly which tables need updates. Do not hardcode a
 - **Derives all truth at runtime** from `claude.json`, `settings.template.json`, and the filesystem — no hardcoded lists
 - **Runs the full check battery** (see summary above) and collects all failures before exiting
 - **Distinguishes blocking vs. advisory**: exits non-zero on any blocking check failure
-- **Enforces model parity** (check 7, blocking) — each agent's frontmatter `model:` and its claude.json `.sub_agents[*].model` must be the SAME tier shorthand (`opus`/`sonnet`/`haiku`), and every model value on either side must be a declared key in `consistency.model_shorthand_map`. A mismatch or an unknown/typo value fails CI.
+- **Enforces model parity** (check 7, blocking) — each agent's frontmatter `model:` and its claude.json `.sub_agents[*].model` must be the SAME tier shorthand (`opus`/`sonnet`/`haiku`), and every model value on either side must be a declared key in `consistency.model_shorthand_map`. A mismatch or an unknown/typo value fails CI. `fable` is never a legal value here — it is not a key of the shorthand map, and the `pretooluse-model-guard` hook denies any subagent call that passes it, independent of this validator.
+- **Pins CLAUDE.md's `Default tier` column** (check 9c, blocking) — each agent-table row's tier cell must match its `claude.json` `.sub_agents[*].model`.
 
 Run it during development and before pushing. CI (`.github/workflows/consistency.yml`) runs it on every PR.
 

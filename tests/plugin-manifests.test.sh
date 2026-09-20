@@ -51,6 +51,37 @@ TESTS_FAIL=0
 # character, so it does not match.
 readonly MANIFEST_VERSION_SPECIFIER_FILTER='.mcpServers | to_entries[] | .key as $srv | (.value.args // [])[] | select(test("==|~=|!=|<|>|.@[A-Za-z0-9]")) | "\($srv): \(.)"'
 
+# --- shared predicate: serena launcher shape (REQ-006 / EDGE-006) -----------
+# Used by Assertion 14b and its RED-21/RED-22 fixtures. Prints one line per
+# violation found in .mcpServers.serena.args of the given .mcp.json path;
+# prints nothing when the shape is correct. A jq error is reported as a
+# single violation line, the same way Assertion 14a treats one.
+# The legacy pre-rename context name is built at runtime (never written as a
+# contiguous literal) so this file does not itself trip the repo-wide grep
+# that forbids it outside the migrator and its own test.
+_serena_shape_violations() {
+  local mcp_json="$1"
+  local legacy_ctx="ide-""assistant"
+  local args
+  args="$(jq -c '.mcpServers.serena.args // []' "$mcp_json" 2>&1)" || {
+    printf 'jq error: %s\n' "$args"
+    return
+  }
+  # ADJACENT pair, not two independent substrings: `jq -c` prints the array
+  # without whitespace, so the flag and its value are contiguous exactly when
+  # claude-code is the value OF --context. Two loose substring tests would pass
+  # ["--context","ide","claude-code"].
+  if [[ "$args" != *'"--context","claude-code"'* ]]; then
+    printf 'missing --context claude-code: %s\n' "$args"
+  fi
+  if [[ "$args" != *'"--project-from-cwd"'* ]]; then
+    printf 'missing --project-from-cwd: %s\n' "$args"
+  fi
+  if [[ "$args" == *"$legacy_ctx"* ]]; then
+    printf 'carries legacy %s context: %s\n' "$legacy_ctx" "$args"
+  fi
+}
+
 # Track every temp dir we create so the global trap can sweep them even if a
 # case dies unexpectedly. The real tree never appears in here.
 # Use a tracking file since array mutations inside subshells don't propagate to parent.
@@ -387,14 +418,25 @@ export FRAMEWORK_ROOT
 }
 
 # --- Assertion 8a: hooks.json scan-based .ps1 extraction works ---
+# Expected count is derived from hooks/*.ps1 on disk (same nullglob pattern as
+# Assertion 9's parity check), not hardcoded, so it never needs bumping when a
+# hook pair is added or removed.
 {
   # Test that the scan-based extraction correctly identifies .ps1 files from command strings
   ps1_list="$(jq -r '[.hooks // {} | to_entries[] | .value[]? | .hooks[]? | .command // empty] | .[] | scan("[a-zA-Z0-9._-]+[.]ps1") | sub("^.*/"; "")' "$copy/hooks/hooks.json" | sort -u)"
   ps1_count="$(printf '%s' "$ps1_list" | grep -c . || true)"
-  if [[ "$ps1_count" -eq 4 ]]; then
-    _pass "scan-based .ps1 extraction finds all 4 registered hook scripts"
+
+  disk_ps1_count=0
+  shopt -s nullglob
+  for f in "$copy/hooks"/*.ps1; do
+    disk_ps1_count=$((disk_ps1_count + 1))
+  done
+  shopt -u nullglob
+
+  if [[ "$ps1_count" -eq "$disk_ps1_count" ]]; then
+    _pass "scan-based .ps1 extraction finds all $disk_ps1_count registered hook scripts"
   else
-    _fail "scan-based .ps1 extraction" "expected 4 scripts, found $ps1_count"
+    _fail "scan-based .ps1 extraction" "expected $disk_ps1_count scripts (on disk), found $ps1_count"
   fi
 }
 
@@ -562,6 +604,25 @@ export FRAMEWORK_ROOT
 }
 
 rm -rf "$copy"
+
+# --- Assertion 14b: serena launcher uses the claude-code / project-from-cwd shape ---
+# REQ-006: serena must activate and auto-register the project at startup, not the
+# legacy pre-rename context. Runs the real predicate (_serena_shape_violations)
+# against the pristine copy and expects no violations, the same pattern RED-20
+# uses for Assertion 14a.
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+
+  violations="$(_serena_shape_violations "$copy/.mcp.json")"
+  if [[ -z "$violations" ]]; then
+    _pass "serena launcher shape has no violations (--context claude-code, --project-from-cwd, no legacy context)"
+  else
+    _fail "serena launcher shape has no violations" "$(printf '%s' "$violations" | head -1)"
+  fi
+
+  rm -rf "$copy"
+}
 
 # ===========================================================================
 # RED PATH CASE 6: Corrupt core plugin.json version
@@ -890,6 +951,57 @@ section "[RED-20] Fixture: re-pin fetch to carry a version specifier (should fai
     else
       _fail "RED-20: fixture: fetch args now carry a version specifier" "no version specifier found"
     fi
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 21: Re-pin serena to the legacy pre-rename context (should
+#                   fail Assertion 14b's real predicate, not a restatement of
+#                   the fixture). The legacy name is built at runtime, not
+#                   written literally, so this file does not itself trip the
+#                   repo-wide grep for it.
+# ===========================================================================
+section "[RED-21] Fixture: re-pin serena to legacy context (should fail serena-shape check)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  legacy_ctx="ide-""assistant"
+  tmp_json="$(mktemp)"
+  jq --arg ctx "$legacy_ctx" '.mcpServers.serena.args = ["--from","git+https://github.com/oraios/serena","serena","start-mcp-server","--context",$ctx]' "$copy/.mcp.json" > "$tmp_json" && mv "$tmp_json" "$copy/.mcp.json"
+
+  violations="$(_serena_shape_violations "$copy/.mcp.json")"
+  # Match the stable "carries legacy" marker, not a bare substring search for
+  # $legacy_ctx: the unrelated --context/claude-code violation line also dumps
+  # the full args array (which itself contains the legacy string), so a bare
+  # substring check here would pass even with the legacy-context check
+  # disabled — this specific marker is what proves that check actually ran.
+  if [[ "$violations" == *'carries legacy'* ]]; then
+    _pass "RED-21: fixture: serena legacy context correctly fails the serena-shape check"
+  else
+    _fail "RED-21: fixture: serena legacy context should fail the serena-shape check" "violations: $violations"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 22: Remove --project-from-cwd from serena's args (should fail
+#                   Assertion 14b's real predicate on the missing-flag check)
+# ===========================================================================
+section "[RED-22] Fixture: drop --project-from-cwd from serena args (should fail serena-shape check)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  tmp_json="$(mktemp)"
+  jq '.mcpServers.serena.args = ["--from","git+https://github.com/oraios/serena","serena","start-mcp-server","--context","claude-code"]' "$copy/.mcp.json" > "$tmp_json" && mv "$tmp_json" "$copy/.mcp.json"
+
+  violations="$(_serena_shape_violations "$copy/.mcp.json")"
+  if [[ "$violations" == *'missing --project-from-cwd:'* ]]; then
+    _pass "RED-22: fixture: missing --project-from-cwd correctly fails the serena-shape check"
+  else
+    _fail "RED-22: fixture: missing --project-from-cwd should fail the serena-shape check" "violations: $violations"
   fi
 
   rm -rf "$copy"

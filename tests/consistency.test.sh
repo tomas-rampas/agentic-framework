@@ -1196,6 +1196,41 @@ EOF
 }
 
 # ===========================================================================
+# CASE 27 - CLAUDE.md "Default tier" column vs claude.json (check 9c,
+#           blocking): a diverged tier and an invalid tier value must each
+#           fail validation, each naming the affected agent row.
+# ===========================================================================
+section "[27] CLAUDE.md Default tier column: diverged + invalid tier -> non-zero (check 9c)"
+{
+  # --- 27a: flip rust-expert's Default tier cell to a DIFFERENT valid tier
+  # (opus) than its actual claude.json/frontmatter tier (sonnet). Nothing else
+  # in the copy changes, so the ONLY break is the CLAUDE.md<->claude.json
+  # tier-column mismatch (check 9c).
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/^(\| \*\*rust-expert\*\* \| .* \| )sonnet( \|)$/\1opus\2/' \
+    "$copy/CLAUDE.md" && rm -f "$copy/CLAUDE.md.bak"
+  run_validate "$copy" 9
+  assert_rc_nonzero "validator fails when CLAUDE.md's tier cell diverges from claude.json"
+  # Assert the FAILURE text, not words the 9c pass line also carries ("tier").
+  assert_out_contains "reports a tier mismatch naming rust-expert" "rust-expert tier mismatch"
+  assert_out_contains "names both sides of the mismatch" "CLAUDE.md 'opus' != claude.json 'sonnet'"
+  rm -rf "$copy"
+
+  # --- 27b: set an INVALID tier value (typo) in one row's Default tier cell.
+  # It is not a key of .consistency.model_shorthand_map, so the legal-tier
+  # guard must fail it (blocking), naming the row's agent.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/^(\| \*\*rust-expert\*\* \| .* \| )sonnet( \|)$/\1sonnett\2/' \
+    "$copy/CLAUDE.md" && rm -f "$copy/CLAUDE.md.bak"
+  run_validate "$copy" 9
+  assert_rc_nonzero "validator fails on an invalid Default tier value in CLAUDE.md"
+  assert_out_contains "reports the invalid tier naming rust-expert" "rust-expert Default tier cell 'sonnett' is not a valid tier"
+  rm -rf "$copy"
+}
+
+# ===========================================================================
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"

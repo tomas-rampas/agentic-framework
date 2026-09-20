@@ -145,7 +145,7 @@ mindmap
       technical-docs-writer
 ```
 
-- **Model tiers scale with stakes**: `opus` = language implementation, security, architecture & review · `sonnet` = domain & infrastructure specialists, analysis & planning · `haiku` = executors, docs & UI/UX.
+- **Model tiers scale with stakes**: `opus` = review gates, security & architecture · `sonnet` = language implementation, domain & infrastructure specialists, analysis & planning · `haiku` = executors, docs & UI/UX. The orchestrator moves one tier per task at most, and no sub-agent ever runs on the top tier (Fable).
 - **peer-review-critic runs a curated toolset** (no Write/Edit/Agent) that narrows its default surface; its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
@@ -164,7 +164,7 @@ mindmap
 | `/agentic-framework:validate-hooks` | Hook registration parity check |
 | `/agentic-framework:migrate-legacy` | Migrate a local ~/.claude clone to the plugin distribution |
 
-### 3.3 Hooks — the enforcement layer (4)
+### 3.3 Hooks — the enforcement layer (5)
 
 The only component that can **say no**: hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. The .sh implementations parse that JSON with `jq` and enforce nothing without it — if `jq` is absent on a POSIX host, the gate is disarmed; hooks fire but don't enforce. Windows runs the .ps1 via pwsh (which parses JSON natively with ConvertFrom-Json), or the .sh under Git Bash when jq is available.
 
@@ -174,6 +174,7 @@ The only component that can **say no**: hook scripts implemented as both PowerSh
 | `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic runs and parses the review's `VERDICT:` line — `APPROVED` is what unlocks the gate |
 | `session-start-context` | `SessionStart` | Injects branch + review status into context at startup |
 | `pretooluse-delegation-hint` | `PreToolUse` | Suggests the matching specialist when a `.rs`/`.py`/`.cs`/… file is written |
+| `pretooluse-model-guard` | `PreToolUse` | **The model-tier ceiling** — denies a sub-agent call whose `model` names the top tier (`fable`), every `fork`, and a built-in agent call with no `model` while `CLAUDE_CODE_SUBAGENT_MODEL` is unset |
 
 The gate's lifecycle:
 
@@ -335,7 +336,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | | |
 |---|---|
 | Specialized agents | 21 (7 categories, 3 model tiers) |
-| Hooks | 4 .ps1/.sh implementation pairs |
+| Hooks | 5 .ps1/.sh implementation pairs |
 | Skills | 9 loadable knowledge modules |
 | Commands | 12 management commands |
 | MCP servers | 6 (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph) |
