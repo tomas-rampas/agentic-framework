@@ -38,6 +38,12 @@ NC='\033[0m' # No Color
 # never shipped, and hold source-derived text in binary form — once an agent has
 # built the graph, graph.db reports "Binary file matches" for whatever the
 # tracked sources contain and fails this scan with nothing to fix.
+# DELIBERATELY ASYMMETRIC: only this generic, false-positive-prone rule skips
+# the caches. The four literal-pattern scans below (AWS key, GitHub token,
+# private key, connection string) still walk them — they have near-zero false
+# positives, and a hit inside .serena/memories/ (plain-text notes an agent
+# wrote) or graph.db is a real secret sitting on disk that is worth hearing
+# about even though it cannot ship.
 _secret_scan() {
     grep -r --exclude-dir=.git --exclude-dir=.code-review-graph --exclude-dir=.serena -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"'\$][^\"']{7,}[\"']" . \
         | grep -v "your-api-key" \

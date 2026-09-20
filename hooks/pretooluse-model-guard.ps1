@@ -50,12 +50,12 @@ try {
     $stype = Get-NormalizedString $payload.tool_input.subagent_type
 
     if ($stype -eq 'fork') {
-        Write-Deny '[model-guard] A fork always runs on its parent model and ignores the model override. Start a fresh agent with an explicit model instead of a fork.'
+        Write-Deny '[model-guard] A fork always runs on its parent model and ignores the model override. Start a fresh agent with an explicit model instead, and pass it the context it needs. Set AF_MODEL_GUARD=off to disable this guard.'
         exit 0
     }
 
     if ($model -like '*fable*') {
-        Write-Deny '[model-guard] Sub-agents must not run on the top model tier. Re-issue this Agent call with model set to opus, sonnet or haiku.'
+        Write-Deny '[model-guard] Sub-agents must not run on the top model tier. Re-issue this Agent call with model set to opus, sonnet or haiku. Set AF_MODEL_GUARD=off to disable this guard.'
         exit 0
     }
 
@@ -65,7 +65,7 @@ try {
     $builtinMap = @{
         ''                 = 'general-purpose'
         'explore'          = 'Explore'
-        'plan'              = 'Plan'
+        'plan'             = 'Plan'
         'general-purpose'  = 'general-purpose'
         'claude'           = 'claude'
     }
@@ -73,7 +73,7 @@ try {
     if (-not $model -and -not $floorSet -and $builtinMap.ContainsKey($stype)) {
         $type = $builtinMap[$stype]
         $tier = if ($type -eq 'Explore') { 'haiku' } else { 'sonnet' }
-        Write-Deny "[model-guard] Built-in agent $type has no default tier and would inherit the parent model. Re-issue this Agent call with model set to $tier."
+        Write-Deny "[model-guard] Built-in agent $type has no default tier and would inherit the parent model. Re-issue this Agent call with model set to $tier. Set AF_MODEL_GUARD=off to disable this guard."
         exit 0
     }
 

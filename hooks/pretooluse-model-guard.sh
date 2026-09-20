@@ -50,14 +50,14 @@ model=$(trim_lower "$model_raw")
 stype=$(trim_lower "$stype_raw")
 
 if [ "$stype" = "fork" ]; then
-  jq -cn --arg reason "[model-guard] A fork always runs on its parent model and ignores the model override. Start a fresh agent with an explicit model instead of a fork." \
+  jq -cn --arg reason "[model-guard] A fork always runs on its parent model and ignores the model override. Start a fresh agent with an explicit model instead, and pass it the context it needs. Set AF_MODEL_GUARD=off to disable this guard." \
     '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$reason}}'
   exit 0
 fi
 
 case "$model" in
   *fable*)
-    jq -cn --arg reason "[model-guard] Sub-agents must not run on the top model tier. Re-issue this Agent call with model set to opus, sonnet or haiku." \
+    jq -cn --arg reason "[model-guard] Sub-agents must not run on the top model tier. Re-issue this Agent call with model set to opus, sonnet or haiku. Set AF_MODEL_GUARD=off to disable this guard." \
       '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$reason}}'
     exit 0
     ;;
@@ -89,7 +89,7 @@ if [ "$model" = "" ] && [ "$floor_set" = "false" ]; then
       tier="sonnet"
     fi
     jq -cn --arg type "$type" --arg tier "$tier" \
-      '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":("[model-guard] Built-in agent " + $type + " has no default tier and would inherit the parent model. Re-issue this Agent call with model set to " + $tier + ".")}}'
+      '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":("[model-guard] Built-in agent " + $type + " has no default tier and would inherit the parent model. Re-issue this Agent call with model set to " + $tier + ". Set AF_MODEL_GUARD=off to disable this guard.")}}'
     exit 0
   fi
 fi

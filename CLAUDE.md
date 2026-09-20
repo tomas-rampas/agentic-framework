@@ -176,7 +176,7 @@ and the conclusion is small.
 job does the job.
 
 - **The top-level session is the orchestrator only.** It plans, routes, reviews sub-agent
-  output, integrates results, and owns commits. It does not implement, explore broadly, or
+  output, and integrates results. It does not implement, explore broadly, or
   grind logs itself — that work goes to a sub-agent on a lower tier. Targeted reads and
   short inline commands stay with the orchestrator, exactly as the execution policy above
   says.
@@ -190,7 +190,11 @@ job does the job.
   frontmatter `model:`, then the `CLAUDE_CODE_SUBAGENT_MODEL` environment variable, then
   the parent's model.
 - **Move one tier down** when the task is mechanical: a single-file edit with an exact
-  spec, formatting, scaffolding, a rename, applying a reviewer's one-line finding.
+  spec, formatting, scaffolding, a rename, applying a reviewer's one-line finding. This
+  rule is about work that is worth delegating at all: the pay-for-itself test below runs
+  first, and an edit the orchestrator already holds verbatim is applied inline, not sent down.
+- **The range is `haiku` to `opus`.** `opus` is the sub-agent ceiling and `haiku` the
+  floor; a move that would leave the range is simply not made.
 - **Move one tier up — and state the reason in the delegation** — when the task involves
   concurrency or unsafe code, authentication or cryptography, a refactor across many files,
   or when the default tier has already failed two review rounds. Executors asked to

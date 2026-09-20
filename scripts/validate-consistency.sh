@@ -1114,6 +1114,12 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
 #   (d) tools: any mcp__serena__* tool implies BOTH serena bootstrap tools
 #       (activate_project + initial_instructions) are allowlisted too. The rule
 #       applies independently to the bare and the plugin-prefixed spelling.
+#       NOTE: the plugin launches serena with --project-from-cwd, so inside a
+#       repository serena runs in single-project mode and does NOT expose
+#       activate_project (measured: it logs SingleProjectExclusions). The pair
+#       is still required because it IS live when serena starts outside a
+#       repository, and for a user-scope serena launched without the flag; an
+#       allowlisted tool the server does not expose is inert, never an error.
 #   (e) tools / disallowedTools: every bare mcp__* entry must have its
 #       plugin-prefixed twin and vice versa, so the curated surface is identical
 #       whether a server comes from the plugin or from a user-scope copy.

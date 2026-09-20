@@ -27,7 +27,15 @@ parameter, which is exactly why it must be blocked structurally rather than by c
 alone. An agent with no `model:` line — every built-in agent — has nothing to fall back on
 at step 2, so absent an environment floor at step 3 it inherits the orchestrator's model at
 step 4. That is measured, not a bug in this design: `Explore` and `Plan` are documented to
-inherit the parent model.
+inherit the parent model; for `general-purpose` and `claude` the same follows from the
+resolution order (inferred, not separately probed).
+
+The guard's remedy rests on built-in agents honouring step 1, so that was probed rather
+than assumed (measured 2026-09-20; each probe agent quoted the model line of its own system
+prompt): `Explore` with `model: haiku` ran as `claude-haiku-4-5-20251001`, `Plan` with
+`model: sonnet` as `claude-sonnet-5`, `general-purpose` and `claude` with `model: haiku` as
+`claude-haiku-4-5-20251001`. A denied built-in call re-issued with the tier the denial
+names therefore runs on that tier.
 
 ## The three layers
 
@@ -102,7 +110,15 @@ security or system design, costs more than the tokens the lower tier would save.
   `.serena/project.yml` is read — and its `activation_command` executed — before the first
   model turn whenever the path matches `trusted_project_path_patterns`. Upstream ships that
   list empty (measured in the config template), which makes the command inert; a user who
-  sets it to `**` turns every clone into startup code execution.
+  sets it to `**` turns every clone into startup code execution. Tool-surface consequence,
+  measured in the same probes: once a project is found at startup serena runs in
+  single-project mode and logs `SingleProjectExclusions excluded 2 tools: activate_project,
+  get_current_config` (21 tools exposed instead of 23), so an agent cannot switch project
+  roots mid-session; started where no project is found, both tools are present. Validator
+  check 15(d) still requires the `activate_project` + `initial_instructions` pair in every
+  allowlist that grants a serena tool: the pair is live outside a repository and for a
+  user-scope serena launched without the flag, and an allowlisted tool the server does not
+  expose is inert.
 - **"Code graph first" prompt blocks**: the seven language experts plus
   code-review-gatekeeper, peer-review-critic, spec-compliance-reviewer, security-specialist,
   comprehensive-analyst and system-architect (13 agents) gained a `## Code graph first`
@@ -120,6 +136,13 @@ security or system design, costs more than the tokens the lower tier would save.
   hook cannot know the parent's tier, so it denies every fork — including a harmless one
   inside a sonnet sub-agent. That over-blocking is the accepted price of closing the one
   path that silently puts a sub-agent on the top tier.
+- Every denial reason ends with `Set AF_MODEL_GUARD=off to disable this guard.`: the hook
+  fires for every plugin user, including one whose top-level session is not an expensive
+  model, and the denial is the only text a blocked caller sees.
+- The byte-equivalence of the two implementations is tested for ASCII payloads. Non-ASCII
+  input is not covered: `.Trim()` trims Unicode whitespace where the POSIX `sed` class does
+  not, and `[Console]::In` does not decode UTF-8 stdin on Windows (the same pattern as the
+  four older hooks), so such payloads are mangled before either rule runs.
 - This is a cost control, not a security boundary. A Unicode look-alike of the alias is not
   folded (it is not a valid model name, so the call fails on its own), and built-in agents
   with a fixed model of their own (`statusline-setup`, `claude-code-guide`) are not in the

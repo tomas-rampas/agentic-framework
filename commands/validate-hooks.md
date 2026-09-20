@@ -82,7 +82,7 @@ Hook Architecture Validation
 
 Checking hook registration parity (hooks/hooks.json <-> hooks/*.ps1)...
 
-OK: 4 .ps1 + 5 .sh hook script(s) registered across 5 event(s); dispatch chains coherent; all events valid
+OK: 5 .ps1 + 6 .sh hook script(s) registered across 5 event(s); dispatch chains coherent; all events valid
 
 Checking for deprecated agent references in hooks/...
 

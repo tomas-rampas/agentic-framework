@@ -38,7 +38,10 @@ default tier; the Agent tool's `model` parameter overrides it for one call.
 - **Built-in agents** (`Explore`, `Plan`, `general-purpose`, `claude`) inherit *your* model,
   so always pass one: `haiku` for `Explore`, `sonnet` for the others. Do not `fork`.
 - **One tier down** for mechanical work: a single-file edit with an exact spec, formatting,
-  scaffolding, applying a one-line review finding.
+  scaffolding, applying a one-line review finding — but only for work that passes the
+  pay-for-itself test in the last bullet, which runs first.
+- **The range is `haiku` to `opus`:** `opus` is the sub-agent ceiling and `haiku` the
+  floor; a move that would leave the range is not made.
 - **One tier up, with the reason stated in the delegation,** for concurrency or unsafe
   code, auth or crypto, a refactor across many files, an executor asked to author rather
   than run, or after two failed review rounds at the default tier.
