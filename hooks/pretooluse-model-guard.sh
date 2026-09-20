@@ -40,7 +40,21 @@ set -u
 # to {"model":"sonnet"}); any other shape (absent, null, string, array, ...)
 # is an unrecognised payload and passes silently rather than being misread as
 # a built-in agent. Fail-open: any error, unparseable stdin, or missing jq =>
-# exit 0, no output. Disable via env AF_MODEL_GUARD=off (case-insensitive).
+# exit 0, no output. Disable via env AF_MODEL_GUARD=off (case-insensitive,
+# surrounding whitespace trimmed).
+#
+# MEASURED: a lone UTF-16 surrogate escape (\uD800-\uDFFF not part of a valid
+# pair) anywhere in the raw payload makes jq reject the WHOLE document, so
+# without the fallback below a fork or fable call carrying one in an
+# unrelated field (e.g. prompt) would silently bypass this guard. When the
+# original payload fails to parse, a DECISION-ONLY copy is built by
+# replacing every such escape with � and re-parsed; model/subagent_type
+# are then read from that copy. This is safe because the two decision fields
+# never legitimately contain a lone surrogate. The sanitised copy is used
+# only for the deny/allow decision and is NEVER echoed: the rewrite branch
+# always serialises the ORIGINAL payload, and if that still fails to parse,
+# nothing is printed and the call proceeds unrewritten (exit 0) rather than
+# emitting a prompt the hook cannot reproduce exactly.
 #
 # Ported from pretooluse-model-guard.ps1 to POSIX sh. DENY cases (fork,
 # fable) are byte-identical between the two implementations; REWRITE cases
@@ -56,7 +70,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-af_guard_lower=$(printf '%s' "${AF_MODEL_GUARD:-}" | tr '[:upper:]' '[:lower:]')
+af_guard_lower=$(trim_lower "${AF_MODEL_GUARD:-}")
 if [ "$af_guard_lower" = "off" ]; then
   exit 0
 fi
@@ -64,11 +78,20 @@ fi
 payload=$(cat 2>/dev/null)
 [ -z "$payload" ] && exit 0
 
-tool_input_type=$(printf '%s' "$payload" | jq -r '(.tool_input | type)' 2>/dev/null) || exit 0
+decision_payload="$payload"
+tool_input_type=$(printf '%s' "$decision_payload" | jq -r '(.tool_input | type)' 2>/dev/null)
+if [ $? -ne 0 ]; then
+  # Original payload doesn't parse — likely a lone surrogate escape. Build a
+  # decision-only copy with such escapes replaced, for reading model/
+  # subagent_type ONLY; the rewrite branch below still uses $payload as-is.
+  sanitized=$(printf '%s' "$payload" | sed -E 's/\\u[dD][89a-fA-F][0-9a-fA-F]{2}/\\ufffd/g')
+  tool_input_type=$(printf '%s' "$sanitized" | jq -r '(.tool_input | type)' 2>/dev/null) || exit 0
+  decision_payload="$sanitized"
+fi
 [ "$tool_input_type" = "object" ] || exit 0
 
-model_raw=$(printf '%s' "$payload" | jq -r '(.tool_input.model | if type=="string" then . else "" end)' 2>/dev/null) || exit 0
-stype_raw=$(printf '%s' "$payload" | jq -r '(.tool_input.subagent_type | if type=="string" then . else "" end)' 2>/dev/null) || exit 0
+model_raw=$(printf '%s' "$decision_payload" | jq -r '(.tool_input.model | if type=="string" then . else "" end)' 2>/dev/null) || exit 0
+stype_raw=$(printf '%s' "$decision_payload" | jq -r '(.tool_input.subagent_type | if type=="string" then . else "" end)' 2>/dev/null) || exit 0
 
 model=$(trim_lower "$model_raw")
 stype=$(trim_lower "$stype_raw")

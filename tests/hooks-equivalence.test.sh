@@ -554,6 +554,44 @@ EOF_PAYLOAD
   if [ "$ps_int_prompt" = "$expected_prompt" ]; then _pass "[edge019c-integrity] ps updatedInput.prompt equals original input exactly"; else _fail "[edge019c-integrity] ps prompt fidelity" "expected: $expected_prompt, got: $ps_int_prompt"; fi
   if [ "$sh_int_desc" = "2026-09-20T10:00:00Z" ]; then _pass "[edge019c-integrity] sh updatedInput.description is the unmodified ISO string"; else _fail "[edge019c-integrity] sh description fidelity" "got: $sh_int_desc"; fi
   if [ "$ps_int_desc" = "2026-09-20T10:00:00Z" ]; then _pass "[edge019c-integrity] ps updatedInput.description is the unmodified ISO string"; else _fail "[edge019c-integrity] ps description fidelity" "got: $ps_int_desc"; fi
+
+  # EDGE-021 lone-surrogate bypass, duplicate fields, off-switch trimming.
+  # A lone \uD800 escape in an unrelated field (here: prompt) must never let
+  # a fork or fable call slip past undetected in either implementation.
+  check_guard_equiv "edge021a-fork-surrogate" '{"tool_input":{"subagent_type":"fork","prompt":"a\ud800b"}}' deny
+  check_guard_equiv "edge021b-fable-surrogate" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable","prompt":"a\ud800b"}}' deny
+  check_guard_equiv "edge021c-explore-surrogate-silent" '{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}' silent
+  check_guard_equiv "edge021d-framework-agent-surrogate-silent" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}' silent
+
+  # Duplicate "model": both implementations must fold to exactly one
+  # "model" field in their raw output, valued at the rewritten tier.
+  edge021e_payload='{"tool_input":{"model":"fable","model":"","subagent_type":"Explore","prompt":"p"}}'
+  sh021e_out=$(printf '%s' "$edge021e_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)
+  ps021e_out=$(printf '%s' "$edge021e_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-model-guard.ps1" 2>&1)
+  sh021e_count=$(printf '%s' "$sh021e_out" | grep -o '"model"' | wc -l | tr -d ' ')
+  ps021e_count=$(printf '%s' "$ps021e_out" | grep -o '"model"' | wc -l | tr -d ' ')
+  if [ "$sh021e_count" = "1" ]; then _pass "[edge021e-dup-model] sh raw output has exactly one model field"; else _fail "[edge021e-dup-model] sh model field count" "got: $sh021e_count in $sh021e_out"; fi
+  if [ "$ps021e_count" = "1" ]; then _pass "[edge021e-dup-model] ps raw output has exactly one model field"; else _fail "[edge021e-dup-model] ps model field count" "got: $ps021e_count in $ps021e_out"; fi
+  if printf '%s' "$sh021e_out" | jq -e '.hookSpecificOutput.updatedInput.model == "haiku"' >/dev/null 2>&1; then _pass "[edge021e-dup-model] sh model value is haiku"; else _fail "[edge021e-dup-model] sh model value" "got: $sh021e_out"; fi
+  if printf '%s' "$ps021e_out" | jq -e '.hookSpecificOutput.updatedInput.model == "haiku"' >/dev/null 2>&1; then _pass "[edge021e-dup-model] ps model value is haiku"; else _fail "[edge021e-dup-model] ps model value" "got: $ps021e_out"; fi
+
+  # Duplicate "subagent_type": fork-then-Explore rewrites (last value wins:
+  # Explore), one field; Explore-then-fork denies reason C (last value: fork).
+  edge021f_payload='{"tool_input":{"subagent_type":"fork","subagent_type":"Explore","prompt":"p"}}'
+  sh021f_out=$(printf '%s' "$edge021f_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)
+  ps021f_out=$(printf '%s' "$edge021f_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-model-guard.ps1" 2>&1)
+  sh021f_count=$(printf '%s' "$sh021f_out" | grep -o '"subagent_type"' | wc -l | tr -d ' ')
+  ps021f_count=$(printf '%s' "$ps021f_out" | grep -o '"subagent_type"' | wc -l | tr -d ' ')
+  if [ "$sh021f_count" = "1" ]; then _pass "[edge021f-dup-subtype] sh raw output has exactly one subagent_type field"; else _fail "[edge021f-dup-subtype] sh field count" "got: $sh021f_count in $sh021f_out"; fi
+  if [ "$ps021f_count" = "1" ]; then _pass "[edge021f-dup-subtype] ps raw output has exactly one subagent_type field"; else _fail "[edge021f-dup-subtype] ps field count" "got: $ps021f_count in $ps021f_out"; fi
+  if printf '%s' "$sh021f_out" | jq -e '.hookSpecificOutput.updatedInput.subagent_type == "Explore"' >/dev/null 2>&1; then _pass "[edge021f-dup-subtype] sh subagent_type value is Explore"; else _fail "[edge021f-dup-subtype] sh subagent_type value" "got: $sh021f_out"; fi
+  if printf '%s' "$ps021f_out" | jq -e '.hookSpecificOutput.updatedInput.subagent_type == "Explore"' >/dev/null 2>&1; then _pass "[edge021f-dup-subtype] ps subagent_type value is Explore"; else _fail "[edge021f-dup-subtype] ps subagent_type value" "got: $ps021f_out"; fi
+
+  check_guard_equiv "edge021f-dup-subtype-reversed" '{"tool_input":{"subagent_type":"Explore","subagent_type":"fork","prompt":"p"}}' deny
+
+  # Off-switch value trimming (a common Windows "set VAR=off " slip).
+  check_guard_equiv "edge021g-off-padded" '{"tool_input":{"subagent_type":"Explore","model":"fable"}}' silent AF_MODEL_GUARD=" off "
+  check_guard_equiv "edge021g-off-padded-caps" '{"tool_input":{"subagent_type":"Explore","model":"fable"}}' silent 'AF_MODEL_GUARD=OFF  '
 }
 
 # === Summary

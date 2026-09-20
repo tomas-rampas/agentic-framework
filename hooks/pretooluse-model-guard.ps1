@@ -48,7 +48,25 @@
 # to {"model":"sonnet"}); any other shape (absent, null, string, array, ...)
 # is an unrecognised payload and passes silently rather than being misread as
 # a built-in agent. Fail-open: any error or unparseable stdin => exit 0, no
-# output. Disable via env AF_MODEL_GUARD=off (case-insensitive).
+# output. Disable via env AF_MODEL_GUARD=off (case-insensitive, surrounding
+# whitespace trimmed).
+#
+# MEASURED: JsonDocument parses a lone UTF-16 surrogate escape (e.g. \uD800
+# with no matching low surrogate) without error — deny decisions (fork,
+# fable) read fine even when an unrelated field such as prompt carries one.
+# Echoing it back is a different story: JsonElement.GetString()/WriteTo()
+# throw "incomplete UTF-16 JSON text" for such a value, which happens inside
+# the outer try/catch below, so the rewrite branch aborts before any bytes
+# reach stdout — nothing is printed and the call proceeds unrewritten rather
+# than emitting a prompt this hook cannot reproduce exactly.
+#
+# DUPLICATE KEYS: tool_input.EnumerateObject() yields every occurrence of a
+# repeated key (e.g. two "model" properties), unlike jq which folds an
+# object literal down to one. The rewrite loop below first records each
+# key's LAST value, then walks the properties once, writing only the FIRST
+# occurrence of each name (using that last-recorded value) and skipping
+# later repeats — matching jq's `.tool_input + {...}` output both in the
+# single surviving key and in its position.
 #
 # Registered in hooks/hooks.json via the agentic-framework plugin (PreToolUse: Task|Agent).
 # DENY cases (fork, fable) are byte-identical with the .sh twin; REWRITE
@@ -85,7 +103,7 @@ function Write-BytesToStdout {
 }
 
 try {
-    if ($env:AF_MODEL_GUARD -and $env:AF_MODEL_GUARD.ToLowerInvariant() -eq 'off') { exit 0 }
+    if ($env:AF_MODEL_GUARD -and $env:AF_MODEL_GUARD.Trim().ToLowerInvariant() -eq 'off') { exit 0 }
 
     $stdin = [Console]::OpenStandardInput()
     $ms = New-Object System.IO.MemoryStream
@@ -137,15 +155,20 @@ try {
             $writer.WriteStartObject()
             $writer.WriteStartObject('hookSpecificOutput')
             $writer.WriteString('hookEventName', 'PreToolUse')
+            $lastValues = @{}
+            foreach ($prop in $toolInput.EnumerateObject()) { $lastValues[$prop.Name] = $prop.Value }
+
             $writer.WriteStartObject('updatedInput')
             $modelWritten = $false
+            $seen = New-Object 'System.Collections.Generic.HashSet[string]'
             foreach ($prop in $toolInput.EnumerateObject()) {
+                if (-not $seen.Add($prop.Name)) { continue }
                 if ($prop.Name -eq 'model') {
                     $writer.WriteString('model', $tier)
                     $modelWritten = $true
                 } else {
                     $writer.WritePropertyName($prop.Name)
-                    $prop.Value.WriteTo($writer)
+                    $lastValues[$prop.Name].WriteTo($writer)
                 }
             }
             if (-not $modelWritten) { $writer.WriteString('model', $tier) }

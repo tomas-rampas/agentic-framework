@@ -550,6 +550,59 @@ try {
         $modelKeyCount = ([regex]::Matches($r.Out, '"model"\s*:')).Count
         Assert "model=[$badModel] results in exactly one model key (EDGE-019e)" ($modelKeyCount -eq 1)
     }
+
+    # EDGE-021: lone-surrogate bypass, duplicate fields, off-switch trimming.
+    # Raw JSON strings (not New-Payload/hashtable) so the \ud800 escape and
+    # duplicate object fields survive literally on the wire; PowerShell
+    # hashtables cannot hold a duplicate key.
+
+    # (a) fork + lone surrogate in prompt -> still denied reason C
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"fork","prompt":"a\ud800b"}}'
+    Assert 'fork+surrogate still denied reason C (EDGE-021a)' ($r.Code -eq 0 -and $r.Out -match 'runs on its parent model')
+
+    # (b) model=fable + lone surrogate in prompt -> still denied reason A
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable","prompt":"a\ud800b"}}'
+    Assert 'fable+surrogate still denied reason A (EDGE-021b)' ($r.Code -eq 0 -and $r.Out -match 'top model tier')
+
+    # (c) Explore, no model, lone surrogate in prompt -> silent (cannot echo exactly)
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}'
+    Assert 'Explore+surrogate silent, cannot echo exactly (EDGE-021c)' ($r.Code -eq 0 -and -not $r.Out)
+
+    # (d) framework agent, no model, lone surrogate in prompt -> silent
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}'
+    Assert 'framework-agent+surrogate silent, cannot echo exactly (EDGE-021d)' ($r.Code -eq 0 -and -not $r.Out)
+
+    # (e) duplicate "model" -> rewrite, raw output has exactly one model field, valued haiku
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"model":"fable","model":"","subagent_type":"Explore","prompt":"p"}}'
+    $modelKeyCount21e = ([regex]::Matches($r.Out, '"model"\s*:')).Count
+    Assert 'dup-model raw output has exactly one model field (EDGE-021e)' ($r.Code -eq 0 -and $modelKeyCount21e -eq 1)
+    Assert 'dup-model rewrites to haiku (EDGE-021e)' ($r.Out -match '"model":"haiku"')
+
+    # (f) duplicate "subagent_type": fork then Explore -> rewrite, last value wins (Explore)
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"fork","subagent_type":"Explore","prompt":"p"}}'
+    $subtypeKeyCount21f = ([regex]::Matches($r.Out, '"subagent_type"\s*:')).Count
+    Assert 'dup-subagent_type raw output has exactly one field (EDGE-021f)' ($r.Code -eq 0 -and $subtypeKeyCount21f -eq 1)
+    Assert 'dup-subagent_type fork-then-Explore rewrites with Explore (EDGE-021f)' ($r.Out -match '"subagent_type":"Explore"')
+
+    # (f, reversed) Explore then fork -> last value wins (fork) -> denied reason C
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"Explore","subagent_type":"fork","prompt":"p"}}'
+    Assert 'dup-subagent_type Explore-then-fork denied reason C (EDGE-021f)' ($r.Code -eq 0 -and $r.Out -match 'runs on its parent model')
+
+    # (g) AF_MODEL_GUARD with surrounding/trailing whitespace still disables the guard
+    try {
+        $env:AF_MODEL_GUARD = ' off '
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore'; model = 'fable' } })
+        Assert 'AF_MODEL_GUARD=" off " (padded) disables the guard (EDGE-021g)' ($r.Code -eq 0 -and -not $r.Out)
+    } finally {
+        Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue
+    }
+    try {
+        $env:AF_MODEL_GUARD = 'OFF  '
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore'; model = 'fable' } })
+        Assert 'AF_MODEL_GUARD="OFF  " (trailing space) disables the guard (EDGE-021g)' ($r.Code -eq 0 -and -not $r.Out)
+    } finally {
+        Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue
+    }
 } finally {
     if ($null -ne $savedFloor) { $env:CLAUDE_CODE_SUBAGENT_MODEL = $savedFloor } else { Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
     if ($null -ne $savedGuard) { $env:AF_MODEL_GUARD = $savedGuard } else { Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue }

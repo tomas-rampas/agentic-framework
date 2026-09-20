@@ -2331,6 +2331,74 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-019e] non-string/whitespace model values o
   done
 }
 
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-021] lone-surrogate bypass, duplicate fields, off-switch trimming"
+{
+  # (a) fork + lone surrogate in prompt -> still denied reason C
+  test_payload='{"tool_input":{"subagent_type":"fork","prompt":"a\ud800b"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge021a fork+surrogate hook exits 0"
+  assert_out_contains "edge021a fork+surrogate denied reason C" "runs on its parent model"
+
+  # (b) model=fable + lone surrogate in prompt -> still denied reason A
+  test_payload='{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable","prompt":"a\ud800b"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge021b fable+surrogate hook exits 0"
+  assert_out_contains "edge021b fable+surrogate denied reason A" "top model tier"
+
+  # (c) Explore, no model, lone surrogate in prompt -> silent (cannot echo exactly)
+  test_payload='{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge021c Explore+surrogate hook exits 0"
+  assert_out_empty "edge021c Explore+surrogate silent"
+
+  # (d) framework agent, no model, lone surrogate in prompt -> silent
+  test_payload='{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge021d framework-agent+surrogate hook exits 0"
+  assert_out_empty "edge021d framework-agent+surrogate silent"
+
+  # (e) duplicate "model" -> rewrite with exactly one model field, valued haiku
+  test_payload='{"tool_input":{"model":"fable","model":"","subagent_type":"Explore","prompt":"p"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge021e dup-model hook exits 0"
+  model_count=$(printf '%s' "$RUN_OUT" | grep -o '"model"' | wc -l | tr -d ' ')
+  if [ "$model_count" = "1" ]; then _pass "edge021e dup-model raw output has exactly one model field"; else _fail "edge021e dup-model field count" "got $model_count"; fi
+  assert_out_contains "edge021e dup-model rewrites to haiku" '"model":"haiku"'
+
+  # (f) duplicate "subagent_type": fork then Explore -> rewrite, last value wins (Explore)
+  test_payload='{"tool_input":{"subagent_type":"fork","subagent_type":"Explore","prompt":"p"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge021f dup-subtype fork-then-Explore hook exits 0"
+  subtype_count=$(printf '%s' "$RUN_OUT" | grep -o '"subagent_type"' | wc -l | tr -d ' ')
+  if [ "$subtype_count" = "1" ]; then _pass "edge021f dup-subtype raw output has exactly one subagent_type field"; else _fail "edge021f dup-subtype field count" "got $subtype_count"; fi
+  assert_out_contains "edge021f dup-subtype rewrites with subagent_type Explore" '"subagent_type":"Explore"'
+
+  # (f, reversed) Explore then fork -> last value wins (fork) -> denied reason C
+  test_payload='{"tool_input":{"subagent_type":"Explore","subagent_type":"fork","prompt":"p"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge021f dup-subtype Explore-then-fork hook exits 0"
+  assert_out_contains "edge021f dup-subtype Explore-then-fork denied reason C" "runs on its parent model"
+
+  # (g) AF_MODEL_GUARD with surrounding/trailing whitespace still disables the guard
+  test_payload='{"tool_input":{"subagent_type":"Explore","model":"fable"}}'
+  RUN_OUT="$(printf '%s' "$test_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL AF_MODEL_GUARD=" off " sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+  RUN_RC=$?
+  assert_rc_zero "edge021g padded-off hook exits 0"
+  assert_out_empty "edge021g padded-off silent"
+
+  RUN_OUT="$(printf '%s' "$test_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL 'AF_MODEL_GUARD=OFF  ' sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+  RUN_RC=$?
+  assert_rc_zero "edge021g padded-OFF-caps hook exits 0"
+  assert_out_empty "edge021g padded-OFF-caps silent"
+}
+
 # ===========================================================================
 # Summary
 # ===========================================================================
