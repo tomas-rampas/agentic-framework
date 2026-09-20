@@ -153,6 +153,19 @@ and the conclusion is small.
   unless looked for. Anything written into the repo must be a file the change intends to
   ship. Test harnesses used to copy the tree per case, and stray directories directly
   slowed the suite (a 1.5 MB `covtest/` copy happened before migration to `git ls-files`).
+- **A shell edit must assert its effect.** Edit files with the Edit tool: it fails when the
+  text it was told to replace is not there. `sed -i` and `perl -pi` do not — a pattern that
+  matches nothing exits 0, so the edit silently does nothing and a later step reports it as
+  done. When a shell edit is genuinely the right tool (the same change across many files, a
+  single-line file such as `claude.json`), match on the stable part — replace a
+  `key: value` line by its key, never by its whole old value — and prove the result in the
+  same command by grepping for the NEW text and checking the count (the "never shell out to
+  read or search files" rule above is about exploration; this in-command assertion is the
+  exception, and it must stay in the same command to be atomic). Re-read any file
+  something else may have rewritten since you wrote it (memory files, whose frontmatter the
+  harness normalises; generated doc blocks; a file a sub-agent is working on) immediately
+  before editing it. This cost a stale memory file once: an anchored whole-line `sed` met a
+  line the harness had re-quoted, matched nothing, and exited 0.
 - **Revising a document: hand over the exact text.** When asking an agent to extend or
   reword existing content, supply that content verbatim in the prompt and name the single
   change wanted. Asking an agent to reproduce a document from a summary silently drops
@@ -204,23 +217,31 @@ job does the job.
   costs more than the tokens it saves.
 - **Never pass `model: fable`, and never let a sub-agent inherit it.** Built-in agents
   (`Explore`, `Plan`, `general-purpose`, `claude`) carry no frontmatter tier and inherit the
-  parent's model, so every call to one MUST pass an explicit `model`: `haiku` for `Explore`,
-  `sonnet` for the others. A `fork` always runs on its parent's model and ignores the
+  parent's model, so pass an explicit `model` on every call to one: `haiku` for `Explore`,
+  `sonnet` for the others. When you forget, the guard hook fills in exactly those tiers — it
+  is the safety net, not the plan: an explicit `model` is what lets you choose a different
+  tier for a task that needs one. A `fork` always runs on its parent's model and ignores the
   override, so the orchestrator does not fork.
 - **Delegation still has to pay for itself.** A lower tier does not change the fixed
   overhead of a sub-agent call (see the cost reason above). When the orchestrator already
   holds the exact text or the exact one-line command, doing it inline is cheaper than
   relaying it on any tier.
-- **User-side floor**: setting `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` in your Claude Code
-  settings `env` makes any agent without a tier resolve to sonnet instead of the parent.
-- **Enforced**: the `pretooluse-model-guard` hook (`PreToolUse` on `Task|Agent`) denies a
-  sub-agent call whose `model` names the top tier (`model: fable`, in any spelling or as a
-  full model id), denies every `fork`, and denies a built-in agent call that carries no
-  `model` while `CLAUDE_CODE_SUBAGENT_MODEL` is unset or itself names the top tier.
-  `AF_MODEL_GUARD=off` disables it. It is not a general ceiling: an agent type it does not
-  know (your own, or another plugin's) is never denied, because the hook cannot read that
-  agent's frontmatter — if its definition has no `model:` it inherits the caller's tier, and
-  the user-side floor above is the only cover for that case.
+- **Enforced, automatically**: the `pretooluse-model-guard` hook (`PreToolUse` on
+  `Task|Agent`) needs no configuration; like every hook here, on a POSIX host it needs `jq`
+  in PATH — without it the hook fires and enforces nothing. It denies a sub-agent call whose
+  `model` names the top tier (`model: fable`, in any spelling or as a full model id), denies
+  every `fork`, and
+  **rewrites** a built-in agent call that carries no `model` — it sets `haiku` for `Explore`
+  and `sonnet` for `Plan`, `general-purpose` and `claude`, then lets the call proceed (a
+  plugin cannot ship an environment variable, so the hook does the floor's job for the agent
+  types it can recognise). `AF_MODEL_GUARD=off` disables it.
+- **Optional user-side floor**: `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` in your Claude Code
+  settings `env` makes *any* agent without a tier resolve to sonnet instead of the parent.
+  The hook is not a general ceiling: an agent type it does not know (your own, or another
+  plugin's) is neither denied nor rewritten, because the hook cannot read that agent's
+  frontmatter — if its definition has no `model:` it inherits the caller's tier, and this
+  variable is the only cover for that case. When it holds a usable tier (non-empty and not
+  naming the top tier), the hook leaves built-in calls alone and the variable decides.
 
 ### Orchestration Guidelines
 When delegating tasks to specialized agents:

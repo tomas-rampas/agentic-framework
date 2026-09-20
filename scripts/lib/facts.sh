@@ -122,7 +122,7 @@ fact_categories() {
 }
 
 # fact_models - "agent<TAB>model" from .sub_agents. The model value is the tier
-# shorthand (opus/sonnet/haiku) - i.e. a key of .consistency.model_shorthand_map
+# shorthand (opus/sonnet/haiku) - i.e. a member of .consistency.model_tiers
 # - which is the single source of truth shared with each agents/<a>.md frontmatter.
 fact_models() {
   _facts_require_jq || return $?
@@ -140,28 +140,10 @@ fact_deprecated() {
   _facts_jq -r '.consistency.deprecated_agent_names // [] | .[]' "$FACTS_CLAUDE_JSON"
 }
 
-# fact_model_shorthand <shorthand> - resolve a shorthand (opus/sonnet/haiku)
-# to its full model id via .consistency.model_shorthand_map. Prints nothing
-# and returns 1 if the shorthand is unknown.
-# Library accessor: retained for shorthand->runtime-id resolution (dispatch /
-# deploy tooling). Check 7 compares shorthand directly, so it has no in-repo
-# caller today.
-fact_model_shorthand() {
-  local sh="${1:-}"
-  _facts_require_jq || return $?
-  _facts_require_claude_json || return $?
-  if [[ -z "$sh" ]]; then
-    printf 'facts.sh: fact_model_shorthand requires a shorthand argument\n' >&2
-    return 2
-  fi
-  local id
-  id="$(_facts_jq -r --arg s "$sh" '.consistency.model_shorthand_map[$s] // empty' \
-        "$FACTS_CLAUDE_JSON")"
-  if [[ -z "$id" ]]; then
-    return 1
-  fi
-  printf '%s\n' "$id"
-}
+# NOTE: there is deliberately no shorthand -> model-id accessor. The framework
+# records tier NAMES only (.consistency.model_tiers). Claude Code resolves
+# opus/sonnet/haiku to a concrete model at runtime; an id written here would be
+# a claim the framework cannot keep true, and it went stale once already.
 
 # --- hook facts (real hook architecture) ------------------------------------
 # Hooks are PowerShell scripts in hooks/*.ps1, executed by Claude Code only when

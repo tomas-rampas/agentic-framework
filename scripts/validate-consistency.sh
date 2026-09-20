@@ -368,7 +368,7 @@ section "[5] Deprecated agent names (no live references in config or active doc 
     # Structured config: deprecated name as a JSON string token "<name>".
     # The canonical lists that legitimately enumerate these names all live under
     # the .consistency block (deprecated_agent_names /
-    # model_shorthand_map). We exclude them STRUCTURALLY by deleting that block
+    # model_tiers). We exclude them STRUCTURALLY by deleting that block
     # with jq before scanning, rather than text-filtering by key name (which is
     # coupled to single-line JSON layout and breaks under `jq '.'` reformatting).
     # The literal token is matched with fixed-string grep (-F) so a name
@@ -553,21 +553,21 @@ section "[8] Stated-count scan (README/docs headline counts == derived values)"
 # claude.json `.sub_agents[<a>].model` are tier SHORTHANDS (opus/sonnet/haiku).
 # We assert DIRECT string equality between them (no shorthand->full-id round
 # trip), and additionally guard that every model value seen - on either side -
-# is a declared key in .consistency.model_shorthand_map. An unknown/typo value
+# is listed in .consistency.model_tiers. An unknown/typo value
 # (e.g. "sonnett") or any md<->claude.json divergence is a BLOCKING failure.
 _check_on 7 && {
 section "[7] Model parity (agents/<a>.md frontmatter model: == claude.json model, both shorthand)"
   ok=1 checked=0
 
-  # Known shorthand keys from the map (the only legal model values).
-  valid_models="$(_facts_jq -r '.consistency.model_shorthand_map // {} | keys[]' \
+  # The declared tier names (the only legal model values).
+  valid_models="$(_facts_jq -r '.consistency.model_tiers // [] | .[]' \
                   "$FACTS_CLAUDE_JSON" 2>/dev/null | LC_ALL=C sort)"
   if [[ -z "$valid_models" ]]; then
     ok=0
-    fail "model parity: .consistency.model_shorthand_map is empty or missing (no legal model values defined)"
+    fail "model parity: .consistency.model_tiers is empty or missing (no legal model values defined)"
   fi
 
-  # _is_valid_model <value> - 0 if <value> is a declared shorthand key, else 1.
+  # _is_valid_model <value> - 0 if <value> is a declared tier name, else 1.
   _is_valid_model() {
     printf '%s\n' "$valid_models" | grep -qxF -- "$1"
   }
@@ -583,20 +583,20 @@ section "[7] Model parity (agents/<a>.md frontmatter model: == claude.json model
     fm="$(grep -m1 -E '^model:[[:space:]]*' "$md" | sed -E 's/^model:[[:space:]]*//; s/[[:space:]]+$//; s/^["'\'']//; s/["'\'']$//')"
     checked=$((checked + 1))
 
-    # Guard: both sides must be a declared shorthand key in the map.
+    # Guard: both sides must be a declared tier name.
     if [[ -z "$fm" ]]; then
       ok=0
       fail "$agent: agents/$agent.md has no frontmatter 'model:' value"
     elif ! _is_valid_model "$fm"; then
       ok=0
-      fail "$agent: agents/$agent.md model '$fm' is not a key in consistency.model_shorthand_map"
+      fail "$agent: agents/$agent.md model '$fm' is not listed in consistency.model_tiers"
     fi
     if [[ -z "$reg_model" ]]; then
       ok=0
       fail "$agent: claude.json .sub_agents[\"$agent\"].model is empty"
     elif ! _is_valid_model "$reg_model"; then
       ok=0
-      fail "$agent: claude.json model '$reg_model' is not a key in consistency.model_shorthand_map"
+      fail "$agent: claude.json model '$reg_model' is not listed in consistency.model_tiers"
     fi
 
     # Direct shorthand equality (only meaningful once both are present).
@@ -702,13 +702,13 @@ section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents ros
   if [[ -f "$claude_md" ]]; then
     # Registry tiers, "agent<TAB>tier".
     reg_tiers="$(fact_models)"
-    # Legal shorthand keys (reuse check 7's derivation from the same map so
+    # Legal tier names (reuse check 7's derivation from the same list so
     # this sub-check never hardcodes "opus|sonnet|haiku").
-    tier_9c_valid="$(_facts_jq -r '.consistency.model_shorthand_map // {} | keys[]' \
+    tier_9c_valid="$(_facts_jq -r '.consistency.model_tiers // [] | .[]' \
                      "$FACTS_CLAUDE_JSON" 2>/dev/null | LC_ALL=C sort)"
     if [[ -z "$tier_9c_valid" ]]; then
       ok=0
-      fail "CLAUDE.md agent table (9c): .consistency.model_shorthand_map is empty or missing (no legal tier values defined)"
+      fail "CLAUDE.md agent table (9c): .consistency.model_tiers is empty or missing (no legal tier values defined)"
     else
       _9c_is_valid_tier() { printf '%s\n' "$tier_9c_valid" | grep -qxF -- "$1"; }
       tier_9c_ok=1

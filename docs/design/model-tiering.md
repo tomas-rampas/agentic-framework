@@ -34,8 +34,25 @@ The guard's remedy rests on built-in agents honouring step 1, so that was probed
 than assumed (measured 2026-09-20; each probe agent quoted the model line of its own system
 prompt): `Explore` with `model: haiku` ran as `claude-haiku-4-5-20251001`, `Plan` with
 `model: sonnet` as `claude-sonnet-5`, `general-purpose` and `claude` with `model: haiku` as
-`claude-haiku-4-5-20251001`. A denied built-in call re-issued with the tier the denial
-names therefore runs on that tier.
+`claude-haiku-4-5-20251001`. A built-in call that carries a tier therefore runs on that tier.
+
+Whether a hook can ADD that tier was measured next (4.5.1, Claude Code 2.1.278, headless
+sessions on sonnet with a throwaway probe hook), because a plugin cannot ship the floor
+itself: a plugin-level `settings.json` honours only the `agent` and `subagentStatusLine`
+keys, `plugin.json` has no environment field, and `CLAUDE_ENV_FILE` from a SessionStart
+hook reaches Bash commands only. Three results decide the design:
+
+| Probe hook returns | Sub-agent reported |
+|---|---|
+| nothing (control) | `claude-sonnet-5` — inherited from the session |
+| `updatedInput` = the COMPLETE `tool_input` plus `"model":"haiku"` | `claude-haiku-4-5-20251001` |
+| `updatedInput` = `{"model":"haiku"}` only | call rejected — `prompt` and `description` were dropped |
+
+So for the `Agent` tool `updatedInput` replaces the input rather than merging into it,
+contrary to the hooks guide ("only include fields you want to change"). The rewrite worked
+with no `permissionDecision` at all, a `systemMessage` beside it was shown to the user, and
+a prompt containing Czech diacritics, `<tag>` and `&` reached the sub-agent intact. The
+caller's own record of its tool call still shows no `model`: the rewrite is invisible to it.
 
 ## The three layers
 
@@ -49,20 +66,27 @@ names therefore runs on that tier.
    advisory: nothing stops a mis-typed call from passing `opus` when `sonnet` was meant.
 3. **The `pretooluse-model-guard` hook as the ceiling.** A `PreToolUse` hook on
    `Task|Agent` reads `tool_input.model` and `tool_input.subagent_type` (string values
-   only, trimmed and lowercased; any other JSON type counts as absent) and denies, in this
-   order: (a) every `fork`, because a fork always runs on its parent's model and ignores
-   the override; (b) a `model` that contains `fable` — the alias in any case, a full model
-   id such as `claude-fable-5-1`, or a suffixed form; (c) a call whose `subagent_type` is
-   empty or one of `Explore`/`Plan`/`general-purpose`/`claude` with no `model`, while
-   `CLAUDE_CODE_SUBAGENT_MODEL` is unset or itself names the top tier. Otherwise it emits
-   nothing. `AF_MODEL_GUARD=off` disables it outright (exit 0, no output), and anything it
+   only, trimmed and lowercased; any other JSON type counts as absent) and acts, in this
+   order: (a) it DENIES every `fork`, because a fork always runs on its parent's model and
+   ignores the override, so no rewrite can help; (b) it DENIES a `model` that contains
+   `fable` — the alias in any case, a full model id such as `claude-fable-5-1`, or a
+   suffixed form — because silently replacing a tier the caller asked for would hide the
+   mistake; (c) it REWRITES a call whose `subagent_type` is empty or one of
+   `Explore`/`Plan`/`general-purpose`/`claude` with no `model`, while
+   `CLAUDE_CODE_SUBAGENT_MODEL` is unset or itself names the top tier: it echoes the whole
+   `tool_input` back as `updatedInput` with `model` set to `haiku` for `Explore` and
+   `sonnet` for the rest, adds a one-line `systemMessage`, and emits no permission decision,
+   so the user's own permission rules still apply. Until 4.5.1 (c) was a denial that told
+   the caller which tier to pass; the owner asked for it to be automatic. Otherwise it
+   emits nothing. `AF_MODEL_GUARD=off` disables it outright (exit 0, no output), and anything it
    cannot parse — malformed stdin, a `tool_input` that is not a JSON object, a missing
    `jq` — fails open (exit 0, no output): the gate must never trap a session. Condition
    (a), the substring match in (b), the floor-value test in (c) and the type rules were
    added after the security and code-review gates measured each bypass. The
-   `CLAUDE_CODE_SUBAGENT_MODEL` environment variable is the user-side floor that closes the
-   built-in-agent inheritance gap for a user who sets it (decision C: `sonnet`), independent
-   of the hook.
+   `CLAUDE_CODE_SUBAGENT_MODEL` environment variable is now optional: the hook covers the
+   built-in agents by itself, and the variable remains the only cover for agent types the
+   hook cannot recognise. When it holds a usable tier the hook leaves built-in calls alone
+   and the variable decides.
 
 ## Tier assignment
 
@@ -135,7 +159,8 @@ security or system design, costs more than the tokens the lower tier would save.
 - The hook is not a general ceiling. It recognises only what the call itself shows: a
   fork, a `model` naming the top tier, and a built-in agent type. Any other agent type — a
   framework agent, a user-scope agent, another plugin's agent — spawned with no `model` is
-  never denied, because the hook cannot read that agent's frontmatter; if its definition
+  neither denied nor rewritten, because the hook cannot read that agent's frontmatter (a
+  rewrite would override a tier the agent declares for itself); if its definition
   carries no `model:`, it inherits the caller's tier (measured: `my-custom-agent` with no
   model and no floor passes silently). Denying unknown agents instead would wrongly block
   every custom agent that does declare a tier. `CLAUDE_CODE_SUBAGENT_MODEL` is the cover for
@@ -145,6 +170,41 @@ security or system design, costs more than the tokens the lower tier would save.
   hook cannot know the parent's tier, so it denies every fork — including a harmless one
   inside a sonnet sub-agent. That over-blocking is the accepted price of closing the one
   path that silently puts a sub-agent on the top tier.
+- Fail-open has to be decided per branch, not per payload. Found by the 4.5.1 security
+  pass and present since 4.5.0: `jq` (measured on 1.8.1) rejects a whole document that
+  contains a lone surrogate escape such as `\ud800` anywhere, so the `.sh` hit its fail-open
+  exit before it ever read `subagent_type` — a `fork` or top-tier call carrying such a prompt
+  ran unguarded on the POSIX path, while the `.ps1` denied it. A model writes its own
+  tool-call JSON, so the escape is reachable. Now, when the payload does not parse, the
+  `.sh` decides from a copy in which every surrogate escape is replaced by `�`; the two
+  decision fields never contain them, so the decision is unaffected. That copy is never
+  echoed: the rewrite still serialises the original payload. When it cannot, the hook
+  falls back to a DENIAL that names the tier to pass — a denial echoes nothing, so it is
+  always available, and going silent there would let the built-in agent inherit the
+  session's tier, the one outcome the hook exists to prevent (the first cut of this fix did
+  go silent; the final peer review caught it). The same review found the mirror-image bug
+  in the `.ps1`: `JsonElement.GetString()` throws on a lone surrogate inside `model` or
+  `subagent_type` itself, and that throw reached the outer fail-open before the fork and
+  top-tier checks, where 4.5.0's `ConvertFrom-Json` had denied. The `.ps1` now sanitises
+  that one field's raw text and decides from it, as the `.sh` does for the document. A deny
+  never fails open on content the caller controls; a rewrite never alters a prompt; and
+  only input the hook cannot understand at all — malformed stdin, a `tool_input` that is
+  not an object, a missing `jq` — still fails open, because a PreToolUse hook that denied
+  on an unrecognised payload shape would break every session the day the event JSON changes.
+- Duplicate fields in `tool_input` are collapsed to the last occurrence by both
+  implementations (the `.ps1` copy loop used to echo both). Claude Code builds the payload
+  from an object, so this is unreachable in practice; the two implementations agree anyway.
+- The rewrite can raise a tier as well as lower it. The hook cannot see the session's
+  model, so a user whose session already runs on `haiku` gets `sonnet` for `Plan`,
+  `general-purpose` and `claude`, where inheriting would have been cheaper. An explicit
+  `model` on the call, a usable `CLAUDE_CODE_SUBAGENT_MODEL`, or `AF_MODEL_GUARD=off` each
+  avoid it.
+- Rewriting means re-serialising the caller's prompt, which a denial never had to do. Both
+  implementations must return every original field unchanged; the tests pin non-ASCII text,
+  HTML-sensitive characters, quotes and backslashes, embedded newlines, a 200 KB prompt and
+  a string that looks like an ISO date (the value `ConvertFrom-Json` would silently turn
+  into a DateTime). The two implementations may escape strings differently, so rewrite
+  cases are compared as canonical JSON, not byte for byte; denial cases stay byte-identical.
 - Every denial reason ends with `Set AF_MODEL_GUARD=off to disable this guard.`: the hook
   fires for every plugin user, including one whose top-level session is not an expensive
   model, and the denial is the only text a blocked caller sees.
@@ -159,7 +219,12 @@ security or system design, costs more than the tokens the lower tier would save.
 - The one-tier-move policy in CLAUDE.md is advisory wherever the hook does not reach: the
   hook enforces only the Fable ban and the built-in-agent floor, not the "move only one
   tier" or "state the reason" rules, which rely on the orchestrator following the policy.
-- `.consistency.model_shorthand_map` values are informational: Claude Code resolves the
-  alias at runtime. They were stale and now hold the ids measured on 2026-09-20 by the same
-  probe method (`opus` → `claude-opus-5`, `sonnet` → `claude-sonnet-5`, `haiku` →
-  `claude-haiku-4-5-20251001`); re-measure when a new model generation ships.
+- The framework records tier names, never model ids. Until 4.5.1 `claude.json` carried a
+  `.consistency.model_shorthand_map` from each alias to a concrete id. Measured: nothing
+  read the values — every consumer took only the keys — the one resolver helper had no
+  caller, and the ids had gone stale (`claude-opus-4-8`, `claude-sonnet-4-6`). 4.5.0
+  refreshed them; 4.5.1 removes them, because refreshing only schedules the next staleness:
+  Claude Code resolves `opus`/`sonnet`/`haiku` at runtime and the framework has no say in
+  which model that is. It is now `.consistency.model_tiers`, a plain list of names, the
+  same reasoning by which the MCP launchers were unpinned. The model ids quoted elsewhere
+  in this document are dated measurements, not configuration.

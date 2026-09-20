@@ -94,7 +94,7 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
 📋 BASIC INFORMATION
   • Name: rust-expert
   • Category: Language Expert
-  • Model: sonnet (resolves to claude-sonnet-5)
+  • Model: sonnet
   • Specialization: rust_development_systems_programming
   • File: ${CLAUDE_PLUGIN_ROOT}/agents/rust-expert.md
   • Configuration: ${CLAUDE_PLUGIN_ROOT}/claude.json ✓
