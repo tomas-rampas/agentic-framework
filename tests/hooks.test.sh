@@ -2063,22 +2063,28 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-002] mixed-case model value denied like fa
   done
 }
 
-section "[PRETOOLUSE-MODEL-GUARD-B] denies built-in agent with no model and no floor"
+section "[PRETOOLUSE-MODEL-GUARD-B] rewrites built-in agent with no model and no floor"
 {
   test_payload='{"tool_input":{"subagent_type":"Explore"}}'
   RUN_OUT="$(run_guard "$test_payload")"
   RUN_RC=$?
   assert_rc_zero "Explore-no-model hook exits 0"
-  assert_out_contains "denies with permissionDecision deny" '"permissionDecision":"deny"'
-  assert_out_contains "reason B names Explore" "Built-in agent Explore"
-  assert_out_contains "reason B recommends haiku" "model set to haiku"
+  if printf '%s' "$RUN_OUT" | grep -q 'permissionDecision'; then
+    _fail "rewrite path must not emit permissionDecision" "got: $RUN_OUT"
+  else
+    _pass "rewrite path has no permissionDecision key"
+  fi
+  assert_out_contains "rewrite names Explore" "Built-in agent Explore"
+  assert_out_contains "rewrite recommends haiku" "Model set to haiku"
+  assert_out_contains "updatedInput sets model to haiku" '"updatedInput":{"subagent_type":"Explore","model":"haiku"}'
 
   test_payload='{"tool_input":{}}'
   RUN_OUT="$(run_guard "$test_payload")"
   RUN_RC=$?
   assert_rc_zero "empty subagent_type hook exits 0"
   assert_out_contains "empty subagent_type treated as general-purpose" "Built-in agent general-purpose"
-  assert_out_contains "reason B recommends sonnet" "model set to sonnet"
+  assert_out_contains "rewrite recommends sonnet" "Model set to sonnet"
+  assert_out_contains "updatedInput on empty tool_input is just model" '"updatedInput":{"model":"sonnet"}'
 }
 
 section "[PRETOOLUSE-MODEL-GUARD-EDGE-003] built-in agent passes when CLAUDE_CODE_SUBAGENT_MODEL floor is set"
@@ -2167,7 +2173,7 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-011] floor value itself gated on emptiness
     RUN_OUT="$(printf '%s' '{"tool_input":{"subagent_type":"Explore"}}' | env -u AF_MODEL_GUARD CLAUDE_CODE_SUBAGENT_MODEL="$fv" sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
     RUN_RC=$?
     assert_rc_zero "floor=[$fv] hook exits 0"
-    assert_out_contains "floor=[$fv] does not count as set, denies reason B" "Built-in agent Explore"
+    assert_out_contains "floor=[$fv] does not count as set, rewrites Explore" "Built-in agent Explore"
   done
 
   RUN_OUT="$(printf '%s' '{"tool_input":{"subagent_type":"Explore"}}' | env -u AF_MODEL_GUARD CLAUDE_CODE_SUBAGENT_MODEL=haiku sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
@@ -2186,7 +2192,7 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-012] non-string model/subagent_type fields
   RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"Explore","model":[]}}')"
   RUN_RC=$?
   assert_rc_zero "model=[] Explore hook exits 0"
-  assert_out_contains "model=[] Explore denied reason B" "Built-in agent Explore"
+  assert_out_contains "model=[] Explore rewritten to haiku" '"updatedInput":{"subagent_type":"Explore","model":"haiku"}'
 
   RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":[],"model":false}}')"
   RUN_RC=$?
@@ -2194,7 +2200,7 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-012] non-string model/subagent_type fields
   assert_out_contains "subagent_type=[] treated as general-purpose" "Built-in agent general-purpose"
 }
 
-section "[PRETOOLUSE-MODEL-GUARD-EDGE-013] non-object tool_input passes silently, empty object still denies"
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-013] non-object tool_input passes silently, empty object still rewrites"
 {
   for bad in '{"tool_input":"x"}' '{"tool_input":[1]}' '{"tool_input":null}' '{}'; do
     RUN_OUT="$(run_guard "$bad")"
@@ -2206,7 +2212,7 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-013] non-object tool_input passes silently
   RUN_OUT="$(run_guard '{"tool_input":{}}')"
   RUN_RC=$?
   assert_rc_zero "empty-object tool_input hook exits 0"
-  assert_out_contains "empty-object tool_input denied reason B general-purpose" "Built-in agent general-purpose"
+  assert_out_contains "empty-object tool_input rewritten to sonnet, general-purpose" '"updatedInput":{"model":"sonnet"}'
 }
 
 section "[PRETOOLUSE-MODEL-GUARD-EDGE-016] unknown agent type without model is a documented, tested limitation"
@@ -2230,6 +2236,99 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-016] unknown agent type without model is a
   RUN_RC=$?
   assert_rc_zero "unknown agent with model=haiku hook exits 0"
   assert_out_empty "unknown agent with a legitimate tier is silent"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-019a] built-in agents rewrite with no permissionDecision key anywhere"
+{
+  for st in "Explore" "Plan" "general-purpose" "claude" ""; do
+    test_payload="{\"tool_input\":{\"subagent_type\":\"$st\"}}"
+    RUN_OUT="$(run_guard "$test_payload")"
+    RUN_RC=$?
+    assert_rc_zero "stype=[$st] hook exits 0"
+    if printf '%s' "$RUN_OUT" | grep -q 'permissionDecision'; then
+      _fail "stype=[$st] must not carry permissionDecision" "got: $RUN_OUT"
+    else
+      _pass "stype=[$st] has no permissionDecision key"
+    fi
+    assert_out_contains "stype=[$st] systemMessage present" '"systemMessage"'
+  done
+
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"Explore"}}')"
+  assert_out_contains "Explore rewritten to haiku" '"model":"haiku"'
+  assert_out_contains "Explore systemMessage names TYPE and TIER" "Built-in agent Explore had no model"
+
+  for st in "Plan" "general-purpose" "claude" ""; do
+    test_payload="{\"tool_input\":{\"subagent_type\":\"$st\"}}"
+    RUN_OUT="$(run_guard "$test_payload")"
+    assert_out_contains "stype=[$st] rewritten to sonnet" '"model":"sonnet"'
+  done
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-019b] every original key preserved, model appended last"
+{
+  test_payload='{"tool_input":{"description":"d","prompt":"p","subagent_type":"general-purpose","run_in_background":true,"name":"x"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "full-key payload hook exits 0"
+  assert_out_contains "updatedInput preserves original fields and appends model last" '"updatedInput":{"description":"d","prompt":"p","subagent_type":"general-purpose","run_in_background":true,"name":"x","model":"sonnet"}'
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-019c] round-trip integrity of non-ASCII, control chars and date-shaped strings"
+{
+  # Built via jq (not shell string escapes) to keep backslashes/newlines/tabs
+  # exactly as intended; verifies against the .sh implementation directly
+  # here, cross-checked byte-for-byte in the equivalence suite.
+  raw_prompt=$(printf '%s' 'zluty kun <tag> & "quoted" \back\slash' )
+  test_payload=$(jq -cn --arg p "$raw_prompt" --arg d '2026-09-20T10:00:00Z' '{"tool_input":{"subagent_type":"Explore","prompt":$p,"description":$d}}')
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "integrity payload hook exits 0"
+
+  got_prompt=$(printf '%s' "$RUN_OUT" | jq -r '.hookSpecificOutput.updatedInput.prompt' 2>/dev/null)
+  got_desc=$(printf '%s' "$RUN_OUT" | jq -r '.hookSpecificOutput.updatedInput.description' 2>/dev/null)
+  if [ "$got_prompt" = "$raw_prompt" ]; then
+    _pass "prompt round-trips exactly (backslashes, quotes, angle brackets, ampersand)"
+  else
+    _fail "prompt round-trip" "expected: $raw_prompt, got: $got_prompt"
+  fi
+  if [ "$got_desc" = "2026-09-20T10:00:00Z" ]; then
+    _pass "ISO-date-shaped description round-trips exactly as a string"
+  else
+    _fail "description round-trip" "expected: 2026-09-20T10:00:00Z, got: $got_desc"
+  fi
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-019d] large prompt rewrites within timeout"
+{
+  bigprompt_file=$(mktemp "${TMPDIR:-/tmp}/guard-big-prompt.XXXXXX")
+  head -c 200000 /dev/zero | tr '\0' 'a' > "$bigprompt_file"
+  test_payload=$(jq -cn --rawfile p "$bigprompt_file" '{"tool_input":{"subagent_type":"Explore","prompt":$p}}')
+  rm -f "$bigprompt_file"
+  start_ts=$(date +%s%N 2>/dev/null || date +%s)
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  end_ts=$(date +%s%N 2>/dev/null || date +%s)
+  assert_rc_zero "200KB-prompt hook exits 0"
+  assert_out_contains "200KB-prompt rewritten to haiku" '"model":"haiku"'
+  elapsed_ns=$((end_ts - start_ts))
+  printf '  INFO  sh 200KB-prompt wall time: %s ns\n' "$elapsed_ns"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-019e] non-string/whitespace model values on Explore still rewrite to a single model key"
+{
+  for bad_model in 'false' '[]' '"   "'; do
+    test_payload="{\"tool_input\":{\"subagent_type\":\"Explore\",\"model\":$bad_model}}"
+    RUN_OUT="$(run_guard "$test_payload")"
+    RUN_RC=$?
+    assert_rc_zero "model=$bad_model hook exits 0"
+    model_count=$(printf '%s' "$RUN_OUT" | jq -r '.hookSpecificOutput.updatedInput | keys | map(select(.=="model")) | length' 2>/dev/null)
+    assert_out_contains "model=$bad_model rewrites to haiku" '"model":"haiku"'
+    if [ "$model_count" = "1" ]; then
+      _pass "model=$bad_model results in exactly one model key"
+    else
+      _fail "model=$bad_model key count" "expected 1, got $model_count"
+    fi
+  done
 }
 
 # ===========================================================================

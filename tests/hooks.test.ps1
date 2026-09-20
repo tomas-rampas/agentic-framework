@@ -392,10 +392,10 @@ try {
     }
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore' } })
-    Assert 'denies built-in Explore with no model and no floor (B)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent Explore' -and $r.Out -match 'model set to haiku')
+    Assert 'rewrites built-in Explore with no model and no floor (B)' ($r.Code -eq 0 -and $r.Out -notmatch 'permissionDecision' -and $r.Out -match 'Built-in agent Explore' -and $r.Out -match 'Model set to haiku' -and $r.Out -match '"model":"haiku"')
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{} })
-    Assert 'empty subagent_type treated as general-purpose (B)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent general-purpose' -and $r.Out -match 'model set to sonnet')
+    Assert 'empty subagent_type treated as general-purpose, rewritten (B)' ($r.Code -eq 0 -and $r.Out -notmatch 'permissionDecision' -and $r.Out -match 'Built-in agent general-purpose' -and $r.Out -match 'Model set to sonnet' -and $r.Out -match '"updatedInput":\{"model":"sonnet"\}')
 
     try {
         $env:CLAUDE_CODE_SUBAGENT_MODEL = 'sonnet'
@@ -455,7 +455,7 @@ try {
         try {
             $env:CLAUDE_CODE_SUBAGENT_MODEL = $fv
             $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore' } })
-            Assert "floor=[$fv] does not count as set, denies reason B (EDGE-011)" ($r.Code -eq 0 -and $r.Out -match 'Built-in agent Explore')
+            Assert "floor=[$fv] does not count as set, rewrites Explore (EDGE-011)" ($r.Code -eq 0 -and $r.Out -match 'Built-in agent Explore')
         } finally {
             Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue
         }
@@ -473,7 +473,7 @@ try {
     Assert 'model=false framework agent silent (EDGE-012)' ($r.Code -eq 0 -and -not $r.Out)
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore'; model = @() } })
-    Assert 'model=[] Explore denied reason B (EDGE-012)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent Explore')
+    Assert 'model=[] Explore rewritten to haiku (EDGE-012)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent Explore' -and $r.Out -match '"model":"haiku"')
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = @(); model = $false } })
     Assert 'subagent_type=[] treated as general-purpose (EDGE-012)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent general-purpose')
@@ -484,7 +484,7 @@ try {
     }
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{}}'
-    Assert 'empty-object tool_input denied reason B general-purpose (EDGE-013)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent general-purpose')
+    Assert 'empty-object tool_input rewritten to sonnet, general-purpose (EDGE-013)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent general-purpose' -and $r.Out -match '"updatedInput":\{"model":"sonnet"\}')
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'my-custom-agent' } })
     Assert 'unknown agent without model is NOT denied (known limit: frontmatter is invisible to the hook) (EDGE-016)' ($r.Code -eq 0 -and -not $r.Out)
@@ -497,6 +497,59 @@ try {
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'my-custom-agent'; model = 'haiku' } })
     Assert 'unknown agent with a legitimate tier is silent (EDGE-016)' ($r.Code -eq 0 -and -not $r.Out)
+
+    foreach ($st in 'Explore', 'Plan', 'general-purpose', 'claude', '') {
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = $st } })
+        Assert "stype=[$st] rewrite has no permissionDecision key (EDGE-019a)" ($r.Code -eq 0 -and $r.Out -notmatch 'permissionDecision')
+        Assert "stype=[$st] systemMessage present (EDGE-019a)" ($r.Code -eq 0 -and $r.Out -match '"systemMessage"')
+        $expectTier = if ($st -eq 'Explore') { 'haiku' } else { 'sonnet' }
+        Assert "stype=[$st] rewritten to $expectTier (EDGE-019a)" ($r.Code -eq 0 -and $r.Out -match [regex]::Escape("`"model`":`"$expectTier`""))
+    }
+
+    # NOTE: assertions below parse $r.Out with System.Text.Json (JsonDocument),
+    # never ConvertFrom-Json — that cmdlet auto-converts an ISO-date-shaped
+    # JSON string into a [datetime] (measured: ConvertFrom-Json on
+    # '{"d":"2026-09-20T10:00:00Z"}' yields a DateTime, not a string), which is
+    # exactly the corruption this hook must avoid, and using it here to verify
+    # the hook's own output would hide that bug rather than catch it.
+    # Utf8JsonWriter also HTML-escapes <, >, &, " by default (< etc.), so
+    # a raw-text regex on the escaped form is brittle; comparing decoded
+    # .GetString() values is what actually proves round-trip fidelity.
+
+    # [ordered] is required here: a plain @{} hashtable does not preserve key
+    # insertion order through ConvertTo-Json, which would falsely fail this
+    # order-sensitive assertion regardless of the hook's own behavior.
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload ([ordered]@{ tool_input = [ordered]@{ description = 'd'; prompt = 'p'; subagent_type = 'general-purpose'; run_in_background = $true; name = 'x' } }))
+    $doc19b = [System.Text.Json.JsonDocument]::Parse($r.Out)
+    $ui19b = $doc19b.RootElement.GetProperty('hookSpecificOutput').GetProperty('updatedInput')
+    $names19b = @($ui19b.EnumerateObject() | ForEach-Object { $_.Name })
+    Assert 'every original key preserved, model appended last (EDGE-019b)' (
+        $r.Code -eq 0 -and
+        ($names19b -join ',') -eq 'description,prompt,subagent_type,run_in_background,name,model' -and
+        $ui19b.GetProperty('model').GetString() -eq 'sonnet'
+    )
+
+    $rawPrompt = 'zluty kun <tag> & "quoted" \back\slash'
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore'; prompt = $rawPrompt; description = '2026-09-20T10:00:00Z' } })
+    Assert 'integrity payload rewrite exits 0 (EDGE-019c)' ($r.Code -eq 0)
+    $doc19c = [System.Text.Json.JsonDocument]::Parse($r.Out)
+    $ui19c = $doc19c.RootElement.GetProperty('hookSpecificOutput').GetProperty('updatedInput')
+    Assert 'prompt round-trips exactly (EDGE-019c)' ($ui19c.GetProperty('prompt').GetString() -eq $rawPrompt)
+    Assert 'ISO-date-shaped description round-trips exactly as a string (EDGE-019c)' ($ui19c.GetProperty('description').GetString() -eq '2026-09-20T10:00:00Z')
+
+    $bigPrompt = 'a' * 200000
+    $swBig = [System.Diagnostics.Stopwatch]::StartNew()
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore'; prompt = $bigPrompt } })
+    $swBig.Stop()
+    Assert '200KB-prompt rewrite exits 0 within timeout (EDGE-019d)' ($r.Code -eq 0 -and $r.Out -match '"model":"haiku"')
+    Write-Host "  INFO  ps1 200KB-prompt wall time: $($swBig.ElapsedMilliseconds) ms"
+
+    foreach ($badModel in $false, @(), '   ') {
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore'; model = $badModel } })
+        Assert "model=[$badModel] rewrites to haiku (EDGE-019e)" ($r.Code -eq 0 -and $r.Out -match '"model":"haiku"')
+        $modelKeyCount = ([regex]::Matches($r.Out, '"model"\s*:')).Count
+        Assert "model=[$badModel] results in exactly one model key (EDGE-019e)" ($modelKeyCount -eq 1)
+    }
 } finally {
     if ($null -ne $savedFloor) { $env:CLAUDE_CODE_SUBAGENT_MODEL = $savedFloor } else { Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
     if ($null -ne $savedGuard) { $env:AF_MODEL_GUARD = $savedGuard } else { Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue }

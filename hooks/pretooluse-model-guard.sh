@@ -2,18 +2,32 @@
 set -u
 # pretooluse-model-guard.sh — blocking PreToolUse hook (matcher: Task|Agent).
 #
-# Denies three things it can recognise from the call alone: every fork
+# Denies two things it can recognise from the call alone: every fork
 # (subagent_type "fork"), since a fork always inherits its parent's model and
-# ignores any override; a normalised model value containing the substring
-# "fable" (e.g. fable, claude-fable-5-1, fable[1m]), the top model tier; and a
+# ignores any override; and a normalised model value containing the substring
+# "fable" (e.g. fable, claude-fable-5-1, fable[1m]), the top model tier. A
 # BUILT-IN agent (Explore, Plan, general-purpose, claude, or no type given)
-# issued with no model and no usable floor, since those inherit the parent
-# model with no frontmatter default of their own. The floor is the env var
+# issued with no model and no usable floor is REWRITTEN rather than denied:
+# the hook returns updatedInput with model set to its tier, so the call
+# proceeds automatically with no user step. The floor is the env var
 # CLAUDE_CODE_SUBAGENT_MODEL, and it counts as usable only when it is
-# non-empty and itself free of "fable".
+# non-empty and itself free of "fable"; an unusable floor (empty, or itself
+# "fable") is what routes a built-in call into the rewrite.
+#
+# MEASURED (Claude Code 2.1.278, Agent tool): updatedInput for the Agent tool
+# must echo the COMPLETE original tool_input, not just the changed key — a
+# partial updatedInput (e.g. {"model":"haiku"} alone) replaces the whole
+# input, so prompt/description/subagent_type vanish and schema validation
+# rejects the call. The rewrite path emits no permissionDecision at all
+# (tested to work and to leave the user's own permission rules alone); only
+# hookSpecificOutput.updatedInput plus a top-level systemMessage. Every other
+# original key comes back unchanged and in its original position; model is
+# replaced in place if present, else appended last (jq's `.tool_input +
+# {model: $tier}` does exactly this — see key-order proof in the equivalence
+# suite).
 #
 # KNOWN LIMIT: any OTHER agent type — a framework agent, a user-scope agent,
-# another plugin's agent — spawned with no model is never denied here,
+# another plugin's agent — spawned with no model is never touched here,
 # because this hook cannot read that agent's frontmatter. If its definition
 # carries no `model:` line it silently inherits the caller's tier, and the
 # only cover for that case is the user-side floor above.
@@ -22,13 +36,17 @@ set -u
 # object, null, absent) normalise to empty via a jq
 # `if type=="string" then . else "" end` guard so a wrong-typed field never
 # resolves to text a substring/case match could accidentally hit. tool_input
-# itself must be a JSON object (an empty object still qualifies and denies as
-# general-purpose); any other shape (absent, null, string, array, ...) is an
-# unrecognised payload and passes silently rather than being misread as a
-# built-in agent. Fail-open: any error, unparseable stdin, or missing jq =>
+# itself must be a JSON object (an empty object still qualifies and rewrites
+# to {"model":"sonnet"}); any other shape (absent, null, string, array, ...)
+# is an unrecognised payload and passes silently rather than being misread as
+# a built-in agent. Fail-open: any error, unparseable stdin, or missing jq =>
 # exit 0, no output. Disable via env AF_MODEL_GUARD=off (case-insensitive).
 #
-# Ported from pretooluse-model-guard.ps1 to POSIX sh; byte-identical stdout.
+# Ported from pretooluse-model-guard.ps1 to POSIX sh. DENY cases (fork,
+# fable) are byte-identical between the two implementations; REWRITE cases
+# may legitimately differ in JSON escaping of echoed strings (jq emits raw
+# UTF-8, .NET's Utf8JsonWriter may differ on escape choices) — compare them
+# as canonical JSON (jq -S -c .), not as raw bytes.
 
 trim_lower() {
   printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]'
@@ -94,8 +112,14 @@ if [ "$model" = "" ] && [ "$floor_set" = "false" ]; then
     else
       tier="sonnet"
     fi
-    jq -cn --arg type "$type" --arg tier "$tier" \
-      '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":("[model-guard] Built-in agent " + $type + " has no default tier and would inherit the parent model. Re-issue this Agent call with model set to " + $tier + ". Set AF_MODEL_GUARD=off to disable this guard.")}}'
+    printf '%s' "$payload" | jq -c --arg type "$type" --arg tier "$tier" '
+      {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          updatedInput: (.tool_input + {model: $tier})
+        },
+        systemMessage: ("[model-guard] Built-in agent " + $type + " had no model and would inherit the session model. Model set to " + $tier + ". Set AF_MODEL_GUARD=off to disable this guard.")
+      }' 2>/dev/null || exit 0
     exit 0
   fi
 fi
