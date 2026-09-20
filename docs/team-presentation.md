@@ -174,7 +174,7 @@ The only component that can **say no**: hook scripts implemented as both PowerSh
 | `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic runs and parses the review's `VERDICT:` line — `APPROVED` is what unlocks the gate |
 | `session-start-context` | `SessionStart` | Injects branch + review status into context at startup |
 | `pretooluse-delegation-hint` | `PreToolUse` | Suggests the matching specialist when a `.rs`/`.py`/`.cs`/… file is written |
-| `pretooluse-model-guard` | `PreToolUse` | **The model-tier ceiling** — denies a sub-agent call whose `model` names the top tier (`fable`), every `fork`, and a built-in agent call with no `model` while `CLAUDE_CODE_SUBAGENT_MODEL` is unset |
+| `pretooluse-model-guard` | `PreToolUse` | **The model-tier ceiling, automatic** — denies a sub-agent call whose `model` names the top tier (`fable`) and every `fork`; rewrites a built-in agent call with no `model` to `haiku` (`Explore`) or `sonnet` (the rest) |
 
 The gate's lifecycle:
 

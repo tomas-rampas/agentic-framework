@@ -215,23 +215,29 @@ job does the job.
   costs more than the tokens it saves.
 - **Never pass `model: fable`, and never let a sub-agent inherit it.** Built-in agents
   (`Explore`, `Plan`, `general-purpose`, `claude`) carry no frontmatter tier and inherit the
-  parent's model, so every call to one MUST pass an explicit `model`: `haiku` for `Explore`,
-  `sonnet` for the others. A `fork` always runs on its parent's model and ignores the
+  parent's model, so pass an explicit `model` on every call to one: `haiku` for `Explore`,
+  `sonnet` for the others. When you forget, the guard hook fills in exactly those tiers — it
+  is the safety net, not the plan: an explicit `model` is what lets you choose a different
+  tier for a task that needs one. A `fork` always runs on its parent's model and ignores the
   override, so the orchestrator does not fork.
 - **Delegation still has to pay for itself.** A lower tier does not change the fixed
   overhead of a sub-agent call (see the cost reason above). When the orchestrator already
   holds the exact text or the exact one-line command, doing it inline is cheaper than
   relaying it on any tier.
-- **User-side floor**: setting `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` in your Claude Code
-  settings `env` makes any agent without a tier resolve to sonnet instead of the parent.
-- **Enforced**: the `pretooluse-model-guard` hook (`PreToolUse` on `Task|Agent`) denies a
-  sub-agent call whose `model` names the top tier (`model: fable`, in any spelling or as a
-  full model id), denies every `fork`, and denies a built-in agent call that carries no
-  `model` while `CLAUDE_CODE_SUBAGENT_MODEL` is unset or itself names the top tier.
-  `AF_MODEL_GUARD=off` disables it. It is not a general ceiling: an agent type it does not
-  know (your own, or another plugin's) is never denied, because the hook cannot read that
-  agent's frontmatter — if its definition has no `model:` it inherits the caller's tier, and
-  the user-side floor above is the only cover for that case.
+- **Enforced, automatically**: the `pretooluse-model-guard` hook (`PreToolUse` on
+  `Task|Agent`) needs no setup. It denies a sub-agent call whose `model` names the top tier
+  (`model: fable`, in any spelling or as a full model id), denies every `fork`, and
+  **rewrites** a built-in agent call that carries no `model` — it sets `haiku` for `Explore`
+  and `sonnet` for `Plan`, `general-purpose` and `claude`, then lets the call proceed (a
+  plugin cannot ship an environment variable, so the hook does the floor's job for the agent
+  types it can recognise). `AF_MODEL_GUARD=off` disables it.
+- **Optional user-side floor**: `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` in your Claude Code
+  settings `env` makes *any* agent without a tier resolve to sonnet instead of the parent.
+  The hook is not a general ceiling: an agent type it does not know (your own, or another
+  plugin's) is neither denied nor rewritten, because the hook cannot read that agent's
+  frontmatter — if its definition has no `model:` it inherits the caller's tier, and this
+  variable is the only cover for that case. When it is set, the hook leaves built-in calls
+  alone and the variable decides.
 
 ### Orchestration Guidelines
 When delegating tasks to specialized agents:
