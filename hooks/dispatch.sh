@@ -17,7 +17,7 @@ set -u
 
 hook=${1:-}
 case "$hook" in
-  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint) ;;
+  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard) ;;
   *) exit 0 ;;
 esac
 

@@ -372,6 +372,124 @@ Assert 'silent for unmapped extensions' ($r.Code -eq 0 -and -not $r.Out)
 $r = Invoke-Hook 'pretooluse-delegation-hint.ps1' '[broken'
 Assert 'fail-open on malformed stdin' ($r.Code -eq 0)
 
+Write-Host "pretooluse-model-guard.ps1"
+
+# Save and clear both guard-relevant env vars for the whole block, restoring
+# in finally, so a machine-wide CLAUDE_CODE_SUBAGENT_MODEL (or a stray
+# AF_MODEL_GUARD) never leaks into a case that assumes it is unset.
+$savedFloor = $env:CLAUDE_CODE_SUBAGENT_MODEL
+$savedGuard = $env:AF_MODEL_GUARD
+Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue
+Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue
+
+try {
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_name = 'Agent'; tool_input = @{ subagent_type = 'Explore'; model = 'fable' } })
+    Assert 'denies model=fable (A)' ($r.Code -eq 0 -and $r.Out -match '"permissionDecision":"deny"' -and $r.Out -match 'top model tier')
+
+    foreach ($mv in 'Fable', 'FABLE') {
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'x'; model = $mv } })
+        Assert "mixed-case ($mv) denied like fable (EDGE-002)" ($r.Code -eq 0 -and $r.Out -match '"permissionDecision":"deny"')
+    }
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore' } })
+    Assert 'denies built-in Explore with no model and no floor (B)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent Explore' -and $r.Out -match 'model set to haiku')
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{} })
+    Assert 'empty subagent_type treated as general-purpose (B)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent general-purpose' -and $r.Out -match 'model set to sonnet')
+
+    try {
+        $env:CLAUDE_CODE_SUBAGENT_MODEL = 'sonnet'
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore' } })
+        Assert 'built-in agent passes when CLAUDE_CODE_SUBAGENT_MODEL floor is set (EDGE-003)' ($r.Code -eq 0 -and -not $r.Out)
+    } finally {
+        Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue
+    }
+
+    foreach ($st in 'python-expert', 'agentic-framework:python-expert') {
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = $st } })
+        Assert "framework agent ($st) without model passes silently (EDGE-004)" ($r.Code -eq 0 -and -not $r.Out)
+    }
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'python-expert'; model = 'sonnet' } })
+    Assert 'passes silently for a properly-tiered call (C)' ($r.Code -eq 0 -and -not $r.Out)
+
+    try {
+        $env:AF_MODEL_GUARD = 'off'
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore'; model = 'fable' } })
+        Assert 'AF_MODEL_GUARD=off disables the guard (EDGE-005)' ($r.Code -eq 0 -and -not $r.Out)
+    } finally {
+        Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue
+    }
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' 'not json'
+    Assert 'fail-open on malformed stdin (EDGE-001)' ($r.Code -eq 0 -and -not $r.Out)
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'fork' } })
+    Assert 'fork denied regardless of model (EDGE-009)' ($r.Code -eq 0 -and $r.Out -match 'runs on its parent model')
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Fork'; model = 'sonnet' } })
+    Assert 'Fork with explicit model still denied (EDGE-009)' ($r.Code -eq 0 -and $r.Out -match 'runs on its parent model')
+
+    try {
+        $env:CLAUDE_CODE_SUBAGENT_MODEL = 'sonnet'
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'fork' } })
+        Assert 'fork with floor set still denied (EDGE-009)' ($r.Code -eq 0 -and $r.Out -match 'runs on its parent model')
+    } finally {
+        Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue
+    }
+
+    try {
+        $env:AF_MODEL_GUARD = 'off'
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'fork' } })
+        Assert 'fork silent when AF_MODEL_GUARD=off (EDGE-009)' ($r.Code -eq 0 -and -not $r.Out)
+    } finally {
+        Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue
+    }
+
+    foreach ($mv in 'claude-fable-5-1', ' fable', 'fable ', 'fable[1m]', 'FABLE') {
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'agentic-framework:python-expert'; model = $mv } })
+        Assert "model=[$mv] denied reason A (EDGE-010)" ($r.Code -eq 0 -and $r.Out -match 'top model tier')
+    }
+
+    foreach ($fv in 'fable', ' Fable ') {
+        try {
+            $env:CLAUDE_CODE_SUBAGENT_MODEL = $fv
+            $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore' } })
+            Assert "floor=[$fv] does not count as set, denies reason B (EDGE-011)" ($r.Code -eq 0 -and $r.Out -match 'Built-in agent Explore')
+        } finally {
+            Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue
+        }
+    }
+
+    try {
+        $env:CLAUDE_CODE_SUBAGENT_MODEL = 'haiku'
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore' } })
+        Assert 'floor=haiku silences the guard (EDGE-011)' ($r.Code -eq 0 -and -not $r.Out)
+    } finally {
+        Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue
+    }
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'agentic-framework:python-expert'; model = $false } })
+    Assert 'model=false framework agent silent (EDGE-012)' ($r.Code -eq 0 -and -not $r.Out)
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore'; model = @() } })
+    Assert 'model=[] Explore denied reason B (EDGE-012)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent Explore')
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = @(); model = $false } })
+    Assert 'subagent_type=[] treated as general-purpose (EDGE-012)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent general-purpose')
+
+    foreach ($bad in '{"tool_input":"x"}', '{"tool_input":[1]}', '{"tool_input":null}', '{}') {
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' $bad
+        Assert "non-object tool_input ($bad) silent (EDGE-013)" ($r.Code -eq 0 -and -not $r.Out)
+    }
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{}}'
+    Assert 'empty-object tool_input denied reason B general-purpose (EDGE-013)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent general-purpose')
+} finally {
+    if ($null -ne $savedFloor) { $env:CLAUDE_CODE_SUBAGENT_MODEL = $savedFloor } else { Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
+    if ($null -ne $savedGuard) { $env:AF_MODEL_GUARD = $savedGuard } else { Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue }
+}
+
 # ── Teardown ───────────────────────────────────────────────────────────────────
 Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
 Remove-Item Env:\CLAUDE_STATE_DIR -ErrorAction SilentlyContinue

@@ -2034,6 +2034,181 @@ section "[GATE-PRECEDENCE] dual verdict in marker: CHANGES_REQUIRED wins over AP
   rm -rf "$workdir"
 }
 
+run_guard() {
+  # $1 = payload; runs with a controlled environment (both guard vars unset
+  # unless the caller exported one beforehand into the current shell, in
+  # which case env -u only clears the OTHER one — see EDGE-003/009/011 which
+  # set a var explicitly right before calling this).
+  printf '%s' "$1" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-A] denies model=fable"
+{
+  test_payload='{"tool_name":"Agent","tool_input":{"subagent_type":"Explore","model":"fable"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "fable-model hook exits 0"
+  assert_out_contains "denies with permissionDecision deny" '"permissionDecision":"deny"'
+  assert_out_contains "reason A text" "top model tier"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-002] mixed-case model value denied like fable"
+{
+  for mv in "Fable" "FABLE"; do
+    test_payload="{\"tool_input\":{\"subagent_type\":\"x\",\"model\":\"$mv\"}}"
+    RUN_OUT="$(run_guard "$test_payload")"
+    RUN_RC=$?
+    assert_rc_zero "mixed-case ($mv) hook exits 0"
+    assert_out_contains "mixed-case ($mv) denied" '"permissionDecision":"deny"'
+  done
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-B] denies built-in agent with no model and no floor"
+{
+  test_payload='{"tool_input":{"subagent_type":"Explore"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "Explore-no-model hook exits 0"
+  assert_out_contains "denies with permissionDecision deny" '"permissionDecision":"deny"'
+  assert_out_contains "reason B names Explore" "Built-in agent Explore"
+  assert_out_contains "reason B recommends haiku" "model set to haiku"
+
+  test_payload='{"tool_input":{}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "empty subagent_type hook exits 0"
+  assert_out_contains "empty subagent_type treated as general-purpose" "Built-in agent general-purpose"
+  assert_out_contains "reason B recommends sonnet" "model set to sonnet"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-003] built-in agent passes when CLAUDE_CODE_SUBAGENT_MODEL floor is set"
+{
+  test_payload='{"tool_input":{"subagent_type":"Explore"}}'
+  RUN_OUT="$(printf '%s' "$test_payload" | env -u AF_MODEL_GUARD CLAUDE_CODE_SUBAGENT_MODEL=sonnet sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+  RUN_RC=$?
+  assert_rc_zero "floor-set hook exits 0"
+  assert_out_empty "floor-set hook silent"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-004] framework agent without model passes silently (either spelling)"
+{
+  for st in "python-expert" "agentic-framework:python-expert"; do
+    test_payload="{\"tool_input\":{\"subagent_type\":\"$st\"}}"
+    RUN_OUT="$(run_guard "$test_payload")"
+    RUN_RC=$?
+    assert_rc_zero "framework agent ($st) hook exits 0"
+    assert_out_empty "framework agent ($st) silent"
+  done
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-C] passes silently for a properly-tiered call"
+{
+  test_payload='{"tool_input":{"subagent_type":"python-expert","model":"sonnet"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "properly-tiered call hook exits 0"
+  assert_out_empty "properly-tiered call silent"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-005] AF_MODEL_GUARD=off disables the guard"
+{
+  test_payload='{"tool_input":{"subagent_type":"Explore","model":"fable"}}'
+  RUN_OUT="$(printf '%s' "$test_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL AF_MODEL_GUARD=off sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+  RUN_RC=$?
+  assert_rc_zero "guard-off hook exits 0"
+  assert_out_empty "guard-off hook silent"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-001] fail-open on malformed stdin"
+{
+  RUN_OUT="$(run_guard 'not json')"
+  RUN_RC=$?
+  assert_rc_zero "malformed-stdin hook exits 0"
+  assert_out_empty "malformed-stdin hook silent"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-009] fork always denied regardless of model or floor"
+{
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"fork"}}')"
+  RUN_RC=$?
+  assert_rc_zero "fork (no model) hook exits 0"
+  assert_out_contains "fork denied reason C" "runs on its parent model"
+
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"Fork","model":"sonnet"}}')"
+  RUN_RC=$?
+  assert_rc_zero "Fork with explicit model hook exits 0"
+  assert_out_contains "fork with model still denied reason C" "runs on its parent model"
+
+  RUN_OUT="$(printf '%s' '{"tool_input":{"subagent_type":"fork"}}' | env -u AF_MODEL_GUARD CLAUDE_CODE_SUBAGENT_MODEL=sonnet sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+  RUN_RC=$?
+  assert_rc_zero "fork with floor set hook exits 0"
+  assert_out_contains "fork with floor still denied reason C" "runs on its parent model"
+
+  RUN_OUT="$(printf '%s' '{"tool_input":{"subagent_type":"fork"}}' | env -u CLAUDE_CODE_SUBAGENT_MODEL AF_MODEL_GUARD=off sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+  RUN_RC=$?
+  assert_rc_zero "fork with guard off hook exits 0"
+  assert_out_empty "fork silent when AF_MODEL_GUARD=off"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-010] top-tier substring spellings denied"
+{
+  for mv in "claude-fable-5-1" " fable" "fable " "fable[1m]" "FABLE"; do
+    test_payload="{\"tool_input\":{\"subagent_type\":\"agentic-framework:python-expert\",\"model\":\"$mv\"}}"
+    RUN_OUT="$(run_guard "$test_payload")"
+    RUN_RC=$?
+    assert_rc_zero "model=[$mv] hook exits 0"
+    assert_out_contains "model=[$mv] denied reason A" "top model tier"
+  done
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-011] floor value itself gated on emptiness and fable"
+{
+  for fv in "fable" " Fable "; do
+    RUN_OUT="$(printf '%s' '{"tool_input":{"subagent_type":"Explore"}}' | env -u AF_MODEL_GUARD CLAUDE_CODE_SUBAGENT_MODEL="$fv" sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+    RUN_RC=$?
+    assert_rc_zero "floor=[$fv] hook exits 0"
+    assert_out_contains "floor=[$fv] does not count as set, denies reason B" "Built-in agent Explore"
+  done
+
+  RUN_OUT="$(printf '%s' '{"tool_input":{"subagent_type":"Explore"}}' | env -u AF_MODEL_GUARD CLAUDE_CODE_SUBAGENT_MODEL=haiku sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+  RUN_RC=$?
+  assert_rc_zero "floor=haiku hook exits 0"
+  assert_out_empty "floor=haiku silences the guard"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-012] non-string model/subagent_type fields normalise to empty"
+{
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":false}}')"
+  RUN_RC=$?
+  assert_rc_zero "model=false framework agent hook exits 0"
+  assert_out_empty "model=false framework agent silent"
+
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"Explore","model":[]}}')"
+  RUN_RC=$?
+  assert_rc_zero "model=[] Explore hook exits 0"
+  assert_out_contains "model=[] Explore denied reason B" "Built-in agent Explore"
+
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":[],"model":false}}')"
+  RUN_RC=$?
+  assert_rc_zero "subagent_type=[] model=false hook exits 0"
+  assert_out_contains "subagent_type=[] treated as general-purpose" "Built-in agent general-purpose"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-013] non-object tool_input passes silently, empty object still denies"
+{
+  for bad in '{"tool_input":"x"}' '{"tool_input":[1]}' '{"tool_input":null}' '{}'; do
+    RUN_OUT="$(run_guard "$bad")"
+    RUN_RC=$?
+    assert_rc_zero "non-object tool_input ($bad) hook exits 0"
+    assert_out_empty "non-object tool_input ($bad) silent"
+  done
+
+  RUN_OUT="$(run_guard '{"tool_input":{}}')"
+  RUN_RC=$?
+  assert_rc_zero "empty-object tool_input hook exits 0"
+  assert_out_contains "empty-object tool_input denied reason B general-purpose" "Built-in agent general-purpose"
+}
+
 # ===========================================================================
 # Summary
 # ===========================================================================

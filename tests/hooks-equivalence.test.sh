@@ -413,6 +413,65 @@ section "[GATE-C] No marker blocks"
   rm -rf "$workdir"
 }
 
+section "[MODEL-GUARD] byte-identical stdout across sh and pwsh"
+{
+  # check_guard_equiv <label> <payload> <expect: deny|silent> [EXTRA_ENV_VAR=value ...]
+  # Always runs both implementations with CLAUDE_CODE_SUBAGENT_MODEL and
+  # AF_MODEL_GUARD explicitly cleared unless the caller passes an override in
+  # EXTRA_ENV; this stops a machine-wide floor from silently corrupting the
+  # comparison. A "deny" expectation additionally fails if both outputs are
+  # empty (equal-but-empty must not pass as "byte-identical").
+  check_guard_equiv() {
+    local label="$1" payload="$2" expect="$3"
+    shift 3
+
+    sh_out=$(printf '%s' "$payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD "$@" sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)
+    sh_rc=$?
+    ps_out=$(printf '%s' "$payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD "$@" pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-model-guard.ps1" 2>&1)
+    ps_rc=$?
+
+    if [ "$sh_rc" -eq 0 ] && [ "$ps_rc" -eq 0 ]; then
+      _pass "[$label] both exit 0"
+    else
+      _fail "[$label] exit codes" "sh=$sh_rc, ps=$ps_rc"
+    fi
+
+    if [ "$expect" = "deny" ] && [ -z "$sh_out" ] && [ -z "$ps_out" ]; then
+      _fail "[$label] both empty but deny was expected" "sh= | ps="
+    elif [ "$sh_out" = "$ps_out" ]; then
+      _pass "[$label] byte-identical stdout"
+    else
+      _fail "[$label] stdout mismatch" "sh=$sh_out | ps=$ps_out"
+    fi
+  }
+
+  check_guard_equiv "fable" '{"tool_name":"Agent","tool_input":{"subagent_type":"Explore","model":"fable"}}' deny
+  check_guard_equiv "reasonB" '{"tool_input":{"subagent_type":"Explore"}}' deny
+  check_guard_equiv "pass" '{"tool_input":{"subagent_type":"python-expert"}}' silent
+
+  # EDGE-009 fork
+  check_guard_equiv "edge009-fork" '{"tool_input":{"subagent_type":"fork"}}' deny
+  check_guard_equiv "edge009-fork-model" '{"tool_input":{"subagent_type":"Fork","model":"sonnet"}}' deny
+  check_guard_equiv "edge009-fork-floor" '{"tool_input":{"subagent_type":"fork"}}' deny CLAUDE_CODE_SUBAGENT_MODEL=sonnet
+  check_guard_equiv "edge009-fork-off" '{"tool_input":{"subagent_type":"fork","model":"fable"}}' silent AF_MODEL_GUARD=off
+
+  # EDGE-010 top-tier substring spellings
+  check_guard_equiv "edge010-claude-fable" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"claude-fable-5-1"}}' deny
+  check_guard_equiv "edge010-bracketed" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable[1m]"}}' deny
+
+  # EDGE-011 floor value gating
+  check_guard_equiv "edge011-floor-fable" '{"tool_input":{"subagent_type":"Explore"}}' deny CLAUDE_CODE_SUBAGENT_MODEL=fable
+  check_guard_equiv "edge011-floor-haiku" '{"tool_input":{"subagent_type":"Explore"}}' silent CLAUDE_CODE_SUBAGENT_MODEL=haiku
+
+  # EDGE-012 non-string fields normalise to empty
+  check_guard_equiv "edge012-model-false" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":false}}' silent
+  check_guard_equiv "edge012-model-array" '{"tool_input":{"subagent_type":"Explore","model":[]}}' deny
+
+  # EDGE-013 non-object tool_input passes silently; empty object still denies
+  check_guard_equiv "edge013-tool-input-string" '{"tool_input":"x"}' silent
+  check_guard_equiv "edge013-tool-input-empty-object" '{"tool_input":{}}' deny
+}
+
 # === Summary
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"
 printf 'RESULT: %d run, %d pass, %d fail\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"
