@@ -33,8 +33,13 @@ NC='\033[0m' # No Color
 # Exception filters (in order): placeholder values, test fixtures, documented
 # examples, env-var expansion, template placeholders ({{ ... }}), and lines
 # explicitly marked as educational anti-patterns in agent prompts.
+# Tool caches are excluded alongside .git: .code-review-graph/ (the code graph's
+# SQLite store) and .serena/ (language-server cache and memories) are gitignored,
+# never shipped, and hold source-derived text in binary form — once an agent has
+# built the graph, graph.db reports "Binary file matches" for whatever the
+# tracked sources contain and fails this scan with nothing to fix.
 _secret_scan() {
-    grep -r --exclude-dir=.git -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"'\$][^\"']{7,}[\"']" . \
+    grep -r --exclude-dir=.git --exclude-dir=.code-review-graph --exclude-dir=.serena -i -E "(password|secret|key|token).*[=:]\s*[\"'][^\"'\$][^\"']{7,}[\"']" . \
         | grep -v "your-api-key" \
         | grep -v "test123" \
         | grep -v -i "example" \
