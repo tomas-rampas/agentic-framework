@@ -468,9 +468,15 @@ section "[MODEL-GUARD] byte-identical (deny) / canonical-identical (rewrite) std
         if [ -z "$sh_out" ] || [ -z "$ps_out" ]; then
           _fail "[$label] rewrite expected but got empty output" "sh=$sh_out | ps=$ps_out"
         else
-          sh_canon=$(printf '%s' "$sh_out" | jq -S -c . 2>/dev/null)
-          ps_canon=$(printf '%s' "$ps_out" | jq -S -c . 2>/dev/null)
-          if [ "$sh_canon" = "$ps_canon" ]; then
+          # jq's exit status is checked on purpose: two outputs that both fail to
+          # parse canonicalise to the same empty string, and an equal-but-empty
+          # comparison must never count as a pass. A valid document followed by
+          # trailing garbage also exits non-zero, so it is emptied too.
+          sh_canon=$(printf '%s' "$sh_out" | jq -S -c . 2>/dev/null) || sh_canon=""
+          ps_canon=$(printf '%s' "$ps_out" | jq -S -c . 2>/dev/null) || ps_canon=""
+          if [ -z "$sh_canon" ] || [ -z "$ps_canon" ]; then
+            _fail "[$label] rewrite output is not valid JSON" "sh=$sh_out | ps=$ps_out"
+          elif [ "$sh_canon" = "$ps_canon" ]; then
             _pass "[$label] canonical-JSON-identical stdout"
           else
             _fail "[$label] canonical JSON mismatch" "sh=$sh_canon | ps=$ps_canon"
