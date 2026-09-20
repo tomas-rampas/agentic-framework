@@ -195,7 +195,12 @@ security or system design, costs more than the tokens the lower tier would save.
 - The one-tier-move policy in CLAUDE.md is advisory wherever the hook does not reach: the
   hook enforces only the Fable ban and the built-in-agent floor, not the "move only one
   tier" or "state the reason" rules, which rely on the orchestrator following the policy.
-- `.consistency.model_shorthand_map` values are informational: Claude Code resolves the
-  alias at runtime. They were stale and now hold the ids measured on 2026-09-20 by the same
-  probe method (`opus` → `claude-opus-5`, `sonnet` → `claude-sonnet-5`, `haiku` →
-  `claude-haiku-4-5-20251001`); re-measure when a new model generation ships.
+- The framework records tier names, never model ids. Until 4.5.1 `claude.json` carried a
+  `.consistency.model_shorthand_map` from each alias to a concrete id. Measured: nothing
+  read the values — every consumer took only the keys — the one resolver helper had no
+  caller, and the ids had gone stale (`claude-opus-4-8`, `claude-sonnet-4-6`). 4.5.0
+  refreshed them; 4.5.1 removes them, because refreshing only schedules the next staleness:
+  Claude Code resolves `opus`/`sonnet`/`haiku` at runtime and the framework has no say in
+  which model that is. It is now `.consistency.model_tiers`, a plain list of names, the
+  same reasoning by which the MCP launchers were unpinned. The model ids quoted elsewhere
+  in this document are dated measurements, not configuration.

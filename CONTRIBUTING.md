@@ -10,7 +10,7 @@ This guide explains the anti-drift consistency system and how to contribute to t
 - **`.agent_categories`** — taxonomy that partitions agents into exactly one category group
 - **`.consistency`** — metadata controlling generator and validator behavior:
   - `deprecated_agent_names` — retired agent identifiers (flagged if re-used)
-  - `model_shorthand_map` — records the model id each tier shorthand resolved to when last measured, e.g. `"opus" -> "claude-opus-5"` (measured 2026-09-20 by asking a sub-agent launched on each alias to quote its own model line). The values are informational: Claude Code resolves the alias at runtime, so re-measure rather than assume when a new model generation ships. The shorthand keys (`opus`/`sonnet`/`haiku`) are the single source of truth used in both `.sub_agents[*].model` and each agent's frontmatter; the values are the runtime model ids.
+  - `model_tiers` — the list of legal tier names, `["opus", "sonnet", "haiku"]`. It records names only, deliberately no model ids: Claude Code resolves each alias to a concrete model at runtime, so an id written here is a claim the framework cannot keep true (the old `model_shorthand_map` carried ids, nothing ever read them, and they went stale). The tier names (`opus`/`sonnet`/`haiku`) are the single source of truth used in both `.sub_agents[*].model` and each agent's frontmatter; the values are the runtime model ids.
   - `doc_blocks` — registry of machine-generated documentation regions
 
 Do not hand-edit agent counts, rosters, or model assignments in documentation or scripts — they are derived from `claude.json` and the filesystem at validation time.
@@ -36,7 +36,7 @@ model: <tier-shorthand>            # opus | sonnet | haiku (must match claude.js
                                     # may move one tier up or down per call via the Agent
                                     # tool's `model` parameter (see CLAUDE.md's Model Tiering
                                     # Policy). `fable` is never a valid subagent tier: it is
-                                    # not a key of `.consistency.model_shorthand_map`, and the
+                                    # not listed in `.consistency.model_tiers`, and the
                                     # pretooluse-model-guard hook denies it at call time.
 color: <color-name>
 effort: <reasoning-effort>         # optional: low | medium | high | xhigh | max
@@ -161,7 +161,7 @@ The validator will tell you exactly which tables need updates. Do not hardcode a
 - **Derives all truth at runtime** from `claude.json`, `settings.template.json`, and the filesystem — no hardcoded lists
 - **Runs the full check battery** (see summary above) and collects all failures before exiting
 - **Distinguishes blocking vs. advisory**: exits non-zero on any blocking check failure
-- **Enforces model parity** (check 7, blocking) — each agent's frontmatter `model:` and its claude.json `.sub_agents[*].model` must be the SAME tier shorthand (`opus`/`sonnet`/`haiku`), and every model value on either side must be a declared key in `consistency.model_shorthand_map`. A mismatch or an unknown/typo value fails CI. `fable` is never a legal value here — it is not a key of the shorthand map, and the `pretooluse-model-guard` hook denies any subagent call that passes it, independent of this validator.
+- **Enforces model parity** (check 7, blocking) — each agent's frontmatter `model:` and its claude.json `.sub_agents[*].model` must be the SAME tier shorthand (`opus`/`sonnet`/`haiku`), and every model value on either side must be listed in `consistency.model_tiers`. A mismatch or an unknown/typo value fails CI. `fable` is never a legal value here — it is not in the tier list, and the `pretooluse-model-guard` hook denies any subagent call that passes it, independent of this validator.
 - **Pins CLAUDE.md's `Default tier` column** (check 9c, blocking) — each agent-table row's tier cell must match its `claude.json` `.sub_agents[*].model`.
 
 Run it during development and before pushing. CI (`.github/workflows/consistency.yml`) runs it on every PR.

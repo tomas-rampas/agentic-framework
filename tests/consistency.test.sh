@@ -487,13 +487,13 @@ section "[11] Model parity: divergent tier + invalid shorthand -> non-zero (chec
   # current md value, derived from the copy so the test stays roster-agnostic.
   victim="$(jq -r '.sub_agents | keys[0]' "$copy/claude.json")"
   cur="$(jq -r --arg a "$victim" '.sub_agents[$a].model' "$copy/claude.json")"
-  # Choose a different declared shorthand key.
+  # Choose a different declared tier name.
   other="$(jq -r --arg cur "$cur" '
-    .consistency.model_shorthand_map | keys[] | select(. != $cur)' \
+    .consistency.model_tiers | .[] | select(. != $cur)' \
     "$copy/claude.json" | head -1)"
   # Guard: 11a needs a second valid tier to flip to. Fail loudly rather than
-  # silently no-op if the map ever shrinks below 2 tiers.
-  [[ -n "$other" ]] || _fail "CASE 11a setup needs >=2 model tiers in model_shorthand_map"
+  # silently no-op if the list ever shrinks below 2 tiers.
+  [[ -n "$other" ]] || _fail "CASE 11a setup needs >=2 model tiers in model_tiers"
   jq --arg a "$victim" --arg m "$other" '.sub_agents[$a].model = $m' \
     "$copy/claude.json" > "$copy/claude.json.tmp" \
     && mv "$copy/claude.json.tmp" "$copy/claude.json"
@@ -503,7 +503,7 @@ section "[11] Model parity: divergent tier + invalid shorthand -> non-zero (chec
   rm -rf "$copy"
 
   # --- 11b: set an INVALID shorthand (typo) in claude.json .model. It is not a
-  # key in model_shorthand_map, so the map guard must fail it (blocking).
+  # member of model_tiers, so the tier guard must fail it (blocking).
   copy="$(make_copy)"
   _verify_copy "$copy"
   victim="$(jq -r '.sub_agents | keys[0]' "$copy/claude.json")"
@@ -512,7 +512,7 @@ section "[11] Model parity: divergent tier + invalid shorthand -> non-zero (chec
     && mv "$copy/claude.json.tmp" "$copy/claude.json"
   run_validate "$copy" 7
   assert_rc_nonzero "validator fails on an invalid model shorthand in claude.json"
-  assert_out_contains "reports invalid shorthand 'sonnett' for $victim" "is not a key in consistency.model_shorthand_map"
+  assert_out_contains "reports invalid shorthand 'sonnett' for $victim" "is not listed in consistency.model_tiers"
   rm -rf "$copy"
 }
 
@@ -1218,7 +1218,7 @@ section "[27] CLAUDE.md Default tier column: diverged + invalid tier -> non-zero
   rm -rf "$copy"
 
   # --- 27b: set an INVALID tier value (typo) in one row's Default tier cell.
-  # It is not a key of .consistency.model_shorthand_map, so the legal-tier
+  # It is not listed in .consistency.model_tiers, so the legal-tier
   # guard must fail it (blocking), naming the row's agent.
   copy="$(make_copy)"
   _verify_copy "$copy"

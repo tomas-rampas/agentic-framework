@@ -14,7 +14,7 @@ Configuration lives in the **agentic-framework plugin** (typically at `~/.claude
 - `agents/<name>.md` — agent definition. YAML frontmatter carries `name` (must equal the filename), `description` (the routing trigger text Claude Code matches tasks against), `model` (tier shorthand, e.g. `sonnet`), `color`, and the optional `effort` (reasoning effort: low|medium|high|xhigh|max), `mcpServers` (list of MCP servers available to the agent; per Claude Code's documentation, not applied to plugin-shipped agents), and `tools` (comma-separated explicit tool allowlist). The body is the agent's system prompt.
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/agents/<name>.md`
   - **Override location** (if present): `~/.claude/agents/<name>.md` (takes priority)
-- `claude.json` — the registry. `.sub_agents` maps each agent to its config (including `model` shorthand and `focus`); `.agent_categories` partitions the roster into the canonical categories; `.consistency.model_shorthand_map` defines the only legal model values; `.consistency.deprecated_agent_names` lists dead names that must never be referenced.
+- `claude.json` — the registry. `.sub_agents` maps each agent to its config (including `model` shorthand and `focus`); `.agent_categories` partitions the roster into the canonical categories; `.consistency.model_tiers` lists the only legal model values (tier names only, never model ids); `.consistency.deprecated_agent_names` lists dead names that must never be referenced.
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/claude.json`
 - `hooks/hooks.json` — hook registration as shell-form dispatch chains (`sh dispatch.sh <name> || pwsh -NoProfile -File <name>.ps1`) with `${CLAUDE_PLUGIN_ROOT}` substitution; each hook is a `.ps1`/`.sh` pair routed by `hooks/dispatch.sh`. Hooks are loaded automatically by Claude Code.
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/hooks/hooks.json`
@@ -56,7 +56,7 @@ jq -r '.consistency.deprecated_agent_names[]' ~/.claude/plugins/cache/agentic-fr
 
 Check 1 of `validate-consistency.sh` reports both failure directions: `missing-md` (registered in `claude.json` but no `agents/<name>.md`) and `orphan-md` (file exists but not registered). Fix by adding the missing side, never by deleting the working side.
 
-Frontmatter requirements: opens and closes with `---`; `name:` equals the filename stem; `description:` is a single line with concrete trigger phrasing; `model:` is a key of `.consistency.model_shorthand_map`; `color:` present. A malformed frontmatter block silently prevents loading — validate YAML before anything else.
+Frontmatter requirements: opens and closes with `---`; `name:` equals the filename stem; `description:` is a single line with concrete trigger phrasing; `model:` is listed in `.consistency.model_tiers`; `color:` present. A malformed frontmatter block silently prevents loading — validate YAML before anything else.
 
 Also confirm the agent appears in exactly one `.agent_categories` category (check 2 fails on missing or duplicated membership).
 
@@ -73,15 +73,15 @@ Remember the review chain: `code-review-gatekeeper` reviews first; `peer-review-
 
 ## Playbook: Model Mismatch (Parity Check 7)
 
-Both sides must hold the SAME tier shorthand, and each value must be a declared key of `.consistency.model_shorthand_map`:
+Both sides must hold the SAME tier shorthand, and each value must be listed in `.consistency.model_tiers`:
 
 ```bash
 grep -m1 '^model:' agents/<name>.md
 jq -r '.sub_agents["<name>"].model' claude.json
-jq -r '.consistency.model_shorthand_map | keys[]' claude.json
+jq -r '.consistency.model_tiers[]' claude.json
 ```
 
-Check 7 fails on: missing frontmatter `model:`, empty registry model, a value not in the map (typos like `sonnett`), or any md-vs-registry divergence. Fix by editing BOTH files to the same shorthand — never introduce full model IDs in either place; the shorthand map is the single source of truth.
+Check 7 fails on: missing frontmatter `model:`, empty registry model, a value not in the tier list (typos like `sonnett`), or any md-vs-registry divergence. Fix by editing BOTH files to the same shorthand — never introduce full model IDs anywhere; the tier list is the single source of truth, and Claude Code resolves each alias at runtime.
 
 ## Playbook: Hook Not Firing or Stop Gate Misbehaving
 
