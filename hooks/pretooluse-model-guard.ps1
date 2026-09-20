@@ -1,7 +1,8 @@
 #Requires -Version 7.0
 # pretooluse-model-guard.ps1 — blocking PreToolUse hook (matcher: Task|Agent).
 #
-# Denies two things it can recognise from the call alone: every fork
+# Denies two things it can recognise from the call alone (a third deny shape,
+# the rewrite fallback, is described further down): every fork
 # (subagent_type "fork"), since a fork always inherits its parent's model and
 # ignores any override; and a normalised model value containing the substring
 # "fable" (e.g. fable, claude-fable-5-1, fable[1m]), the top model tier. A
@@ -23,8 +24,10 @@
 # original key comes back unchanged and in its original position; model is
 # replaced in place if present, else appended last.
 #
-# ROUND-TRIP INTEGRITY: this is parsed and re-emitted with System.Text.Json
-# (JsonDocument + Utf8JsonWriter), never ConvertFrom-Json/ConvertTo-Json,
+# ROUND-TRIP INTEGRITY: the payload is parsed, and the rewrite is re-emitted,
+# with System.Text.Json (JsonDocument + Utf8JsonWriter). ConvertFrom-Json and
+# ConvertTo-Json never touch caller-supplied text (Write-Deny does use
+# ConvertTo-Json, but only on a fixed reason string it builds itself),
 # because ConvertFrom-Json silently turns an ISO-date-shaped string into a
 # [datetime] and ConvertTo-Json re-serialises it in a different format —
 # corrupting an echoed prompt/description that happens to look like a

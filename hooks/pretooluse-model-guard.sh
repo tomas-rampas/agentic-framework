@@ -2,7 +2,8 @@
 set -u
 # pretooluse-model-guard.sh — blocking PreToolUse hook (matcher: Task|Agent).
 #
-# Denies two things it can recognise from the call alone: every fork
+# Denies two things it can recognise from the call alone (a third deny shape,
+# the rewrite fallback, is described further down): every fork
 # (subagent_type "fork"), since a fork always inherits its parent's model and
 # ignores any override; and a normalised model value containing the substring
 # "fable" (e.g. fable, claude-fable-5-1, fable[1m]), the top model tier. A
