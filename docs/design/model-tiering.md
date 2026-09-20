@@ -208,10 +208,13 @@ security or system design, costs more than the tokens the lower tier would save.
 - Every denial reason ends with `Set AF_MODEL_GUARD=off to disable this guard.`: the hook
   fires for every plugin user, including one whose top-level session is not an expensive
   model, and the denial is the only text a blocked caller sees.
-- The byte-equivalence of the two implementations is tested for ASCII payloads. Non-ASCII
-  input is not covered: `.Trim()` trims Unicode whitespace where the POSIX `sed` class does
-  not, and `[Console]::In` does not decode UTF-8 stdin on Windows (the same pattern as the
-  four older hooks), so such payloads are mangled before either rule runs.
+- The two implementations are compared on non-ASCII payloads as well as ASCII ones: the
+  `.ps1` reads stdin and writes stdout as raw UTF-8 bytes, and the `edge019c-integrity` case
+  pins Czech diacritics, an emoji and a tab through both. One divergence remains, measured
+  2026-09-20: `.Trim()` trims Unicode whitespace where the POSIX `[[:space:]]` class does
+  not, so a `subagent_type` or `model` padded with a no-break space (U+00A0) is acted on by
+  the `.ps1` and passed silently by the `.sh`. Such a value is not a name Claude Code would
+  resolve to an agent or a model (assumed, not measured), so the two are left unaligned.
 - This is a cost control, not a security boundary. A Unicode look-alike of the alias is not
   folded (it is not a valid model name, so the call fails on its own), and built-in agents
   with a fixed model of their own (`statusline-setup`, `claude-code-guide`) are not in the

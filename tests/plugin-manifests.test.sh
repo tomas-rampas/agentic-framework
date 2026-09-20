@@ -57,8 +57,9 @@ readonly MANIFEST_VERSION_SPECIFIER_FILTER='.mcpServers | to_entries[] | .key as
 # prints nothing when the shape is correct. A jq error is reported as a
 # single violation line, the same way Assertion 14a treats one.
 # The legacy pre-rename context name is built at runtime (never written as a
-# contiguous literal) so this file does not itself trip the repo-wide grep
-# that forbids it outside the migrator and its own test.
+# contiguous literal) so that a plain search for the old name finds only the
+# places that must name it: the migrator, its test and the design doc. No
+# check enforces that; it is a convenience for whoever greps next.
 _serena_shape_violations() {
   local mcp_json="$1"
   local legacy_ctx="ide-""assistant"
