@@ -211,13 +211,17 @@ security or system design, costs more than the tokens the lower tier would save.
 - One divergence between the two implementations remains, measured 2026-09-20, and it is
   about whitespace, not about non-ASCII text in general (that round-trips; see the
   rewriting bullet above). `.Trim()` trims Unicode whitespace where the POSIX `[[:space:]]`
-  class does not, so the `.ps1` acts and the `.sh` stays silent in three cases: a
-  `subagent_type` padded with a no-break space (U+00A0), a `model` consisting only of
-  Unicode whitespace, and a `CLAUDE_CODE_SUBAGENT_MODEL` consisting only of it. The
+  class does not, so on a `fork` or built-in-agent call the `.ps1` acts where the `.sh`
+  stays silent, in three cases: a `subagent_type` padded with a no-break space (U+00A0), a
+  `model` consisting only of Unicode whitespace, and a `CLAUDE_CODE_SUBAGENT_MODEL`
+  consisting only of it. Any other agent type, padded or not, is left alone by both. The
   top-tier ban is unaffected: both implementations match `fable` as a substring, so
   padding never hides it, and a padded tier name is non-empty on both sides, so both leave
   that call alone. Neither a padded `subagent_type` nor a whitespace-only `model` is a
   value Claude Code would resolve (assumed, not measured), so the two are left unaligned.
+  A whitespace-only floor is a user typo rather than a Claude Code value; there the `.ps1`
+  is the safer side, since it treats the floor as unset and still rewrites, while the `.sh`
+  treats it as set and lets the built-in agent inherit the session tier.
 - This is a cost control, not a security boundary. A Unicode look-alike of the alias is not
   folded (it is not a valid model name, so the call fails on its own), and built-in agents
   with a fixed model of their own (`statusline-setup`, `claude-code-guide`) are not in the
