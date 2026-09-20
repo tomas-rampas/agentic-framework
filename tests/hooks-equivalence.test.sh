@@ -560,7 +560,8 @@ EOF_PAYLOAD
   # a fork or fable call slip past undetected in either implementation.
   check_guard_equiv "edge021a-fork-surrogate" '{"tool_input":{"subagent_type":"fork","prompt":"a\ud800b"}}' deny
   check_guard_equiv "edge021b-fable-surrogate" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable","prompt":"a\ud800b"}}' deny
-  check_guard_equiv "edge021c-explore-surrogate-silent" '{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}' silent
+  # M1 fix: cannot echo safely -> falls back to deny instead of silent passthrough.
+  check_guard_equiv "edge021c-explore-surrogate-deny" '{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}' deny
   check_guard_equiv "edge021d-framework-agent-surrogate-silent" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}' silent
 
   # Duplicate "model": both implementations must fold to exactly one
@@ -592,6 +593,55 @@ EOF_PAYLOAD
   # Off-switch value trimming (a common Windows "set VAR=off " slip).
   check_guard_equiv "edge021g-off-padded" '{"tool_input":{"subagent_type":"Explore","model":"fable"}}' silent AF_MODEL_GUARD=" off "
   check_guard_equiv "edge021g-off-padded-caps" '{"tool_input":{"subagent_type":"Explore","model":"fable"}}' silent 'AF_MODEL_GUARD=OFF  '
+
+  # EDGE-022: per-field surrogate sanitising (B1), rewrite fallback-deny
+  # (M1), and case-sensitive field matching (m1).
+
+  # (a) lone surrogate INSIDE the model field itself (not an unrelated
+  # field) on a framework agent -> deny reason A, byte-identical.
+  check_guard_equiv "edge022a-model-field-surrogate" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable\ud800","prompt":"p"}}' deny
+
+  # (b) lone surrogate INSIDE the model field on a fork -> deny reason C
+  # (proves one bad field cannot suppress the OTHER field's check).
+  check_guard_equiv "edge022b-fork-model-field-surrogate" '{"tool_input":{"subagent_type":"fork","model":"sonnet\ud800","prompt":"p"}}' deny
+
+  # (c) lone surrogate INSIDE subagent_type itself: the sanitised value
+  # ("explore�") is not a recognised built-in name, so both
+  # implementations pass silently. Pinned here as the agreed behaviour.
+  check_guard_equiv "edge022c-subagent-type-field-surrogate" '{"tool_input":{"subagent_type":"Explore\ud800"}}' silent
+
+  # (d) Explore/Plan/no-type, no model, lone surrogate in prompt -> cannot
+  # echo safely, falls back to deny naming TYPE/TIER; byte-identical; no
+  # updatedInput anywhere in the output.
+  for edge022d_payload in \
+    '{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}' \
+    '{"tool_input":{"subagent_type":"Plan","prompt":"a\ud800b"}}' \
+    '{"tool_input":{"prompt":"a\ud800b"}}'
+  do
+    check_guard_equiv "edge022d-fallback-deny" "$edge022d_payload" deny
+    sh022d_out=$(printf '%s' "$edge022d_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)
+    ps022d_out=$(printf '%s' "$edge022d_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-model-guard.ps1" 2>&1)
+    if printf '%s' "$sh022d_out" | grep -q updatedInput; then _fail "[edge022d-fallback-deny] sh must not emit updatedInput" "sh=$sh022d_out"; else _pass "[edge022d-fallback-deny] sh has no updatedInput key"; fi
+    if printf '%s' "$ps022d_out" | grep -q updatedInput; then _fail "[edge022d-fallback-deny] ps must not emit updatedInput" "ps=$ps022d_out"; else _pass "[edge022d-fallback-deny] ps has no updatedInput key"; fi
+  done
+
+  # (e) framework agent, no model, lone surrogate in prompt -> still
+  # silent (it has its own tier; nothing to rewrite, nothing to deny).
+  check_guard_equiv "edge022e-framework-agent-surrogate-silent" '{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}' silent
+
+  # (f) case-variant field: the caller's "Model" field must survive
+  # unchanged in BOTH outputs, with exactly one lowercase "model" field.
+  edge022f_payload='{"description":"d","prompt":"p","Model":"zzz","subagent_type":"Explore"}'
+  edge022f_payload="{\"tool_input\":$edge022f_payload}"
+  check_guard_equiv "edge022f-case-variant-field" "$edge022f_payload" rewrite
+  sh022f_out=$(printf '%s' "$edge022f_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)
+  ps022f_out=$(printf '%s' "$edge022f_payload" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-model-guard.ps1" 2>&1)
+  if printf '%s' "$sh022f_out" | jq -e '.hookSpecificOutput.updatedInput.Model == "zzz"' >/dev/null 2>&1; then _pass "[edge022f-case-variant-field] sh preserves caller's Model field"; else _fail "[edge022f-case-variant-field] sh Model field" "got: $sh022f_out"; fi
+  if printf '%s' "$ps022f_out" | jq -e '.hookSpecificOutput.updatedInput.Model == "zzz"' >/dev/null 2>&1; then _pass "[edge022f-case-variant-field] ps preserves caller's Model field"; else _fail "[edge022f-case-variant-field] ps Model field" "got: $ps022f_out"; fi
+  sh022f_lower_count=$(printf '%s' "$sh022f_out" | grep -o '"model"' | wc -l | tr -d ' ')
+  ps022f_lower_count=$(printf '%s' "$ps022f_out" | grep -o '"model"' | wc -l | tr -d ' ')
+  if [ "$sh022f_lower_count" = "1" ]; then _pass "[edge022f-case-variant-field] sh has exactly one lowercase model field"; else _fail "[edge022f-case-variant-field] sh lowercase model count" "got: $sh022f_lower_count in $sh022f_out"; fi
+  if [ "$ps022f_lower_count" = "1" ]; then _pass "[edge022f-case-variant-field] ps has exactly one lowercase model field"; else _fail "[edge022f-case-variant-field] ps lowercase model count" "got: $ps022f_lower_count in $ps022f_out"; fi
 }
 
 # === Summary

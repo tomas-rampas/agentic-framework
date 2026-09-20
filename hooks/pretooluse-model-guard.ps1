@@ -52,36 +52,75 @@
 # whitespace trimmed).
 #
 # MEASURED: JsonDocument parses a lone UTF-16 surrogate escape (e.g. \uD800
-# with no matching low surrogate) without error — deny decisions (fork,
-# fable) read fine even when an unrelated field such as prompt carries one.
-# Echoing it back is a different story: JsonElement.GetString()/WriteTo()
-# throw "incomplete UTF-16 JSON text" for such a value, which happens inside
-# the outer try/catch below, so the rewrite branch aborts before any bytes
-# reach stdout — nothing is printed and the call proceeds unrewritten rather
-# than emitting a prompt this hook cannot reproduce exactly.
+# with no matching low surrogate) without error, but JsonElement.GetString()
+# on that ONE property throws "incomplete UTF-16 JSON text". A lone surrogate
+# in the model or subagent_type field itself would otherwise abort the whole
+# script inside the outer try/catch before the OTHER field's check ever
+# runs — voiding both the fork and the fable denial from a single bad
+# field. Get-NormalizedFromElement below catches that per-property throw and
+# falls back to GetRawText() (the raw, still-escaped JSON text, which does
+# not throw), replaces the offending escape with U+FFFD, reparses that
+# standalone string and decides from the sanitised value instead; a second
+# failure returns ''. A lone surrogate elsewhere (e.g. prompt) never reaches
+# this function at all, since only model/subagent_type are read for the
+# deny decision.
 #
-# DUPLICATE KEYS: tool_input.EnumerateObject() yields every occurrence of a
-# repeated key (e.g. two "model" properties), unlike jq which folds an
-# object literal down to one. The rewrite loop below first records each
-# key's LAST value, then walks the properties once, writing only the FIRST
-# occurrence of each name (using that last-recorded value) and skipping
-# later repeats — matching jq's `.tool_input + {...}` output both in the
-# single surviving key and in its position.
+# FALLBACK DENY: the rewrite branch echoes the built-in agent's OWN
+# prompt/description, and THIS is where a lone surrogate can still throw
+# (JsonElement.WriteTo does not tolerate one). Silently giving up here would
+# let the call proceed unrewritten and inherit the session's tier — the
+# exact outcome this hook exists to prevent — so the Utf8JsonWriter block
+# has its own try/catch: on any write failure it discards the (buffered,
+# never-partially-flushed) MemoryStream and instead denies with a dedicated,
+# ASCII-only reason naming the agent's TYPE and TIER, in the same
+# hookSpecificOutput/permissionDecision:"deny" shape as the fork/fable
+# denials. Only input that cannot be understood AT ALL (malformed JSON,
+# non-object tool_input) keeps the true fail-open exit-0-silent behaviour of
+# the outer try/catch.
+#
+# DUPLICATE / CASE-VARIANT KEYS: tool_input.EnumerateObject() yields every
+# occurrence of a repeated key (e.g. two "model" properties) unlike jq,
+# which folds an object literal down to one; and PowerShell's -eq and @{}
+# are ordinal-insensitive by default, so "model" and "Model" would
+# otherwise collide even though jq treats them as distinct fields. The
+# rewrite loop uses -ceq (case-sensitive) name comparisons and an ordinal
+# Dictionary[string,JsonElement] keyed exactly as jq would see it, first
+# recording each key's LAST value, then walking the properties once,
+# writing only the FIRST occurrence of each exact name (using that
+# last-recorded value) and skipping later repeats of that same name —
+# matching jq's `.tool_input + {...}` output in the surviving key set, its
+# casing, its values and their position.
 #
 # Registered in hooks/hooks.json via the agentic-framework plugin (PreToolUse: Task|Agent).
-# DENY cases (fork, fable) are byte-identical with the .sh twin; REWRITE
-# cases may legitimately differ in JSON escaping of echoed strings and are
-# compared as canonical JSON (jq -S -c .) in the equivalence suite instead.
+# All THREE deny shapes (fork, fable, and the rewrite-fallback deny above)
+# are byte-identical with the .sh twin, since none of them echo
+# caller-supplied text verbatim. REWRITE cases may legitimately differ in
+# JSON escaping of echoed strings and are compared as canonical JSON
+# (jq -S -c .) in the equivalence suite instead.
 
 using namespace System.Text.Json
 
 function Get-NormalizedFromElement {
     param([JsonElement]$Obj, [string]$Name)
     $prop = New-Object JsonElement
-    if ($Obj.TryGetProperty($Name, [ref]$prop) -and $prop.ValueKind -eq [JsonValueKind]::String) {
+    if (-not $Obj.TryGetProperty($Name, [ref]$prop)) { return '' }
+    if ($prop.ValueKind -ne [JsonValueKind]::String) { return '' }
+    try {
         return $prop.GetString().Trim().ToLowerInvariant()
+    } catch {
+        # A lone UTF-16 surrogate in THIS property threw. GetRawText() returns
+        # the raw, still-escaped JSON text without decoding it, so it never
+        # throws; sanitise just that text and decide from it instead of
+        # aborting the whole hook over one bad field.
+        try {
+            $replacement = [string][char]0xFFFD
+            $sanitized = [regex]::Replace($prop.GetRawText(), '\\u[dD][89a-fA-F][0-9a-fA-F]{2}', $replacement)
+            $sanDoc = [JsonDocument]::Parse($sanitized)
+            return $sanDoc.RootElement.GetString().Trim().ToLowerInvariant()
+        } catch {
+            return ''
+        }
     }
-    return ''
 }
 
 function Write-Deny {
@@ -151,19 +190,20 @@ try {
         $outMs = New-Object System.IO.MemoryStream
         $writerOptions = New-Object JsonWriterOptions
         $writer = New-Object Utf8JsonWriter($outMs, $writerOptions)
+        $writeFailed = $false
         try {
             $writer.WriteStartObject()
             $writer.WriteStartObject('hookSpecificOutput')
             $writer.WriteString('hookEventName', 'PreToolUse')
-            $lastValues = @{}
+            $lastValues = [System.Collections.Generic.Dictionary[string, JsonElement]]::new([StringComparer]::Ordinal)
             foreach ($prop in $toolInput.EnumerateObject()) { $lastValues[$prop.Name] = $prop.Value }
 
             $writer.WriteStartObject('updatedInput')
             $modelWritten = $false
-            $seen = New-Object 'System.Collections.Generic.HashSet[string]'
+            $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
             foreach ($prop in $toolInput.EnumerateObject()) {
                 if (-not $seen.Add($prop.Name)) { continue }
-                if ($prop.Name -eq 'model') {
+                if ($prop.Name -ceq 'model') {
                     $writer.WriteString('model', $tier)
                     $modelWritten = $true
                 } else {
@@ -176,11 +216,20 @@ try {
             $writer.WriteEndObject()
             $writer.WriteString('systemMessage', $systemMessage)
             $writer.WriteEndObject()
+        } catch {
+            $writeFailed = $true
         } finally {
-            $writer.Flush()
+            try { $writer.Flush() } catch {}
             $writer.Dispose()
         }
-        Write-BytesToStdout $outMs.ToArray()
+
+        if ($writeFailed) {
+            Write-Deny "[model-guard] Built-in agent $type has no model and would inherit the session model, and this call could not be rewritten safely. Re-issue this Agent call with model set to $tier. Set AF_MODEL_GUARD=off to disable this guard."
+            exit 0
+        }
+
+        $bytes = $outMs.ToArray() + [byte]0x0A
+        Write-BytesToStdout $bytes
         exit 0
     }
 

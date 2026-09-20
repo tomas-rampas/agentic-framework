@@ -2347,12 +2347,14 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-021] lone-surrogate bypass, duplicate fiel
   assert_rc_zero "edge021b fable+surrogate hook exits 0"
   assert_out_contains "edge021b fable+surrogate denied reason A" "top model tier"
 
-  # (c) Explore, no model, lone surrogate in prompt -> silent (cannot echo exactly)
+  # (c) Explore, no model, lone surrogate in prompt -> the built-in call
+  # cannot be echoed safely, so it must deny rather than inherit the
+  # session tier silently (flipped by the M1 fallback-deny fix).
   test_payload='{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}'
   RUN_OUT="$(run_guard "$test_payload")"
   RUN_RC=$?
   assert_rc_zero "edge021c Explore+surrogate hook exits 0"
-  assert_out_empty "edge021c Explore+surrogate silent"
+  assert_out_contains "edge021c Explore+surrogate falls back to deny" "could not be rewritten safely"
 
   # (d) framework agent, no model, lone surrogate in prompt -> silent
   test_payload='{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}'
@@ -2397,6 +2399,70 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-021] lone-surrogate bypass, duplicate fiel
   RUN_RC=$?
   assert_rc_zero "edge021g padded-OFF-caps hook exits 0"
   assert_out_empty "edge021g padded-OFF-caps silent"
+}
+
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-022] per-field surrogate sanitising, rewrite fallback-deny, case-sensitive fields"
+{
+  # (a) lone surrogate INSIDE the model field itself -> deny reason A
+  test_payload='{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable\ud800","prompt":"p"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge022a model-field-surrogate hook exits 0"
+  assert_out_contains "edge022a model-field-surrogate denied reason A" "top model tier"
+
+  # (b) lone surrogate INSIDE the model field on a fork -> deny reason C
+  # (one bad field must not suppress the OTHER field's check)
+  test_payload='{"tool_input":{"subagent_type":"fork","model":"sonnet\ud800","prompt":"p"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge022b fork-model-field-surrogate hook exits 0"
+  assert_out_contains "edge022b fork-model-field-surrogate denied reason C" "runs on its parent model"
+
+  # (c) lone surrogate INSIDE subagent_type: sanitised value is not a
+  # recognised built-in name -> silent (pinned agreed behaviour)
+  test_payload='{"tool_input":{"subagent_type":"Explore\ud800"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge022c subagent-type-field-surrogate hook exits 0"
+  assert_out_empty "edge022c subagent-type-field-surrogate silent"
+
+  # (d) Explore/Plan/no-type, no model, lone surrogate in prompt -> falls
+  # back to deny naming TYPE/TIER; no updatedInput anywhere
+  for pair in "Explore:haiku" "Plan:sonnet" ":sonnet"; do
+    stype="${pair%%:*}"
+    tier="${pair##*:}"
+    if [ -n "$stype" ]; then
+      test_payload="{\"tool_input\":{\"subagent_type\":\"$stype\",\"prompt\":\"a\\ud800b\"}}"
+    else
+      test_payload='{"tool_input":{"prompt":"a\ud800b"}}'
+    fi
+    RUN_OUT="$(run_guard "$test_payload")"
+    RUN_RC=$?
+    assert_rc_zero "edge022d [$stype] fallback-deny hook exits 0"
+    assert_out_contains "edge022d [$stype] fallback-deny names tier $tier" "model set to $tier"
+    if printf '%s' "$RUN_OUT" | grep -q updatedInput; then
+      _fail "edge022d [$stype] must not emit updatedInput" "$RUN_OUT"
+    else
+      _pass "edge022d [$stype] has no updatedInput key"
+    fi
+  done
+
+  # (e) framework agent, no model, lone surrogate in prompt -> still silent
+  test_payload='{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge022e framework-agent-surrogate hook exits 0"
+  assert_out_empty "edge022e framework-agent-surrogate silent"
+
+  # (f) case-variant field: caller's "Model" survives, exactly one
+  # lowercase "model" field
+  test_payload='{"tool_input":{"description":"d","prompt":"p","Model":"zzz","subagent_type":"Explore"}}'
+  RUN_OUT="$(run_guard "$test_payload")"
+  RUN_RC=$?
+  assert_rc_zero "edge022f case-variant-field hook exits 0"
+  assert_out_contains "edge022f case-variant-field preserves caller's Model" '"Model":"zzz"'
+  lower_model_count=$(printf '%s' "$RUN_OUT" | grep -o '"model"' | wc -l | tr -d ' ')
+  if [ "$lower_model_count" = "1" ]; then _pass "edge022f case-variant-field has exactly one lowercase model field"; else _fail "edge022f lowercase model count" "got $lower_model_count"; fi
 }
 
 # ===========================================================================

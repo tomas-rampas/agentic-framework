@@ -564,9 +564,10 @@ try {
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable","prompt":"a\ud800b"}}'
     Assert 'fable+surrogate still denied reason A (EDGE-021b)' ($r.Code -eq 0 -and $r.Out -match 'top model tier')
 
-    # (c) Explore, no model, lone surrogate in prompt -> silent (cannot echo exactly)
+    # (c) Explore, no model, lone surrogate in prompt -> cannot echo safely,
+    # falls back to deny rather than inheriting the session tier (M1 fix).
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}'
-    Assert 'Explore+surrogate silent, cannot echo exactly (EDGE-021c)' ($r.Code -eq 0 -and -not $r.Out)
+    Assert 'Explore+surrogate falls back to deny (EDGE-021c)' ($r.Code -eq 0 -and $r.Out -match 'could not be rewritten safely')
 
     # (d) framework agent, no model, lone surrogate in prompt -> silent
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}'
@@ -603,6 +604,44 @@ try {
     } finally {
         Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue
     }
+
+    # EDGE-022: per-field surrogate sanitising (B1), rewrite fallback-deny (M1), case-sensitive fields (m1)
+
+    # (a) lone surrogate INSIDE the model field itself -> deny reason A
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"agentic-framework:python-expert","model":"fable\ud800","prompt":"p"}}'
+    Assert 'model-field-surrogate denied reason A (EDGE-022a)' ($r.Code -eq 0 -and $r.Out -match 'top model tier')
+
+    # (b) lone surrogate INSIDE the model field on a fork -> deny reason C
+    # (one bad field must not suppress the OTHER field's check)
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"fork","model":"sonnet\ud800","prompt":"p"}}'
+    Assert 'fork-model-field-surrogate denied reason C (EDGE-022b)' ($r.Code -eq 0 -and $r.Out -match 'runs on its parent model')
+
+    # (c) lone surrogate INSIDE subagent_type: sanitised value is not a
+    # recognised built-in name -> silent (pinned agreed behaviour)
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"Explore\ud800"}}'
+    Assert 'subagent-type-field-surrogate silent (EDGE-022c)' ($r.Code -eq 0 -and -not $r.Out)
+
+    # (d) Explore/Plan/no-type, no model, lone surrogate in prompt -> falls
+    # back to deny naming TYPE/TIER; no updatedInput anywhere
+    foreach ($case in @(
+        @{ Payload = '{"tool_input":{"subagent_type":"Explore","prompt":"a\ud800b"}}'; Tier = 'haiku'; Label = 'Explore' },
+        @{ Payload = '{"tool_input":{"subagent_type":"Plan","prompt":"a\ud800b"}}'; Tier = 'sonnet'; Label = 'Plan' },
+        @{ Payload = '{"tool_input":{"prompt":"a\ud800b"}}'; Tier = 'sonnet'; Label = 'no-type' }
+    )) {
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' $case.Payload
+        Assert "$($case.Label) fallback-deny names tier $($case.Tier) (EDGE-022d)" ($r.Code -eq 0 -and $r.Out -match "model set to $($case.Tier)")
+        Assert "$($case.Label) fallback-deny has no updatedInput key (EDGE-022d)" (-not ($r.Out -match 'updatedInput'))
+    }
+
+    # (e) framework agent, no model, lone surrogate in prompt -> still silent
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"subagent_type":"agentic-framework:python-expert","prompt":"a\ud800b"}}'
+    Assert 'framework-agent-surrogate silent (EDGE-022e)' ($r.Code -eq 0 -and -not $r.Out)
+
+    # (f) case-variant field: caller's "Model" survives, exactly one lowercase "model" field
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{"description":"d","prompt":"p","Model":"zzz","subagent_type":"Explore"}}'
+    $lowerModelCount22f = ([regex]::Matches($r.Out, '"model"\s*:')).Count
+    Assert 'case-variant-field preserves caller Model (EDGE-022f)' ($r.Code -eq 0 -and $r.Out -match '"Model":"zzz"')
+    Assert 'case-variant-field has exactly one lowercase model field (EDGE-022f)' ($lowerModelCount22f -eq 1)
 } finally {
     if ($null -ne $savedFloor) { $env:CLAUDE_CODE_SUBAGENT_MODEL = $savedFloor } else { Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
     if ($null -ne $savedGuard) { $env:AF_MODEL_GUARD = $savedGuard } else { Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue }
