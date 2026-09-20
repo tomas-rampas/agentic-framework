@@ -485,6 +485,18 @@ try {
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' '{"tool_input":{}}'
     Assert 'empty-object tool_input denied reason B general-purpose (EDGE-013)' ($r.Code -eq 0 -and $r.Out -match 'Built-in agent general-purpose')
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'my-custom-agent' } })
+    Assert 'unknown agent without model is NOT denied (known limit: frontmatter is invisible to the hook) (EDGE-016)' ($r.Code -eq 0 -and -not $r.Out)
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'other-plugin:some-agent' } })
+    Assert 'other-plugin-scoped unknown agent is NOT denied (known limit) (EDGE-016)' ($r.Code -eq 0 -and -not $r.Out)
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'my-custom-agent'; model = 'fable' } })
+    Assert 'top-tier rule still binds for unknown agents (reason A) (EDGE-016)' ($r.Code -eq 0 -and $r.Out -match 'top model tier')
+
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'my-custom-agent'; model = 'haiku' } })
+    Assert 'unknown agent with a legitimate tier is silent (EDGE-016)' ($r.Code -eq 0 -and -not $r.Out)
 } finally {
     if ($null -ne $savedFloor) { $env:CLAUDE_CODE_SUBAGENT_MODEL = $savedFloor } else { Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
     if ($null -ne $savedGuard) { $env:AF_MODEL_GUARD = $savedGuard } else { Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue }

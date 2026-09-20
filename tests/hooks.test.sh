@@ -2209,6 +2209,29 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-013] non-object tool_input passes silently
   assert_out_contains "empty-object tool_input denied reason B general-purpose" "Built-in agent general-purpose"
 }
 
+section "[PRETOOLUSE-MODEL-GUARD-EDGE-016] unknown agent type without model is a documented, tested limitation"
+{
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"my-custom-agent"}}')"
+  RUN_RC=$?
+  assert_rc_zero "unknown agent without model hook exits 0"
+  assert_out_empty "unknown agent without model is NOT denied (known limit: frontmatter is invisible to the hook)"
+
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"other-plugin:some-agent"}}')"
+  RUN_RC=$?
+  assert_rc_zero "other-plugin-scoped unknown agent hook exits 0"
+  assert_out_empty "other-plugin-scoped unknown agent is NOT denied (known limit)"
+
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"my-custom-agent","model":"fable"}}')"
+  RUN_RC=$?
+  assert_rc_zero "unknown agent with model=fable hook exits 0"
+  assert_out_contains "top-tier rule still binds for unknown agents (reason A)" "top model tier"
+
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"my-custom-agent","model":"haiku"}}')"
+  RUN_RC=$?
+  assert_rc_zero "unknown agent with model=haiku hook exits 0"
+  assert_out_empty "unknown agent with a legitimate tier is silent"
+}
+
 # ===========================================================================
 # Summary
 # ===========================================================================

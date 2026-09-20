@@ -470,6 +470,11 @@ section "[MODEL-GUARD] byte-identical stdout across sh and pwsh"
   # EDGE-013 non-object tool_input passes silently; empty object still denies
   check_guard_equiv "edge013-tool-input-string" '{"tool_input":"x"}' silent
   check_guard_equiv "edge013-tool-input-empty-object" '{"tool_input":{}}' deny
+
+  # EDGE-016 unknown agent type: documented limit (silent without a model),
+  # but the top-tier rule still binds even for an unrecognised agent.
+  check_guard_equiv "edge016-unknown-agent-silent" '{"tool_input":{"subagent_type":"my-custom-agent"}}' silent
+  check_guard_equiv "edge016-unknown-agent-fable" '{"tool_input":{"subagent_type":"my-custom-agent","model":"fable"}}' deny
 }
 
 # === Summary

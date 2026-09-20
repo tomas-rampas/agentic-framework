@@ -217,7 +217,10 @@ job does the job.
   sub-agent call whose `model` names the top tier (`model: fable`, in any spelling or as a
   full model id), denies every `fork`, and denies a built-in agent call that carries no
   `model` while `CLAUDE_CODE_SUBAGENT_MODEL` is unset or itself names the top tier.
-  `AF_MODEL_GUARD=off` disables it.
+  `AF_MODEL_GUARD=off` disables it. It is not a general ceiling: an agent type it does not
+  know (your own, or another plugin's) is never denied, because the hook cannot read that
+  agent's frontmatter — if its definition has no `model:` it inherits the caller's tier, and
+  the user-side floor above is the only cover for that case.
 
 ### Orchestration Guidelines
 When delegating tasks to specialized agents:

@@ -132,6 +132,15 @@ security or system design, costs more than the tokens the lower tier would save.
   agent's own model, so it fires identically whether the caller is the top-level session or
   a sub-agent that itself calls Agent — a sub-agent nesting another sub-agent is checked the
   same way.
+- The hook is not a general ceiling. It recognises only what the call itself shows: a
+  fork, a `model` naming the top tier, and a built-in agent type. Any other agent type — a
+  framework agent, a user-scope agent, another plugin's agent — spawned with no `model` is
+  never denied, because the hook cannot read that agent's frontmatter; if its definition
+  carries no `model:`, it inherits the caller's tier (measured: `my-custom-agent` with no
+  model and no floor passes silently). Denying unknown agents instead would wrongly block
+  every custom agent that does declare a tier. `CLAUDE_CODE_SUBAGENT_MODEL` is the cover for
+  this case, which is why the policy recommends setting it. Raised by the Copilot review of
+  PR #48; the behaviour is pinned by EDGE-016 tests in all three hook suites.
 - A `fork` always runs on its parent's model and ignores any `model` override, and the
   hook cannot know the parent's tier, so it denies every fork — including a harmless one
   inside a sonnet sub-agent. That over-blocking is the accepted price of closing the one
@@ -150,5 +159,7 @@ security or system design, costs more than the tokens the lower tier would save.
 - The one-tier-move policy in CLAUDE.md is advisory wherever the hook does not reach: the
   hook enforces only the Fable ban and the built-in-agent floor, not the "move only one
   tier" or "state the reason" rules, which rely on the orchestrator following the policy.
-- `.consistency.model_shorthand_map` values (`opus`/`sonnet`/`haiku` → pinned model ids) are
-  informational and were left unchanged (out of scope; a separate follow-up).
+- `.consistency.model_shorthand_map` values are informational: Claude Code resolves the
+  alias at runtime. They were stale and now hold the ids measured on 2026-09-20 by the same
+  probe method (`opus` → `claude-opus-5`, `sonnet` → `claude-sonnet-5`, `haiku` →
+  `claude-haiku-4-5-20251001`); re-measure when a new model generation ships.

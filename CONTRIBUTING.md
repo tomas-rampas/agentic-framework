@@ -10,7 +10,7 @@ This guide explains the anti-drift consistency system and how to contribute to t
 - **`.agent_categories`** — taxonomy that partitions agents into exactly one category group
 - **`.consistency`** — metadata controlling generator and validator behavior:
   - `deprecated_agent_names` — retired agent identifiers (flagged if re-used)
-  - `model_shorthand_map` — maps each tier shorthand to its current pinned model id, e.g. `"opus" -> "claude-opus-4-8"`. The shorthand keys (`opus`/`sonnet`/`haiku`) are the single source of truth used in both `.sub_agents[*].model` and each agent's frontmatter; the values are the runtime model ids.
+  - `model_shorthand_map` — records the model id each tier shorthand resolved to when last measured, e.g. `"opus" -> "claude-opus-5"` (measured 2026-09-20 by asking a sub-agent launched on each alias to quote its own model line). The values are informational: Claude Code resolves the alias at runtime, so re-measure rather than assume when a new model generation ships. The shorthand keys (`opus`/`sonnet`/`haiku`) are the single source of truth used in both `.sub_agents[*].model` and each agent's frontmatter; the values are the runtime model ids.
   - `doc_blocks` — registry of machine-generated documentation regions
 
 Do not hand-edit agent counts, rosters, or model assignments in documentation or scripts — they are derived from `claude.json` and the filesystem at validation time.
