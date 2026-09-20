@@ -153,6 +153,17 @@ and the conclusion is small.
   unless looked for. Anything written into the repo must be a file the change intends to
   ship. Test harnesses used to copy the tree per case, and stray directories directly
   slowed the suite (a 1.5 MB `covtest/` copy happened before migration to `git ls-files`).
+- **A shell edit must assert its effect.** Edit files with the Edit tool: it fails when the
+  text it was told to replace is not there. `sed -i` and `perl -pi` do not — a pattern that
+  matches nothing exits 0, so the edit silently does nothing and a later step reports it as
+  done. When a shell edit is genuinely the right tool (the same change across many files, a
+  single-line file such as `claude.json`), match on the stable part — replace a
+  `key: value` line by its key, never by its whole old value — and prove the result in the
+  same command by grepping for the NEW text and checking the count. Re-read any file
+  something else may have rewritten since you wrote it (memory files, whose frontmatter the
+  harness normalises; generated doc blocks; a file a sub-agent is working on) immediately
+  before editing it. This cost a stale memory file once: an anchored whole-line `sed` met a
+  line the harness had re-quoted, matched nothing, and exited 0.
 - **Revising a document: hand over the exact text.** When asking an agent to extend or
   reword existing content, supply that content verbatim in the prompt and name the single
   change wanted. Asking an agent to reproduce a document from a summary silently drops
