@@ -170,6 +170,19 @@ security or system design, costs more than the tokens the lower tier would save.
   hook cannot know the parent's tier, so it denies every fork — including a harmless one
   inside a sonnet sub-agent. That over-blocking is the accepted price of closing the one
   path that silently puts a sub-agent on the top tier.
+- Fail-open has to be decided per branch, not per payload. Found by the 4.5.1 security
+  pass and present since 4.5.0: `jq` (measured on 1.8.1) rejects a whole document that
+  contains a lone surrogate escape such as `\ud800` anywhere, so the `.sh` hit its fail-open
+  exit before it ever read `subagent_type` — a `fork` or top-tier call carrying such a prompt
+  ran unguarded on the POSIX path, while the `.ps1` denied it. A model writes its own
+  tool-call JSON, so the escape is reachable. Now, when the payload does not parse, the
+  `.sh` decides from a copy in which every surrogate escape is replaced by `�`; the two
+  decision fields never contain them, so the decision is unaffected. That copy is never
+  echoed: the rewrite still serialises the original payload, and when it cannot, it prints
+  nothing. A deny never fails open on a prompt; a rewrite never alters one.
+- Duplicate fields in `tool_input` are collapsed to the last occurrence by both
+  implementations (the `.ps1` copy loop used to echo both). Claude Code builds the payload
+  from an object, so this is unreachable in practice; the two implementations agree anyway.
 - The rewrite can raise a tier as well as lower it. The hook cannot see the session's
   model, so a user whose session already runs on `haiku` gets `sonnet` for `Plan`,
   `general-purpose` and `claude`, where inheriting would have been cheaper. An explicit

@@ -236,8 +236,8 @@ job does the job.
   The hook is not a general ceiling: an agent type it does not know (your own, or another
   plugin's) is neither denied nor rewritten, because the hook cannot read that agent's
   frontmatter — if its definition has no `model:` it inherits the caller's tier, and this
-  variable is the only cover for that case. When it is set, the hook leaves built-in calls
-  alone and the variable decides.
+  variable is the only cover for that case. When it holds a usable tier (non-empty and not
+  naming the top tier), the hook leaves built-in calls alone and the variable decides.
 
 ### Orchestration Guidelines
 When delegating tasks to specialized agents:
