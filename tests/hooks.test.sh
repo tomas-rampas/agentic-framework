@@ -2038,7 +2038,7 @@ run_guard() {
   # $1 = payload; runs the .sh guard with BOTH guard variables unset, whatever
   # the invoking shell exports. A case that needs one of them set does not
   # use this helper: it calls the hook directly with its own
-  # `env -u OTHER VAR=value` (see EDGE-003, EDGE-005, EDGE-009, EDGE-011).
+  # `env -u OTHER VAR=value` (e.g. EDGE-003, EDGE-005, EDGE-009, EDGE-011, EDGE-021g).
   printf '%s' "$1" | env -u CLAUDE_CODE_SUBAGENT_MODEL -u AF_MODEL_GUARD sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1
 }
 
