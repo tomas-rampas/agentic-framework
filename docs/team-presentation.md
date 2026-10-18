@@ -234,7 +234,7 @@ Design philosophy: **one hard gate at the single choke point** (all work becomes
 
 *Field note: minutes after installation, the gate blocked its own author's session — for having unreviewed commits. It was reviewing the commits that created it.*
 
-### 3.4 Skills — procedural knowledge (9)
+### 3.4 Skills — procedural knowledge (10)
 
 Loaded on demand when a task matches. An agent is *someone to delegate to*; a skill is *knowledge the current agent absorbs*.
 
@@ -242,6 +242,7 @@ Loaded on demand when a task matches. An agent is *someone to delegate to*; a sk
 |---|---|
 | agent-debugger | Diagnose routing/loading/config failures |
 | agent-routing-advisor | Pick the right agent or agent sequence |
+| code-review | Review a PR, branch or diff in three ordered passes (architecture → logic → idioms) with the five-question evaluator, a Chesterton's Fence provenance check, and ICE-prefixed findings under a summary-first report |
 | code-scaffolder | Bootstrap idiomatic projects per language |
 | code-scoring-loop | Score a code diff via the specialist agents, rewrite the weakest parts, rescore until it plateaus — before, never instead of, the review gates |
 | dependency-checker | Verify the toolchain (git, jq, pwsh 7, node, uv) |
