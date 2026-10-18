@@ -40,7 +40,7 @@ Boundaries:
 - Review only the diff unless the caller widens the scope. Read surrounding code whenever a hunk alone would mislead.
 - No target yields a non-empty diff (no changes against the base, nothing uncommitted), or no base can be determined: say so in one line, ask for the target or base, and emit no findings and no verdict.
 - Large diff: more than 40 changed files, or more than 2,000 changed lines (insertions plus deletions; the caller may override either number). Measure with `git diff --shortstat <base>...HEAD` (branch), `git diff --shortstat` plus `git diff --cached --shortstat` (uncommitted), or `gh pr view <n> --json changedFiles,additions,deletions` (PR).
-  - Pass 1 runs on the whole diff. Rank files by risk, highest first; run passes 2 and 3 down the ranking and stop before the running total passes 40 files or 2,000 lines, whichever comes first.
+  - Pass 1 runs on the whole diff. Rank files by risk, highest first; the top-ranked file always gets passes 2 and 3, then continue down the ranking and stop before the running total passes 40 files or 2,000 lines, whichever comes first.
   - Risk order: `detect_changes_tool` results by descending risk score when the graph is available; otherwise files that touch authentication, permissions, crypto, SQL or shell construction, concurrency primitives, error handling, or persisted state and schema first, then the rest by changed lines descending.
   - The coverage line names every file that got pass 1 only, and the Summary verdict reason says "partial coverage".
 - `gh` missing or not authenticated (`gh auth status` fails): fall back to the local branch when the caller names the PR's head branch and `git branch --show-current` prints it. Otherwise stop, quote the exact `gh` error, ask, and emit no findings and no verdict. Never reconstruct a PR description from memory.
@@ -119,9 +119,9 @@ name the evidence that would resolve it (for example the pre-squash commit or
 the original ticket).
 
 Report the outcome on the Summary's `Chesterton check` line: `n/a` = no trigger
-fired; `investigated` = every triggered change has a located introducing commit
-or issue; `unverified` = at least one triggered change has no recoverable
-provenance (its finding names it).
+fired; `investigated (<sha>[, <sha>])` = every triggered change has a located
+introducing commit or issue, the commits listed; `unverified` = at least one
+triggered change has no recoverable provenance (its finding names it).
 
 ## ICE prefixes
 
@@ -158,7 +158,10 @@ Emit exactly this structure. The verdict is `CHANGES_REQUIRED` if and only if at
 least one `[Blocker]` is listed, otherwise `APPROVED`: the last line is
 `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`, it appears once, and it is
 never quoted elsewhere in the output. The Summary's `Verdict:` line is prose;
-only the last line carries the machine token. With zero findings, the Summary
+only the last line carries the machine token. Under partial coverage,
+`VERDICT: APPROVED` means no blocker in the files that received passes 2 and 3;
+the caller reads the Coverage line before treating it as merge approval. With
+zero findings, the Summary
 (with `Top findings: none`), the five answers, the coverage and provenance
 lines, and What's good are still emitted and counts read 0. The Blocker entry
 below is a worked example of the finding shape; replace it with the real
@@ -177,7 +180,7 @@ Correctness: <one line>
 Safety & Performance: <one line>
 Maintainability: <one line>
 Coverage: passes 1-3 over <n> of <N> changed files; pass 1 only: <files | none>
-Chesterton check: <n/a | investigated | unverified>
+Chesterton check: <n/a | investigated (<sha>[, <sha>]) | unverified>
 
 ### [Blocker]
 - [Blocker] src/api/auth.ts:42 (removed) - The 256-byte length check on the token was removed.
@@ -211,4 +214,4 @@ VERDICT: CHANGES_REQUIRED
 
 - `security-specialist` - depth on a security `[Blocker]` when the review alone cannot settle exploitability.
 - `comprehensive-analyst` on `sonnet` - the executor when an orchestrator session applies this skill to a diff over the large-diff threshold (Model Tiering Policy in CLAUDE.md); the orchestrator reviews the returned report.
-- The skill itself runs inline in whichever session invokes it.
+- The skill runs inline in whichever agent applies it: the invoking session, or the delegated analyst on a large diff.
