@@ -31,22 +31,22 @@ paths fall back as Commands describes. Steps 2 and 3 fall through to the first
 that yields a non-empty diff:
 
 1. An explicit target from the caller: path(s), a PR number, a named branch (`git diff <base>...<branch>`, reads via `git show <branch>:<path>`), or uncommitted work (step 3's commands, even when the branch has commits ahead).
-2. The current branch against its base: the stated base, else `git symbolic-ref --short refs/remotes/origin/HEAD` when it is set, else the first of `origin/main`, `origin/master`, `main`, `master` that exists (the order the framework's Stop gate uses). A missing base stops (below) unless `git status --porcelain` is non-empty, in which case step 3 applies; an empty diff falls through. When the tree is dirty and the branch diff is reviewed, record `uncommitted changes present, not reviewed` in the Target line's fallback field and read files with `git show HEAD:<path>` so citations come from the reviewed commit.
+2. The current branch against its base: the stated base, else `git symbolic-ref --short refs/remotes/origin/HEAD` when it is set, else the first of `origin/main`, `origin/master`, `main`, `master` that exists (the order the framework's Stop gate uses). A missing base stops (below) unless `git status --porcelain` is non-empty, in which case step 3 applies with `fallback: no base found; committed branch work not reviewed`; an empty diff falls through. When the tree is dirty and the branch diff is reviewed, record `uncommitted changes present, not reviewed` in the Target line's fallback field and read files with `git show HEAD:<path>` so citations come from the reviewed commit.
 3. Uncommitted work.
 
 Commands:
 
-- Paths: the first non-empty of `git diff <base>...HEAD -- <paths>` and `git diff HEAD -- <paths>` (staged and unstaged together; first when the caller says the paths are uncommitted work), plus `git ls-files --others --exclude-standard -- <paths>` reviewed whole; when all are empty, review each named file whole, measured with `wc -l`, counted as changed files, and recorded as `whole-file review` in the Target line's fallback field. When the committed diff was used and `git status --porcelain -- <paths>` is non-empty, record `uncommitted changes present, not reviewed` in the fallback field and read files with `git show HEAD:<path>`. Paths given with a PR number restrict the review to `git diff <remote>/<baseRefName>...<head> -- <paths>`, with `<remote>` and `<head>` as the PR bullet resolves them.
-- Branch: `git diff --stat <base>...HEAD` first for blast radius, then `git diff <base>...HEAD` (three-dot, merge-base semantics; `git merge-base <base> HEAD` prints the base commit the graph step takes).
+- Paths: the first non-empty of `git diff <base>...<head> -- <paths>` and `git diff HEAD -- <paths>` (staged and unstaged together; first when the caller says the paths are uncommitted work), the latter plus `git ls-files --others --exclude-standard -- <paths>` reviewed whole; when all are empty, review each named file whole, measured with `wc -l`, counted as changed files, and recorded as `whole-file review` in the Target line's fallback field. When the committed diff was used and `git status --porcelain -- <paths>` is non-empty, record `uncommitted changes present, not reviewed` (untracked files included) in the fallback field and read files with `git show <head>:<path>`. Paths given with a PR number restrict the review to `git diff <remote>/<baseRefName>...<head> -- <paths>`, with `<remote>` and `<head>` as the PR bullet resolves them.
+- Branch: `<head>` is `git rev-parse HEAD` for the current branch or `git rev-parse <branch>` for a named one. `git diff --stat <base>...<head>` first for blast radius, then `git diff <base>...<head>` (three-dot, merge-base semantics; `git merge-base <base> <head>` prints the base commit the graph step takes). A named branch that is not checked out (`<head>` differs from `git rev-parse HEAD`) is read through `git show <head>:<path>`, has its history searched against `<head>`, and skips the graph step with `graph: skipped (branch not checked out)`; a named branch that is the current branch gets step 2's dirty-tree record.
 - Uncommitted: `git diff HEAD` (staged and unstaged in one diff; `git diff --cached` when HEAD has no commits yet), plus every file `git ls-files --others --exclude-standard` lists, each reviewed whole.
-- PR number: `gh pr view <n>` (title, body, linked issues), then `gh pr diff <n>`, which is the diff under review in both PR paths below; when GitHub refuses the diff for size, use `git diff <remote>/<baseRefName>...<head>` after the fetches below. `<remote>` is the base repository's remote: `origin` unless `origin` is a fork. The base is the remote copy of the PR's base branch, never the local one, which is stale after `gh pr checkout`: `git fetch <remote> <baseRefName>` (`baseRefName` from `gh pr view <n> --json baseRefName -q .baseRefName`), then `<remote>/<baseRefName>`. When `gh pr view <n> --json headRefOid -q .headRefOid` equals `git rev-parse HEAD`, `<head>` is `HEAD` and the checkout serves file reads (through `git show HEAD:<path>` when the tree is dirty), history, and the graph step. Otherwise `git fetch <remote> pull/<n>/head` (both fetches write only to `.git`, never to the working tree), `<head>` is `FETCH_HEAD`, read files with `git show FETCH_HEAD:<path>`, run history searches against it, and skip the graph step with `graph: skipped (PR head not checked out)` on the coverage line. Any other `gh` or `git fetch` failure on a PR target is a stop case: quote the error, ask, and emit no findings and no verdict.
+- PR number: `gh pr view <n>` (title, body, linked issues), then `gh pr diff <n>`, which is the diff under review in both PR paths below; when GitHub refuses the diff for size, use `git diff <remote>/<baseRefName>...<head>` after the fetches below. `<remote>` is the base repository's remote: `origin` unless `origin` is a fork. The base is the remote copy of the PR's base branch, never the local one, which is stale after `gh pr checkout`: `git fetch <remote> <baseRefName>` (`baseRefName` from `gh pr view <n> --json baseRefName -q .baseRefName`), then `<remote>/<baseRefName>`. When `gh pr view <n> --json headRefOid -q .headRefOid` equals `git rev-parse HEAD`, `<head>` is `HEAD` and the checkout serves file reads (through `git show HEAD:<path>` when the tree is dirty), history, and the graph step. Otherwise `git fetch <remote> pull/<n>/head` (both fetches write only to `.git`, never to the working tree), `<head>` is `git rev-parse FETCH_HEAD` taken right after that fetch (another fetch in the same repository moves `FETCH_HEAD`), read files with `git show <head>:<path>`, run history searches against `<head>`, and skip the graph step with `graph: skipped (PR head not checked out)` on the coverage line. Any other `gh` or `git fetch` failure on a PR target is a stop case: quote the error, ask, and emit no findings and no verdict.
 
 Boundaries:
 
 - Review only the diff unless the caller widens the scope. Read surrounding code whenever a hunk alone would mislead.
 - No target yields a non-empty diff (no changes against the base, nothing uncommitted), or no base can be determined for a branch target (paths without a base proceed through `git diff HEAD -- <paths>`): say so in one line, ask for the target or base, and emit no findings and no verdict. These stop cases, the PR fetch failure above, and the `gh` failure below are the only outputs that do not use the report template.
-- Generated, vendored, and lock files (lockfiles, snapshots, minified or generated code, vendored dependencies) get pass 1 only in any diff: name them in the coverage line's `generated (pass 1 only)` field; they count neither toward the size measurement, nor toward partial coverage, nor toward `<N>` on the coverage line, and the Chesterton triggers skip their deleted lines. When every changed file is generated, passes 2 and 3 run on the manifest-level change instead (which dependency or artifact moved, from what to what, and why).
-- Large diff: more than 40 changed files, or more than 2,000 changed lines (insertions plus deletions; the caller may override either number). Measure per file, because ranking and the budget need per-file counts: `git diff --numstat <base>...HEAD [-- <paths>]` (branch, or paths against the base), `git diff HEAD --numstat [-- <paths>]` plus `wc -l` of the untracked files (whenever the `git diff HEAD` form was used), or `gh pr view <n> --json files` (PR).
+- Generated, vendored, and lock files (lockfiles, snapshots, minified or generated code, vendored dependencies) get pass 1 only in any diff: name them in the coverage line's `generated (pass 1 only)` field; they count neither toward the size measurement, nor toward partial coverage, nor toward `<N>` on the coverage line, and the Chesterton triggers skip their deleted lines. A vendored file whose change is a hand edit rather than a re-vendoring is ordinary code. When every changed file is generated, passes 2 and 3 run on the manifest-level change instead (which dependency or artifact moved, from what to what, and why) and the coverage line's `<n> of <N> changed files` reads `the manifest-level change`.
+- Large diff: more than 40 changed files, or more than 2,000 changed lines (insertions plus deletions; the caller may override either number). Measure per file, because ranking and the budget need per-file counts: `git diff --numstat <base>...<head> [-- <paths>]` (branch, or paths against the base), `git diff HEAD --numstat [-- <paths>]` plus `wc -l` of the untracked files (whenever the `git diff HEAD` form was used), or `git diff --numstat <remote>/<baseRefName>...<head>` after the fetches (PR).
   - Pass 1 runs on the whole diff. Before ranking, run the Chesterton's Fence triggers over every deleted line outside generated, vendored, and lock files; a file with a triggered deletion always gets passes 2 and 3. These forced files count toward the running total and go first.
   - Rank the remaining files by risk, highest first; the top-ranked file always gets passes 2 and 3, then continue down the ranking and stop before the running total passes the depth budget: 40 files or 2,000 lines, whichever comes first, unless the caller states another budget. A delegated executor with no stated budget reviews the whole diff in depth; when the diff exceeds what it can hold in depth, it applies the partial-coverage rule and says so rather than claim full coverage.
   - Risk order: `detect_changes_tool` results when the graph is available, a file's risk being that of its highest-ranked function, with files the graph does not rank following in the heuristic order; otherwise files that touch authentication, permissions, crypto, SQL or shell construction, concurrency primitives, error handling, or persisted state and schema first, then the rest by changed lines descending.
@@ -65,7 +65,7 @@ right size, does it stay inside the layers it should.
 Code graph lead-in (skip for non-code diffs, a single known file, or languages
 the graph does not parse):
 
-- Open with `mcp__plugin_agentic-framework_code-review-graph__detect_changes_tool` at `detail_level: "minimal"`, `base` = the commit `git merge-base <base> HEAD` printed.
+- Open with `mcp__plugin_agentic-framework_code-review-graph__detect_changes_tool` at `detail_level: "minimal"`, `base` = the commit `git merge-base <base> <head>` printed. The graph reads the checkout, so this step runs only when `<head>` is the checked-out commit; Scope names the skip note otherwise.
 - When a result's `_graph.head_matches_build` is `false`, a tool answers `status: not_ready`, or no graph exists yet, call `mcp__plugin_agentic-framework_code-review-graph__build_or_update_graph_tool` once, then continue.
 - Graph output is a lead, not a finding: confirm it in the code and cite the code.
 - Graph unavailable or cannot be built: record `graph: unavailable (<reason>)` on the coverage line and proceed from the diff.
@@ -112,9 +112,11 @@ any refactor of such code.
 
 Evidence: the introducing commit - `git log -S'<identifier>' -- <path>` (a short
 identifier from the removed lines, never raw code with quotes) or `git blame` on
-the pre-image, which for every target is `git blame $(git merge-base <base> <head>) -- <path>`
-because removed lines do not exist at the head - plus its linked issue or PR, and
-from them the reason the code existed. A located commit with no recoverable reason is not evidence. Summarize
+the pre-image, which is `git blame $(git merge-base <base> <head>) -- <path>` for
+committed targets because removed lines do not exist at the head, and
+`git blame HEAD -- <path>` for uncommitted work (paths reviewed through
+`git diff HEAD` included) - plus its linked issue or PR, and from them the reason
+the code existed. A located commit with no recoverable reason is not evidence. Summarize
 what you found inside the finding.
 
 Consequence:
@@ -131,9 +133,9 @@ the original ticket).
 
 Report the outcome on the Summary's `Chesterton check` line: `n/a` = no trigger
 fired; `investigated (<sha>[, <sha>])` = every triggered change has a located
-commit and a recoverable reason, the commits listed; `unverified (<path:line>[, …])`
+commit and a recoverable reason, the commits listed; `unverified (<path:line>[, ...])`
 = at least one triggered change has no recoverable reason (its finding names
-it), optionally followed by `; investigated (<sha>[, …])` for the ones that do.
+it), optionally followed by `; investigated (<sha>[, ...])` for the ones that do.
 
 ## ICE prefixes
 
@@ -183,7 +185,7 @@ findings, or with `none`.
 ## Summary
 Verdict: <Approved | Changes required> - <one-line reason; "partial coverage: <k> files not reviewed in depth; split the diff or raise the budget" when it applies>
 What it does: <one or two sentences on what the change does>
-Target: <PR #<n> <head-sha> vs <remote>/<baseRefName> (<merge-base>..<head>) | <branch> vs <base> (<merge-base>..<head>) | uncommitted @ <sha> | paths <list> @ <sha>>; fallback: <none | reason>
+Target: <PR #<n> <head-sha> vs <remote>/<baseRefName> (<merge-base>..<head-sha>) | <branch> vs <base> (<merge-base>..<head-sha>) | uncommitted @ <sha> | paths <list> @ <sha> | paths <list> in PR #<n> <head-sha>>; fallback: <none | reason>
 Counts: Blocker <n> | Suggestion <n> | Question <n> | Nitpick <n>
 Top findings (at most 3, blockers first): <none | the indented lines below>
   - [<prefix>] <path:line - claim>
@@ -193,7 +195,7 @@ Correctness: <one line>
 Safety & Performance: <one line>
 Maintainability: <one line>
 Coverage: passes 1-3 over <n> of <N> changed files; pass 1 only: <files | none>; generated (pass 1 only): <files | none>; graph: <used | skipped (<reason>) | unavailable (<reason>)>
-Chesterton check: <n/a | investigated (<sha>[, <sha>]) | unverified (<path:line>[, …])[; investigated (<sha>[, …])]>
+Chesterton check: <n/a | investigated (<sha>[, <sha>]) | unverified (<path:line>[, ...])[; investigated (<sha>[, ...])]>
 
 ## Findings
 
