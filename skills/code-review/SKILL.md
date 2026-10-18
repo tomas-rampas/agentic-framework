@@ -19,35 +19,36 @@ so it loads as `agentic-framework:code-review` and is invoked as
 - The user asks to review a PR, a branch, a diff, uncommitted work, or named files.
 - A session or agent wants a review procedure without launching a reviewer agent.
 - It does not replace `code-review-gatekeeper` or `peer-review-critic`; those
-  gates keep their own methodology and their own verdict handling. The Stop gate
-  records only `peer-review-critic` runs, so this skill's output never satisfies
-  or unlocks it.
+  gates keep their own methodology and their own verdict handling. The Stop
+  gate's recorder hook records only `peer-review-critic` runs, so this skill's
+  output never satisfies or unlocks the gate.
 
 ## Scope
 
-Resolve the target in this order. An explicit target (step 1) is final: when it
-yields nothing, stop under the empty-diff rule below. Steps 2 and 3 fall through
-to the first that yields a non-empty diff:
+Resolve the target in this order. An explicit PR that yields nothing stops under
+the empty-diff rule below; explicit paths fall back as Commands describes. Steps
+2 and 3 fall through to the first that yields a non-empty diff:
 
 1. Explicit path(s) or a PR number from the caller.
-2. The current branch against its base: the stated base, else the first of `origin/main`, `origin/master`, `main`, `master` that exists (the order the framework's Stop gate uses). When `git status --porcelain` is non-empty, record `uncommitted changes present, not reviewed` in the Target line's fallback field.
+2. The current branch against its base: the stated base, else `git symbolic-ref --short refs/remotes/origin/HEAD` when it is set, else the first of `origin/main`, `origin/master`, `main`, `master` that exists (the order the framework's Stop gate uses). A missing base stops (below); only an empty diff falls through. When `git status --porcelain` is non-empty, record `uncommitted changes present, not reviewed` in the Target line's fallback field and read files with `git show HEAD:<path>` so citations come from the reviewed commit.
 3. Uncommitted work.
 
 Commands:
 
-- Paths: the first non-empty of `git diff <base>...HEAD -- <paths>` and `git diff HEAD -- <paths>` (staged and unstaged together); when both are empty, review each named file whole. Paths given with a PR number restrict the PR diff to those paths.
+- Paths: the first non-empty of `git diff <base>...HEAD -- <paths>` and `git diff HEAD -- <paths>` (staged and unstaged together); when both are empty, review each named file whole, measured with `wc -l` and counted as changed files. When the committed diff was used and `git status --porcelain -- <paths>` is non-empty, record `uncommitted changes present, not reviewed` in the Target line's fallback field and read files with `git show HEAD:<path>`. Paths given with a PR number restrict the PR diff to those paths.
 - Branch: `git diff --stat <base>...HEAD` first for blast radius, then `git diff <base>...HEAD` (three-dot, merge-base semantics; `git merge-base <base> HEAD` prints the base commit the graph step takes).
 - Uncommitted: `git diff HEAD` (staged and unstaged in one diff; `git diff --cached` when HEAD has no commits yet), plus every file `git ls-files --others --exclude-standard` lists, each reviewed whole.
-- PR number: `gh pr view <n>` (title, body, linked issues), then `gh pr diff <n>`; the base is `gh pr view <n> --json baseRefName -q .baseRefName`. When `gh pr view <n> --json headRefOid -q .headRefOid` equals `git rev-parse HEAD`, continue as a branch review. Otherwise `git fetch origin pull/<n>/head` (writes only to `.git`, never to the working tree), read files with `git show FETCH_HEAD:<path>`, run `git log -S` against `FETCH_HEAD` and `git blame` at the PR's merge base (`git blame $(git merge-base <base> FETCH_HEAD) -- <path>`, because removed lines no longer exist at the head), and skip the graph step with `graph: skipped (PR head not checked out)` on the coverage line.
+- PR number: `gh pr view <n>` (title, body, linked issues), then `gh pr diff <n>`, which is the diff under review in both PR paths below. The base is the remote copy of the PR's base branch, never the local one, which is stale after `gh pr checkout`: `git fetch origin <baseRefName>` (`baseRefName` from `gh pr view <n> --json baseRefName -q .baseRefName`; use the base repository's remote when `origin` is a fork), then `origin/<baseRefName>`. When `gh pr view <n> --json headRefOid -q .headRefOid` equals `git rev-parse HEAD`, the checkout serves file reads, `git log -S`, `git blame`, and the graph step. Otherwise `git fetch origin pull/<n>/head` (both fetches write only to `.git`, never to the working tree), read files with `git show FETCH_HEAD:<path>`, run `git log -S` against `FETCH_HEAD` and `git blame` at the PR's merge base (`git blame $(git merge-base origin/<baseRefName> FETCH_HEAD) -- <path>`, because removed lines no longer exist at the head), and skip the graph step with `graph: skipped (PR head not checked out)` on the coverage line. Any other `gh` or `git fetch` failure on a PR target is a stop case: quote the error, ask, and emit no findings and no verdict.
 
 Boundaries:
 
 - Review only the diff unless the caller widens the scope. Read surrounding code whenever a hunk alone would mislead.
 - No target yields a non-empty diff (no changes against the base, nothing uncommitted), or no base can be determined for a branch target (paths without a base proceed through `git diff HEAD -- <paths>`): say so in one line, ask for the target or base, and emit no findings and no verdict. These stop cases and the `gh` failure below are the only outputs that do not use the report template.
-- Large diff: more than 40 changed files, or more than 2,000 changed lines (insertions plus deletions; the caller may override either number). Measure with `git diff --shortstat <base>...HEAD` (branch, or paths against the base), `git diff HEAD --shortstat` plus the line counts of the untracked files listed above (uncommitted, or paths without a base), or `gh pr view <n> --json changedFiles,additions,deletions` (PR).
-  - Pass 1 runs on the whole diff. Before ranking, run the Chesterton's Fence triggers over every deleted line in the diff; a file with a triggered deletion always gets passes 2 and 3.
-  - Rank the remaining files by risk, highest first; the top-ranked file always gets passes 2 and 3, then continue down the ranking and stop before the running total passes 40 files or 2,000 lines, whichever comes first.
-  - Risk order: `detect_changes_tool` results by descending risk score when the graph is available; otherwise files that touch authentication, permissions, crypto, SQL or shell construction, concurrency primitives, error handling, or persisted state and schema first, then the rest by changed lines descending. Generated, vendored, and lock files get pass 1 only: name them as such on the coverage line, but they count neither toward the size measurement nor toward partial coverage.
+- Generated, vendored, and lock files (lockfiles, snapshots, minified or generated code, vendored dependencies) get pass 1 only in any diff: name them in the coverage line's `generated (pass 1 only)` field; they count neither toward the size measurement nor toward partial coverage.
+- Large diff: more than 40 changed files, or more than 2,000 changed lines (insertions plus deletions; the caller may override either number). Measure per file, because ranking and the budget need per-file counts: `git diff --numstat <base>...HEAD [-- <paths>]` (branch, or paths against the base), `git diff HEAD --numstat [-- <paths>]` plus `wc -l` of the untracked files listed above (uncommitted, or paths without a base), or `gh pr view <n> --json files` (PR).
+  - Pass 1 runs on the whole diff. Before ranking, run the Chesterton's Fence triggers over every deleted line in the diff; a file with a triggered deletion always gets passes 2 and 3. These forced files count toward the running total and go first.
+  - Rank the remaining files by risk, highest first; the top-ranked file always gets passes 2 and 3, then continue down the ranking and stop before the running total passes the depth budget: 40 files or 2,000 lines, whichever comes first, unless the caller states another budget. A delegated executor with no stated budget reviews the whole diff in depth.
+  - Risk order: `detect_changes_tool` results when the graph is available, a file's risk being that of its highest-ranked function, with files the graph does not rank following in the heuristic order; otherwise files that touch authentication, permissions, crypto, SQL or shell construction, concurrency primitives, error handling, or persisted state and schema first, then the rest by changed lines descending.
   - The coverage line names every file that got pass 1 only. Partial coverage is an unverified pass: the verdict is `CHANGES_REQUIRED` with the reason `partial coverage: <k> files not reviewed in depth; split the diff or raise the budget`.
 - `gh` missing or not authenticated (`gh auth status` fails): fall back to the local branch when the caller names the PR's head branch and `git branch --show-current` prints it, and record the fallback and the assumed base on the Summary's `Target:` line. Otherwise stop, quote the exact `gh` error, ask, and emit no findings and no verdict. Never reconstruct a PR description from memory.
 - Non-code diff (docs-only, configuration-only, data files): all three passes and the five questions still run with the adapted lenses named in passes 2 and 3; skip the code graph. In a mixed diff, apply the adapted lenses to the non-code files and the normal lenses to the rest.
@@ -169,7 +170,8 @@ Emit exactly this structure. The verdict is `CHANGES_REQUIRED` when at least one
 is `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`, it appears once, and it is
 never quoted elsewhere in the output. The Summary's `Verdict:` line is prose;
 only the last line carries the machine token, and `VERDICT: APPROVED` always
-means the whole diff received all three passes. With zero findings, the Summary
+means every file except the named generated, vendored, or lock files received
+all three passes. With zero findings, the Summary
 (with `Top findings: none`), the five answers, the coverage and provenance
 lines, and What's good are still emitted and counts read 0. The Blocker entry
 below is a worked example of the finding shape; replace it with the real
@@ -177,7 +179,7 @@ findings, or with `none`.
 
 ```markdown
 ## Summary
-Verdict: <Approved | Changes required> - <one-line reason; "partial coverage: <k> files not reviewed in depth" when it applies>
+Verdict: <Approved | Changes required> - <one-line reason; "partial coverage: <k> files not reviewed in depth; split the diff or raise the budget" when it applies>
 What it does: <one or two sentences on what the change does>
 Target: <PR #<n> @ <sha> | <branch> vs <base> (<merge-base>..<head>) | uncommitted @ <sha> | paths <list> @ <sha>>; fallback: <none | reason>
 Counts: Blocker <n> | Suggestion <n> | Question <n> | Nitpick <n>
@@ -188,7 +190,7 @@ Approach: <one line>
 Correctness: <one line>
 Safety & Performance: <one line>
 Maintainability: <one line>
-Coverage: passes 1-3 over <n> of <N> changed files; pass 1 only: <files | none>; graph: <used | skipped (<reason>) | unavailable (<reason>)>
+Coverage: passes 1-3 over <n> of <N> changed files; pass 1 only: <files | none>; generated (pass 1 only): <files | none>; graph: <used | skipped (<reason>) | unavailable (<reason>)>
 Chesterton check: <n/a | investigated (<sha>[, <sha>]) | unverified (<path:line>[, …])[; investigated (<sha>[, …])]>
 
 ## Findings
@@ -225,5 +227,5 @@ VERDICT: CHANGES_REQUIRED
 ## Delegation
 
 - `security-specialist` - depth on a security `[Blocker]` when the review alone cannot settle exploitability.
-- `comprehensive-analyst` on `sonnet` - the executor when an orchestrator session applies this skill to a diff over the large-diff threshold (Model Tiering Policy in CLAUDE.md); the orchestrator reviews the returned report.
+- `comprehensive-analyst` on `sonnet` - the executor when an orchestrator session applies this skill to a diff over the large-diff threshold (Model Tiering Policy in CLAUDE.md); the delegation states the depth budget, and with none stated the executor reviews the whole diff in depth, so a delegated review is not partial by arithmetic. The orchestrator reviews the returned report.
 - The skill runs inline in whichever agent applies it: the invoking session, or the delegated analyst on a large diff.
