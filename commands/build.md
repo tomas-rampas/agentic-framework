@@ -18,8 +18,8 @@ human-gated planning and per-todo commits, use `/agentic-framework:delegate` ins
 consumes the same spec with scoped per-todo reviews. `/agentic-framework:delegate` may hand
 execution off to this loop for single-feature objectives (its spec/plan
 approval is the go-ahead); `/agentic-framework:build` itself never invokes `/agentic-framework:delegate` — it only
-borrows its Routing section and quality bar. Never run both loops
-independently on the same objective.
+borrows its Routing section, quality bar, `Pinned decisions` block and
+re-review rule. Never run both loops independently on the same objective.
 
 ## Spec
 **$ARGUMENTS**
@@ -48,8 +48,16 @@ Read the **whole spec** before writing anything: every REQ/EDGE item and its
   That section's **Model tier** rule applies to every delegation here too: frontmatter
   default, an explicit `model` for built-in agents, one-tier moves with a stated reason,
   never `fable`.
-  Frame each delegated task with the REQ-IDs it delivers and their acceptance
-  criteria.
+  Before an item's first delegation, reconcile: for each REQ/EDGE it delivers,
+  diff its acceptance criterion against the design or interface sections the
+  spec cites. Carry the result as a `Pinned decisions` block, as
+  `/agentic-framework:delegate` §3 defines it. Apply each block's doc-update
+  item to the design surface before the bar's Docs bullet is confirmed; an item
+  whose surface the spec puts out of scope is reported, not applied. A
+  criterion that cannot be honoured is the blocker in the first bullet of this
+  section.
+  Frame each delegated task with the REQ-IDs it delivers, their acceptance
+  criteria and the `Pinned decisions` block.
 - Honour the project's quality bar (build/lint/format/tests clean) exactly as
   the `/agentic-framework:delegate` command §4 defines it.
 - For a substantial diff, once the bar is green, the `code-scoring-loop`
@@ -96,3 +104,5 @@ is the user's call, not yours.
 - The framework's normal gates still apply afterward — commits go through the
   review chain and the peer-review Stop gate exactly as for any other work.
   This loop replaces *your* self-checking, not the framework's final gate.
+  Those post-build review rounds follow the **Second rounds** re-review rule of
+  `/agentic-framework:delegate` §5.
