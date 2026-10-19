@@ -149,7 +149,7 @@ mindmap
 - **peer-review-critic runs a curated toolset** (no Write/Edit/Agent) that narrows its default surface; its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
-### 3.2 Commands — the operations console (10)
+### 3.2 Commands — the operations console (12)
 
 | Command | Role |
 |---|---|
@@ -163,6 +163,8 @@ mindmap
 | `/agentic-framework:quality-report` | Quality assessment from actual config state |
 | `/agentic-framework:validate-hooks` | Hook registration parity check |
 | `/agentic-framework:migrate-legacy` | Migrate a local ~/.claude clone to the plugin distribution |
+| `/agentic-framework:setup` | Configure the bundled MCP servers' environment variables (Context7 API key, filesystem root) |
+| `/agentic-framework:log-triage` | Triage large log files locally: detect formats, fingerprint recurring issues, assess severity, suggest fixes, export JSON/SARIF/HTML/Markdown/CSV/NDJSON |
 
 ### 3.3 Hooks — the enforcement layer (5)
 
@@ -234,7 +236,7 @@ Design philosophy: **one hard gate at the single choke point** (all work becomes
 
 *Field note: minutes after installation, the gate blocked its own author's session — for having unreviewed commits. It was reviewing the commits that created it.*
 
-### 3.4 Skills — procedural knowledge (9)
+### 3.4 Skills — procedural knowledge (10)
 
 Loaded on demand when a task matches. An agent is *someone to delegate to*; a skill is *knowledge the current agent absorbs*.
 
@@ -242,8 +244,9 @@ Loaded on demand when a task matches. An agent is *someone to delegate to*; a sk
 |---|---|
 | agent-debugger | Diagnose routing/loading/config failures |
 | agent-routing-advisor | Pick the right agent or agent sequence |
+| code-review | Review a PR, branch or diff in three ordered passes (architecture → logic → idioms) with the five-question evaluator, a Chesterton's Fence provenance check, and ICE-prefixed findings under a summary-first report |
 | code-scaffolder | Bootstrap idiomatic projects per language |
-| code-scoring-loop | Score a code diff via the specialist agents, rewrite the weakest parts, rescore until it plateaus — before, never instead of, the review gates |
+| code-scoring-loop | Score a code diff via the specialist agents, with the scorer also applying the code-review skill (an open `[Blocker]` holds the loop open until the round cap), rewrite the weakest parts, rescore until it plateaus — before, never instead of, the review gates |
 | dependency-checker | Verify the toolchain (git, jq, pwsh 7, node, uv) |
 | git-workflow-assistant | Branch/commit/PR flow, incl. working *with* the Stop gate |
 | hook-config-generator | Add a new real hook (script → registration → tests) |
@@ -303,7 +306,7 @@ sequenceDiagram
 
 - Nothing is hardcoded: registry↔filesystem parity, category partition, hook registration parity, model parity, roster presence, stated-count scanning — all derived.
 - Headline numbers in the README are **generated blocks** — the docs physically cannot lie about counts.
-- A 34-assertion harness injects defects into throwaway repo copies and proves the validator catches each class.
+- A defect-injection harness copies the repo per case, breaks one thing, and proves the validator catches each class; its closing RESULT line prints the assertion count, which is why none is written here.
 
 ---
 
@@ -337,7 +340,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 |---|---|
 | Specialized agents | 21 (7 categories, 3 model tiers) |
 | Hooks | 5 .ps1/.sh implementation pairs |
-| Skills | 9 loadable knowledge modules |
+| Skills | 10 loadable knowledge modules |
 | Commands | 12 management commands |
 | MCP servers | 6 (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph) |
 | Validator checks | 15, all derived at runtime |

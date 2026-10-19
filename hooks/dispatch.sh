@@ -1,7 +1,6 @@
 #!/bin/sh
 # dispatch.sh — cross-platform hook dispatcher for the agentic-framework plugin.
-# Designed to be registered per hook in hooks/hooks.json as the primary arm of:
-# (the registration flips to this form in the interlocked registration wave)
+# Registered per hook in hooks/hooks.json as the primary arm of:
 #
 # Arms:
 #   sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <hook> \

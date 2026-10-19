@@ -529,7 +529,9 @@ section "[8] Stated-count scan (README/docs headline counts == derived values)"
   _scan_counts '[0-9]+ [Qq]uality [Gg]ates' first "$n_hooks" "quality-gate count"
 
   # ---- 8d: 'wc -l  # Should show <N>' agent-file assertion ------------------
-  # README documents `ls -1 agents/*.md | wc -l  # Should show <N>`.
+  # Guard for the legacy README line `ls -1 agents/*.md | wc -l  # Should show <N>`.
+  # No scanned file carries it today; the scan stays so a resurrected copy is
+  # measured against the real agent count instead of going stale unnoticed.
   _scan_counts 'Should show [0-9]+' last "$n_agents" "documented agent-file count"
 
   # ---- 8e: "<N> skills" / "<N> operational skills" --------------------------

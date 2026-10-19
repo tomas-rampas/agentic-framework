@@ -18,7 +18,7 @@ Display comprehensive information about all 21 specialized agents in the framewo
 ```
 
 **Filters:**
-- `--language`: Show only language expert agents
+- `--language`: Show the language and automation experts
 - `--domain`: Show only domain specialist agents
 - `--all`: Show all agents (default)
 - `--category=<category>`: Filter by specific category
@@ -68,7 +68,7 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
 ### 2. Category View (--language)
 
 ```
-🔧 LANGUAGE EXPERTS (9 agents)
+🔧 LANGUAGE & AUTOMATION EXPERTS (9 agents)
 
 ┌───────────────────┬────────────────────────────────────────────────┬────────┐
 │ Agent             │ Specialization                                  │ Status │
@@ -162,7 +162,8 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
 
 ## Agent Categories
 
-### Language Experts (9 agents)
+### Language & Automation Experts (9 agents)
+Seven language experts plus the two command-line executors, which the registry files under its automation category.
 ```
 rust-expert          → Rust systems programming
 csharp-expert        → C#/.NET development
@@ -282,7 +283,7 @@ Agent information sourced from:
 ```bash
 # By technology
 /agentic-framework:list-agents rust-expert                    # Specific agent
-/agentic-framework:list-agents --language                     # All language experts
+/agentic-framework:list-agents --language                     # Language & automation experts
 /agentic-framework:list-agents --domain                       # All specialists
 
 # By capability
