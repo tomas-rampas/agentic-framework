@@ -64,10 +64,16 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    subagent instance each round and hand it the diff, the rubric, and the
    instruction to return a 0–100 score with a one-line justification per
    criterion. Score honestly — an inflated score ends the loop early and
-   defeats it. If the **first** score is **≥ 90**, say so and stop — the loop
-   is for improvement, not ceremony.
+   defeats it. If the **first** score is **≥ 90** and the report holds no
+   open `[Blocker]`, say so and stop — the loop is for improvement, not
+   ceremony.
+   The scorer also applies the `code-review` skill
+   (`skills/code-review/SKILL.md`) to the same diff, states the depth budget
+   as the whole diff, and returns that report with the score (see
+   *The code-review report*).
 4. **Name the 1–2 weakest criteria** from the scorer's report and exactly why
-   they lost points.
+   they lost points; map each `[Suggestion]` finding onto the rubric
+   criterion it weakens, and count it toward that criterion.
 5. **Rewrite only the weak parts** (delegating to the implementing specialist
    where routing says so). Keep what scored well. Rewrites are
    **behavior-preserving**: re-run the quality bar after every rewrite; a
@@ -80,6 +86,25 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    the score trajectory (e.g. 68 → 81 → 86) — then proceed to the framework's
    normal review gates.
 
+## The code-review report
+
+The `code-review` report sharpens the loop's targets; it does not replace the
+spec gate (`spec-compliance-reviewer`) and adds no rubric criterion.
+
+- **Open `[Blocker]`**: that round cannot end the loop on score — not on a
+  first score ≥ 90, not on a plateau. The blocker is the next rewrite target
+  (step 5), rescored with the same rubric. Only the 3-iteration cap ends the
+  loop with one open, and the final report then lists it as unresolved.
+- **Against a spec**: the report's `Problem` answer must name the spec
+  `REQ-`/`EDGE-` IDs the diff delivers. Every ID the caller named that the
+  answer does not cover, or that a `[Question]` marks as unclear, goes in the
+  round's report under the words "not evidenced in the diff" — input for the
+  `spec-compliance-reviewer` gate, which still decides conformance.
+- **Partial coverage**: if the scorer still reports partial coverage despite
+  the whole-diff budget, treat it as a scoring limitation, not a defect of
+  the change. Name the files not covered in the round's report; do not cap the
+  score for it, and do not rewrite to cure it.
+
 ## Rules
 
 - The bar before the rubric — never score a build that isn't green.
@@ -88,7 +113,9 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
 - Rubric before judgment, visible in the report, never revised mid-loop.
 - Behavior-preserving only: never trade a passing test for a rubric point.
   Spec conformance is a gate (`spec-compliance-reviewer`), not a rubric
-  criterion — requirement changes do not belong in a polish loop.
+  criterion — requirement changes do not belong in a polish loop. The
+  `code-review` report feeds targets and the "not evidenced in the diff" list
+  into that gate; it never substitutes for it.
 - Advisory, and strictly *before* the gates: `code-review-gatekeeper`,
   `peer-review-critic`, and the peer-review Stop gate apply unchanged. A 95
   here skips nothing.
