@@ -43,12 +43,14 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
 
 ## The Loop
 
-1. **Scope the diff.** The unit being scored is the *change*, in one of three
-   forms: a todo's touched paths inside a `/agentic-framework:delegate` todo,
-   recomputed each round; uncommitted work (a `/agentic-framework:build` run,
-   or standalone polish of pending changes); or a committed branch against
-   its base — not the whole repository. Pre-existing debt outside the diff is
-   out of scope.
+1. **Scope the diff.** The unit being scored is the *change* as it sits
+   uncommitted in the working tree, in one of two forms: a todo's touched
+   paths inside a `/agentic-framework:delegate` todo, recomputed each round;
+   or the uncommitted work as a whole (a `/agentic-framework:build` run, or
+   standalone polish of pending changes) — not the whole repository. Committed
+   branch work is outside this loop: polish happens before the commit, and
+   committed changes go to the `code-review` skill or the review gates
+   directly. Pre-existing debt outside the diff is out of scope.
 2. **Write the rubric first — before judging.** 5–7 criteria specific to this
    change, each with a weight (weights sum to 100), drawn from what tooling
    cannot verify: naming and readability, error-handling completeness at
@@ -70,12 +72,8 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    - the instruction to apply the `code-review` skill
      (`skills/code-review/SKILL.md`) to the scored tree as the skill's
      **explicit target**, in the form from step 1, never the skill's default
-     Scope resolution: the todo's touched paths stated as uncommitted work;
-     the uncommitted work; or the branch against its base, with the scored
-     tree committed before every scoring round, the first included, because
-     the branch target reads `HEAD`, not the working tree — in that arm ask
-     the user once, before round 1, for authority to commit each round's
-     rewrites, and without it stop after round 1's report;
+     Scope resolution: the todo's touched paths stated as uncommitted work,
+     or the uncommitted work;
    - the depth budget, stated as the whole diff;
    - against a spec, the spec path and the in-scope IDs (the caller's list,
      else every `REQ-`/`EDGE-` ID in the spec);
@@ -142,15 +140,12 @@ reads the report's findings, not its `VERDICT:` line.
   spec-defect stop above) ends the loop with a blocker open; the final report
   lists it as unresolved, and a behavior-changing one still open at the cap
   goes back to implementation before the gates, with no further rescore.
-- **Wrong tree**: a code-review stop (no findings, no verdict) means the
-  evaluator saw no diff: match the target's form to where the scored tree
-  lives and rerun. In the branch arm, a `Target:` fallback reading
-  `uncommitted changes present, not reviewed` invalidates the round only when
-  `git status --porcelain` lists a file the scored diff touches: commit it
-  and rerun with the same target. Uncommitted files outside the diff leave
-  the round valid; name them in the round's report. A rerun replaces the
-  round, does not count toward the cap, and happens at most once per round.
-  Never read a wrong-tree round as a round with no blocker.
+- **Wrong tree**: a code-review stop (no findings, no verdict), or a `Target:`
+  fallback reading `uncommitted changes present, not reviewed`, means the
+  target's form did not match where the scored tree lives: match it (step 1)
+  and rerun. A rerun replaces the round, does not count toward the cap, and
+  happens at most once per round. Never read a wrong-tree round as a round
+  with no blocker.
 - **Against a spec**: the report's `Problem` answer must name the in-scope
   `REQ-`/`EDGE-` IDs the diff delivers. Every in-scope ID the answer does not
   cover, or that a `[Question]` marks as unclear, goes in the round's report
