@@ -1,6 +1,6 @@
 ---
 name: code-scoring-loop
-description: Iteratively improve a code change by having the matching specialist agent score the diff 0-100 against an explicit rubric, rewriting the weakest parts, and repeating until the score plateaus. Use after the quality bar is green (build/lint/format/tests clean) but before the review gates — e.g. polishing an implementation or refactor, or when asked to "clean up" code without concrete criteria. Code-side sibling of self-scoring-loop.
+description: Iteratively improve a pending (uncommitted) code change by having the matching specialist agent score the diff 0-100 against an explicit rubric, rewriting the weakest parts, and repeating until the score plateaus. Use after the quality bar is green (build/lint/format/tests clean) but before the review gates — e.g. polishing an implementation or refactor, or when asked to "clean up" uncommitted code without concrete criteria. Code-side sibling of self-scoring-loop.
 ---
 
 # Code-Scoring Loop
@@ -25,7 +25,7 @@ things change when the deliverable is a diff:
   test quality, idiomatic fit).
 - Before handing a substantial diff to `code-review-gatekeeper` — fewer gate
   iterations when the obvious weaknesses are already fixed.
-- The user asks to "polish", "clean up", or "tighten" code without concrete
+- The user asks to "polish", "clean up", or "tighten" pending (uncommitted) code without concrete
   criteria.
 - After the refactor step of a `/agentic-framework:delegate` todo, or the first time a `/agentic-framework:build`
   run goes green before its spec-compliance review (once per run — fix
@@ -44,10 +44,11 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
 ## The Loop
 
 1. **Scope the diff.** The unit being scored is the *change* as it sits
-   uncommitted in the working tree, in one of two forms: a todo's touched
-   paths inside a `/agentic-framework:delegate` todo, recomputed each round;
-   or the uncommitted work as a whole (a `/agentic-framework:build` run, or
-   standalone polish of pending changes) — not the whole repository. Committed
+   uncommitted in the working tree, in one of two forms: the touched paths of
+   a `/agentic-framework:delegate` todo or a `/agentic-framework:build` run,
+   recomputed each round; or the uncommitted work as a whole, for standalone
+   polish of pending changes only and only when every uncommitted path belongs
+   to the change (otherwise the paths form) — not the whole repository. Committed
    branch work is outside this loop: polish happens before the commit, and
    committed changes go to the `code-review` skill or the review gates
    directly. Pre-existing debt outside the diff is out of scope.
@@ -69,12 +70,16 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    subagent instance each round and hand it:
    - the diff of that target and the rubric, with the instruction to return
      a 0–100 score and a one-line justification per criterion;
-   - the instruction to apply the `code-review` skill
-     (`skills/code-review/SKILL.md`) to the scored tree as the skill's
-     **explicit target**, in the form from step 1, never the skill's default
-     Scope resolution: the todo's touched paths stated as uncommitted work,
-     or the uncommitted work;
+   - the instruction to apply the `agentic-framework:code-review` skill
+     (`skills/code-review/SKILL.md` in the agentic-framework plugin; never the
+     `code-review` plugin's PR command, which posts comments) to the scored
+     tree as the skill's **explicit target**, in the form from step 1, never
+     the skill's default Scope resolution: the touched paths stated as
+     uncommitted work, or the uncommitted work;
    - the depth budget, stated as the whole diff;
+   - the report conventions of step 4 and *The code-review report*: the
+     criterion tag on each `[Suggestion]`, the in-scope IDs named in the
+     `Problem` answer, the status list after the report;
    - against a spec, the spec path and the in-scope IDs (the caller's list,
      else every `REQ-`/`EDGE-` ID in the spec);
    - from the second round on, the open blockers (`path:line` and claim) to
@@ -101,12 +106,14 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
      the third, stop whatever it found) → stop. More loops past a plateau
      produce churn, not quality. The plateau test does not apply to a
      re-entered round, which followed a fix and no rewrite: continue at step 4
-     unless the cap is reached.
+     unless the cap is reached or the round scores ≥ 90 with no open
+     `[Blocker]`, which stops as a first round does.
    - Otherwise → back to step 4 (a behavior-changing blocker instead stops the
      loop, see *The code-review report*).
 7. **Report** the rubric, the final score with per-criterion breakdown, the
    score trajectory (e.g. 68 → 81 → 86), any blocker still open, the files
-   each round's review did not cover in depth, and — against a spec — the
+   each round's review did not cover in depth, any round whose evaluator was
+   not applied, and — against a spec — the
    union across rounds of the "not evidenced in the diff" lists, which the
    caller hands to `spec-compliance-reviewer` together with the coverage
    section (the `/agentic-framework:build` §2 Spec coverage section, where one
@@ -123,7 +130,7 @@ reads the report's findings, not its `VERDICT:` line.
   first score ≥ 90, not on a plateau. A blocker whose fix changes behavior
   (security hole, data loss, broken invariant, lost guardrail, out-of-scope
   change) is not a polish target: stop the loop, send the change back to
-  implementation — first a test that fails without the fix, then the fix —
+  implementation — with a failing test first where the fix adds behavior —
   and re-enter at step 3 with the same rubric, the round count carried over.
   Inside a build run, a fix that needs behavior no `REQ-`/`EDGE-` item covers
   is a spec defect: stop and tell the user, as the build command says, rather
@@ -137,15 +144,19 @@ reads the report's findings, not its `VERDICT:` line.
   merely omits is still open. Resolved and still-open statuses go in a short
   list after the report, outside its template; on a moot suggestion the
   criterion tag precedes the moot tag. Only the round cap (or the build-run
-  spec-defect stop above) ends the loop with a blocker open; the final report
-  lists it as unresolved, and a behavior-changing one still open at the cap
-  goes back to implementation before the gates, with no further rescore.
-- **Wrong tree**: a code-review stop (no findings, no verdict), or a `Target:`
-  fallback reading `uncommitted changes present, not reviewed`, means the
-  target's form did not match where the scored tree lives: match it (step 1)
-  and rerun. A rerun replaces the round, does not count toward the cap, and
-  happens at most once per round. Never read a wrong-tree round as a round
-  with no blocker.
+  spec-defect stop above) ends the loop with a blocker open; a
+  behavior-changing one still open at the cap goes back to implementation
+  before the gates, with no further rescore, and the final report, written
+  after that hand-back, lists it as unresolved.
+- **Wrong tree or no evaluator**: a code-review stop (no findings, no
+  verdict), a `Target:` fallback reading `uncommitted changes present, not
+  reviewed`, a report without the skill's `Target:` line, or one whose last
+  line is not its `VERDICT:` line, means the target was not stated in its
+  step-1 form or the skill was not applied: restate and rerun. A rerun
+  replaces the round, does not count toward the cap, and happens at most once
+  per round; if it is invalid too, the round counts as "evaluator not
+  applied", cannot end the loop on score, and step 7 lists it. Never read
+  such a round as a round with no blocker.
 - **Against a spec**: the report's `Problem` answer must name the in-scope
   `REQ-`/`EDGE-` IDs the diff delivers. Every in-scope ID the answer does not
   cover, or that a `[Question]` marks as unclear, goes in the round's report
