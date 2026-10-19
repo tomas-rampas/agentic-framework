@@ -43,9 +43,12 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
 
 ## The Loop
 
-1. **Scope the diff.** The unit being scored is the *change* (branch vs base,
-   or the todo's touched files) — not the whole repository. Pre-existing debt
-   outside the diff is out of scope.
+1. **Scope the diff.** The unit being scored is the *change*, in one of three
+   forms: a todo's touched paths inside a `/agentic-framework:delegate` todo,
+   recomputed each round; uncommitted work (a `/agentic-framework:build` run,
+   or standalone polish of pending changes); or a committed branch against
+   its base — not the whole repository. Pre-existing debt outside the diff is
+   out of scope.
 2. **Write the rubric first — before judging.** 5–7 criteria specific to this
    change, each with a weight (weights sum to 100), drawn from what tooling
    cannot verify: naming and readability, error-handling completeness at
@@ -62,17 +65,17 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    `code-review-gatekeeper`, which must stay outside the polish loop so the
    gate's judgment remains independent of the rubric. Launch a **fresh**
    subagent instance each round and hand it:
-   - the diff and the rubric, with the instruction to return a 0–100 score
-     and a one-line justification per criterion;
+   - the diff of that target and the rubric, with the instruction to return
+     a 0–100 score and a one-line justification per criterion;
    - the instruction to apply the `code-review` skill
      (`skills/code-review/SKILL.md`) to the scored tree as the skill's
-     **explicit target**, in the form whose diff is that tree, never the
-     skill's default Scope resolution: inside a `/agentic-framework:delegate`
-     todo, the todo's touched paths stated as uncommitted work; inside a
-     `/agentic-framework:build` run, or whenever the unit is uncommitted work,
-     the uncommitted work; otherwise the branch against its base, with each
-     round's rewrites and blocker fixes committed before the next scoring
-     round, because the branch target reads `HEAD`, not the working tree;
+     **explicit target**, in the form from step 1, never the skill's default
+     Scope resolution: the todo's touched paths stated as uncommitted work;
+     the uncommitted work; or the branch against its base, with the scored
+     tree committed before every scoring round, the first included, because
+     the branch target reads `HEAD`, not the working tree — in that arm ask
+     the user once, before round 1, for authority to commit each round's
+     rewrites, and without it stop after round 1's report;
    - the depth budget, stated as the whole diff;
    - against a spec, the spec path and the in-scope IDs (the caller's list,
      else every `REQ-`/`EDGE-` ID in the spec);
@@ -98,8 +101,11 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    - Improvement **< 3 points** with no open `[Blocker]`, or **3 scoring
      rounds** (the first included; a round after a re-entry counts, and after
      the third, stop whatever it found) → stop. More loops past a plateau
-     produce churn, not quality.
-   - Otherwise → back to step 4.
+     produce churn, not quality. The plateau test does not apply to a
+     re-entered round, which followed a fix and no rewrite: continue at step 4
+     unless the cap is reached.
+   - Otherwise → back to step 4 (a behavior-changing blocker instead stops the
+     loop, see *The code-review report*).
 7. **Report** the rubric, the final score with per-criterion breakdown, the
    score trajectory (e.g. 68 → 81 → 86), any blocker still open, the files
    each round's review did not cover in depth, and — against a spec — the
@@ -126,19 +132,25 @@ reads the report's findings, not its `VERDICT:` line.
   than implement it. Re-enter only once gate zero is green again, and apply
   step 6's decision after the re-entered round. A blocker fixable without a
   behavior change (wrong layer, wrong abstraction) is the next rewrite target
-  (step 5). A blocker resting on missing provenance is resolved by evidence:
+  (step 5). A blocker resting on missing provenance is settled by evidence:
   hand the next scorer the introducing commit, the issue, or the `REQ-` that
-  mandates the removal. A blocker stays open until a later scorer, given it
-  by name, confirms it resolved; one the next report merely omits is still
-  open. Resolved and still-open statuses go in a short list after the report,
-  outside its template. Only the round cap ends the loop with a blocker open;
-  the final report lists it as unresolved, and a behavior-changing one still
-  open at the cap goes back to implementation before the gates, with no
-  further rescore.
-- **Wrong tree**: a code-review stop (no findings, no verdict), or a `Target:`
-  fallback reading `uncommitted changes present, not reviewed`, means the
-  evaluator did not see the scored tree. Correct the target and rerun the
-  round; never read it as a round with no blocker.
+  mandates the removal, and it reclassifies. A blocker stays open until a
+  later scorer, given it by name, confirms it resolved; one the next report
+  merely omits is still open. Resolved and still-open statuses go in a short
+  list after the report, outside its template; on a moot suggestion the
+  criterion tag precedes the moot tag. Only the round cap (or the build-run
+  spec-defect stop above) ends the loop with a blocker open; the final report
+  lists it as unresolved, and a behavior-changing one still open at the cap
+  goes back to implementation before the gates, with no further rescore.
+- **Wrong tree**: a code-review stop (no findings, no verdict) means the
+  evaluator saw no diff: match the target's form to where the scored tree
+  lives and rerun. In the branch arm, a `Target:` fallback reading
+  `uncommitted changes present, not reviewed` invalidates the round only when
+  `git status --porcelain` lists a file the scored diff touches: commit it
+  and rerun with the same target. Uncommitted files outside the diff leave
+  the round valid; name them in the round's report. A rerun replaces the
+  round, does not count toward the cap, and happens at most once per round.
+  Never read a wrong-tree round as a round with no blocker.
 - **Against a spec**: the report's `Problem` answer must name the in-scope
   `REQ-`/`EDGE-` IDs the diff delivers. Every in-scope ID the answer does not
   cover, or that a `[Question]` marks as unclear, goes in the round's report

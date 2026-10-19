@@ -18,7 +18,7 @@ Display comprehensive information about all 21 specialized agents in the framewo
 ```
 
 **Filters:**
-- `--language`: Show only language expert agents
+- `--language`: Show the language and automation experts
 - `--domain`: Show only domain specialist agents
 - `--all`: Show all agents (default)
 - `--category=<category>`: Filter by specific category
