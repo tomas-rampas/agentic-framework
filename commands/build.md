@@ -78,6 +78,7 @@ EDGE-001 → <files/tests that satisfy it>
 
 Every REQ/EDGE ID appears exactly once. An ID you cannot map to concrete
 files/tests is not built — go back to step 1, don't rationalize.
+List each applied `Pinned decisions` doc-update item under the ID it pins.
 
 ## 3. Review ⇆ fix loop
 
