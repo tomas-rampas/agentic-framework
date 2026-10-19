@@ -45,13 +45,15 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
 
 1. **Scope the diff.** The unit being scored is the *change* as it sits
    uncommitted in the working tree, in one of two forms: the touched paths of
-   a `/agentic-framework:delegate` todo or a `/agentic-framework:build` run,
-   recomputed each round; or the uncommitted work as a whole, for standalone
-   polish of pending changes only and only when every uncommitted path belongs
-   to the change (otherwise the paths form) — not the whole repository. Committed
-   branch work is outside this loop: polish happens before the commit, and
-   committed changes go to the `code-review` skill or the review gates
-   directly. Pre-existing debt outside the diff is out of scope.
+   a `/agentic-framework:delegate` todo or a `/agentic-framework:build` run —
+   the paths `git status --porcelain` lists now and did not list in a snapshot
+   taken when the run started — recomputed each round; or, for standalone
+   polish of pending changes, the paths the user names or confirms, or the
+   uncommitted work as a whole when every uncommitted path belongs to the
+   change — not the whole repository. Committed branch work is outside this
+   loop: polish happens before the commit, and committed changes go to the
+   `agentic-framework:code-review` skill or the review gates directly.
+   Pre-existing debt outside the diff is out of scope.
 2. **Write the rubric first — before judging.** 5–7 criteria specific to this
    change, each with a weight (weights sum to 100), drawn from what tooling
    cannot verify: naming and readability, error-handling completeness at
@@ -102,12 +104,13 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    rewrite that breaks a test is reverted, not argued for.
 6. **Rescore and decide** — same rubric, fresh scorer instance:
    - Improvement **< 3 points** with no open `[Blocker]`, or **3 scoring
-     rounds** (the first included; a round after a re-entry counts, and after
-     the third, stop whatever it found) → stop. More loops past a plateau
-     produce churn, not quality. The plateau test does not apply to a
-     re-entered round, which followed a fix and no rewrite: continue at step 4
-     unless the cap is reached or the round scores ≥ 90 with no open
-     `[Blocker]`, which stops as a first round does.
+     rounds** (the first included; a resumed round counts, and after the
+     third, stop whatever it found) → stop. More loops past a plateau produce
+     churn, not quality. The plateau test does not apply to a resumed round,
+     which followed a fix and no rewrite: continue at step 4 unless the cap is
+     reached or the round scores ≥ 90 with no open `[Blocker]`, which stops as
+     a first round does (a behavior-changing blocker found in it stops the
+     loop again, see *The code-review report*).
    - Otherwise → back to step 4 (a behavior-changing blocker instead stops the
      loop, see *The code-review report*).
 7. **Report** the rubric, the final score with per-criterion breakdown, the
@@ -127,27 +130,32 @@ spec gate (`spec-compliance-reviewer`) and adds no rubric criterion. The loop
 reads the report's findings, not its `VERDICT:` line.
 
 - **Open `[Blocker]`**: that round cannot end the loop on score — not on a
-  first score ≥ 90, not on a plateau. A blocker whose fix changes behavior
-  (security hole, data loss, broken invariant, lost guardrail, out-of-scope
-  change) is not a polish target: stop the loop, send the change back to
-  implementation — with a failing test first where the fix adds behavior —
-  and re-enter at step 3 with the same rubric, the round count carried over.
-  Inside a build run, a fix that needs behavior no `REQ-`/`EDGE-` item covers
-  is a spec defect: stop and tell the user, as the build command says, rather
-  than implement it. Re-enter only once gate zero is green again, and apply
-  step 6's decision after the re-entered round. A blocker fixable without a
-  behavior change (wrong layer, wrong abstraction) is the next rewrite target
-  (step 5). A blocker resting on missing provenance is settled by evidence:
-  hand the next scorer the introducing commit, the issue, or the `REQ-` that
-  mandates the removal, and it reclassifies. A blocker stays open until a
-  later scorer, given it by name, confirms it resolved; one the next report
-  merely omits is still open. Resolved and still-open statuses go in a short
-  list after the report, outside its template; on a moot suggestion the
-  criterion tag precedes the moot tag. Only the round cap (or the build-run
-  spec-defect stop above) ends the loop with a blocker open; a
-  behavior-changing one still open at the cap goes back to implementation
-  before the gates, with no further rescore, and the final report, written
-  after that hand-back, lists it as unresolved.
+  first score ≥ 90, not on a plateau. A blocker stays open until a later
+  scorer, given it by name, confirms it resolved; one the next report merely
+  omits is still open. Statuses go in a short list after the report, outside
+  its template; on a moot suggestion the criterion tag precedes the moot tag.
+  By class:
+  - *Behavior-changing* (security hole, data loss, broken invariant, lost
+    guardrail): not a polish target. Stop the loop, send the change back to
+    implementation — with a failing test first where the fix adds behavior —
+    and resume at step 3 with the same rubric once gate zero is green again,
+    the round count carried over; step 6 then decides as written for a
+    resumed round. In a spec-driven run (a build run, or a delegate todo
+    against a spec), a fix that needs behavior no `REQ-`/`EDGE-` item covers
+    is a spec defect: stop and tell the user rather than implement it.
+  - *Out-of-scope change*: one the run made is behavior-changing and handled
+    as above; one the run did not make (a pending file outside the change) is
+    excluded from the target, reported, and never reverted.
+  - *Fixable without a behavior change* (wrong layer, wrong abstraction): the
+    next rewrite target (step 5).
+  - *Missing provenance*: settled by evidence — hand the next scorer the
+    introducing commit, the issue, or the `REQ-` that mandates the removal —
+    and reclassified by it.
+  - *Still open at the cap*: fixed before the gates with no further rescore —
+    a behavior-changing one in implementation, a rewrite target in one last
+    rewrite under the quality bar — and listed as unresolved in the final
+    report, which is written after that hand-back. Only the cap, or the
+    spec-defect stop, ends the loop with a blocker open.
 - **Wrong tree or no evaluator**: a code-review stop (no findings, no
   verdict), a `Target:` fallback reading `uncommitted changes present, not
   reviewed`, a report without the skill's `Target:` line, or one whose last
