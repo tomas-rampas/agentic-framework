@@ -38,16 +38,20 @@ Before iteration 1, the mechanical checks of the `/agentic-framework:delegate` c
 quality bar must be clean: build 0 errors / 0 warnings, linter clean,
 formatter no diffs, full unit-test suite green. (The docs bullet is not part
 of gate zero — in the `/agentic-framework:delegate` flow it lands in the per-todo doc step that
-follows the refactor.) Correctness is binary and comes first; scoring a red build is
+follows the mechanical bar.) Correctness is binary and comes first; scoring a red build is
 meaningless. If the bar fails, fix that — this loop is not for broken code.
 
 ## The Loop
 
 1. **Scope the diff.** The unit being scored is the *change* as it sits
-   uncommitted in the working tree, in one of two forms: the touched paths of
-   a `/agentic-framework:delegate` todo or a `/agentic-framework:build` run —
-   the paths `git status --porcelain` lists now and did not list in a snapshot
-   taken when the run started — recomputed each round; or, for standalone
+   uncommitted in the working tree, in one of two forms. (a) The touched paths
+   of a `/agentic-framework:delegate` todo or a `/agentic-framework:build` run,
+   recomputed each round: the paths `git status --porcelain` lists now that a
+   snapshot taken at the todo's or run's start did not list. With no
+   snapshot, or none found, the paths the todo's or run's delegations reported
+   changing that `git status` lists now (a path only one source names is
+   reported, not targeted). Still none: ask the user to name the paths (a build
+   run skips the polish); never default to the whole tree. (b) For standalone
    polish of pending changes, the paths the user names or confirms, or the
    uncommitted work as a whole when every uncommitted path belongs to the
    change — not the whole repository. Committed branch work is outside this
@@ -76,8 +80,9 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
      (`skills/code-review/SKILL.md` in the agentic-framework plugin; never the
      `code-review` plugin's PR command, which posts comments) to the scored
      tree as the skill's **explicit target**, in the form from step 1, never
-     the skill's default Scope resolution: the touched paths stated as
-     uncommitted work, or the uncommitted work;
+     the skill's default Scope resolution: the touched paths or the
+     user-named paths, each stated as uncommitted work (a branch may hold a
+     committed diff; review the pending edits), or the uncommitted work;
    - the depth budget, stated as the whole diff;
    - the report conventions of step 4 and *The code-review report*: the
      criterion tag on each `[Suggestion]`, the in-scope IDs named in the
@@ -101,7 +106,7 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
 5. **Rewrite only the weak parts** (delegating to the implementing specialist
    where routing says so). Keep what scored well. Rewrites are
    **behavior-preserving**: re-run the quality bar after every rewrite; a
-   rewrite that breaks a test is reverted, not argued for.
+   rewrite that breaks a test has its edits undone, not argued for.
 6. **Rescore and decide** — same rubric, fresh scorer instance:
    - Improvement **< 3 points** with no open `[Blocker]`, or **3 scoring
      rounds** (the first included; a resumed round counts, and after the
