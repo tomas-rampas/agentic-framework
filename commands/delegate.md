@@ -187,9 +187,9 @@ report a clean state that isn't real.
   loosens no guardrail, gate or security setting; state it in the commit message
   and summary as `security pass: skipped (docs/config class)`. Skipped, never
   run at a lower tier. Class is judged on the final diff, fixes included; the
-  gatekeeper's brief states the claim and, unconfirmed, the pass runs. A **mixed**
+  gatekeeper's brief carries the claim and this test; unconfirmed, the pass runs. A **mixed**
   todo, or one gaining an out-of-class file or change, leaves the skip class at
-  once and ends the pool; full gates then run over the pool's diff, no skip stated.
+  once and ends the pool as its last todo; full gates then cover the pool's diff, no skip stated.
 - **Pool.** A maximal run of consecutive skip-class todos is one pool (a single
   one: a pool of one). After the last todo's docs step, and before any other
   todo starts, `code-review-gatekeeper` (and, against a spec, the scoped
@@ -201,7 +201,7 @@ report a clean state that isn't real.
   pool's commits wait for it.
 - **Second rounds.** After a reviewer's findings are applied, the same reviewer
   runs a second round only after `CHANGES_REQUIRED` (for the gatekeeper and the
-  security pass: a must-fix, Critical or High finding; none is `APPROVED`), a fix
+  security pass: a must-fix, Critical or High finding; a round with none is `APPROVED`), a fix
   that changed an algorithm, interface or data flow, or a fix that adds, changes
   or loosens an item on the skip class's change list. This covers every reviewer
   this flow runs, the Final Quality Gate's `peer-review-critic` round included
@@ -213,10 +213,10 @@ report a clean state that isn't real.
   summary as an open follow-up; no extra round.
 
 ## 6. Commit
-- Commit **per completed todo** (after §3 steps 1–8), staging only its reviewed
-  paths, not once at the end. Meaningful message describing the behavior delivered.
+- Commit **per completed todo** (after §3 steps 1–8), staging only its reviewed and
+  gate-fix paths; name other dirty paths in the summary. Message: the behavior delivered.
 - **Pool:** once the pooled gates pass, make one commit per todo; todos whose file
-  sets overlap (transitively) share one commit. Name unreviewed dirty paths in the summary.
+  sets overlap (transitively) share one commit.
 
 ## 7. Documentation
 - **Documentation scope.** "Docs" means every surface a reader or author trusts:
