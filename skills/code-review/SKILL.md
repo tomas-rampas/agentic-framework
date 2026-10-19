@@ -23,8 +23,9 @@ so it loads as `agentic-framework:code-review` and is invoked as
   gate's recorder hook records only `peer-review-critic` runs, so this skill's
   output never satisfies or unlocks the gate.
 - `code-scoring-loop` applies it each round as a second evaluator; there, an
-  open `[Blocker]` holds the loop open and partial coverage is a scoring
-  limitation, read from the findings rather than from the verdict line.
+  open `[Blocker]` holds the loop open until the round cap and partial
+  coverage is a scoring limitation, read from the findings rather than from
+  the verdict line.
 
 ## Scope
 

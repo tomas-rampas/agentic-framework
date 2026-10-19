@@ -61,17 +61,24 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    the change spans languages or no language expert fits — not
    `code-review-gatekeeper`, which must stay outside the polish loop so the
    gate's judgment remains independent of the rubric. Launch a **fresh**
-   subagent instance each round and hand it: the diff; the rubric; the
-   instruction to return a 0–100 score with a one-line justification per
-   criterion; the instruction to apply the `code-review` skill
-   (`skills/code-review/SKILL.md`) to the unit from step 1 as the skill's
-   **explicit target** — uncommitted work, or the todo's touched paths,
-   inside a `/agentic-framework:delegate` todo or a `/agentic-framework:build`
-   run, the branch against its base otherwise, never the skill's default
-   Scope resolution — with the depth budget stated as the whole diff;
-   against a spec, the spec path and the in-scope IDs (the caller's list,
-   else every `REQ-`/`EDGE-` ID in the spec); and, from the second round on,
-   the open blockers (`path:line` and claim) to mark resolved or still open.
+   subagent instance each round and hand it:
+   - the diff and the rubric, with the instruction to return a 0–100 score
+     and a one-line justification per criterion;
+   - the instruction to apply the `code-review` skill
+     (`skills/code-review/SKILL.md`) to the scored tree as the skill's
+     **explicit target**, in the form whose diff is that tree, never the
+     skill's default Scope resolution: inside a `/agentic-framework:delegate`
+     todo, the todo's touched paths stated as uncommitted work; inside a
+     `/agentic-framework:build` run, or whenever the unit is uncommitted work,
+     the uncommitted work; otherwise the branch against its base, with each
+     round's rewrites and blocker fixes committed before the next scoring
+     round, because the branch target reads `HEAD`, not the working tree;
+   - the depth budget, stated as the whole diff;
+   - against a spec, the spec path and the in-scope IDs (the caller's list,
+     else every `REQ-`/`EDGE-` ID in the spec);
+   - from the second round on, the open blockers (`path:line` and claim) to
+     mark resolved or still open, and the previous round's Chesterton line,
+     reusable for deletions no rewrite touched.
    The scorer returns the score and the code-review report (see *The
    code-review report*). Score honestly — an inflated score ends the loop
    early and defeats it. If the **first** score is **≥ 90** and the report
@@ -79,24 +86,28 @@ meaningless. If the bar fails, fix that — this loop is not for broken code.
    not ceremony.
 4. **Name the 1–2 weakest criteria** from the scorer's report and exactly why
    they lost points. The scorer tags each `[Suggestion]` with the rubric
-   criterion it weakens and reflects it in that criterion's score; this step
-   reads the tags. A suggestion that fits no criterion is listed in the
-   round's report, not scored.
+   criterion it weakens, at the end of the claim sentence like the moot tag,
+   and reflects it in that criterion's score; this step reads the tags. A
+   suggestion that fits no criterion is listed in the round's report, not
+   scored.
 5. **Rewrite only the weak parts** (delegating to the implementing specialist
    where routing says so). Keep what scored well. Rewrites are
    **behavior-preserving**: re-run the quality bar after every rewrite; a
    rewrite that breaks a test is reverted, not argued for.
 6. **Rescore and decide** — same rubric, fresh scorer instance:
    - Improvement **< 3 points** with no open `[Blocker]`, or **3 scoring
-     rounds** (the first included) → stop. More loops past a plateau produce
-     churn, not quality.
+     rounds** (the first included; a round after a re-entry counts, and after
+     the third, stop whatever it found) → stop. More loops past a plateau
+     produce churn, not quality.
    - Otherwise → back to step 4.
 7. **Report** the rubric, the final score with per-criterion breakdown, the
-   score trajectory (e.g. 68 → 81 → 86), any blocker still open, and —
-   against a spec — the union across rounds of the "not evidenced in the
-   diff" lists, which the caller hands to `spec-compliance-reviewer` together
-   with the coverage section as leads (the reviewer still checks every ID) —
-   then proceed to the framework's normal review gates.
+   score trajectory (e.g. 68 → 81 → 86), any blocker still open, the files
+   each round's review did not cover in depth, and — against a spec — the
+   union across rounds of the "not evidenced in the diff" lists, which the
+   caller hands to `spec-compliance-reviewer` together with the coverage
+   section (the `/agentic-framework:build` §2 Spec coverage section, where one
+   exists) as leads; the reviewer still checks every ID. Then proceed to the
+   framework's normal review gates.
 
 ## The code-review report
 
@@ -110,11 +121,24 @@ reads the report's findings, not its `VERDICT:` line.
   change) is not a polish target: stop the loop, send the change back to
   implementation — first a test that fails without the fix, then the fix —
   and re-enter at step 3 with the same rubric, the round count carried over.
-  A blocker fixable without a behavior change (wrong layer, wrong
-  abstraction) is the next rewrite target (step 5). A blocker stays open
-  until a later scorer, given it by name, confirms it resolved; one the next
-  report merely omits is still open. Only the round cap ends the loop with a
-  blocker open, and the final report then lists it as unresolved.
+  Inside a build run, a fix that needs behavior no `REQ-`/`EDGE-` item covers
+  is a spec defect: stop and tell the user, as the build command says, rather
+  than implement it. Re-enter only once gate zero is green again, and apply
+  step 6's decision after the re-entered round. A blocker fixable without a
+  behavior change (wrong layer, wrong abstraction) is the next rewrite target
+  (step 5). A blocker resting on missing provenance is resolved by evidence:
+  hand the next scorer the introducing commit, the issue, or the `REQ-` that
+  mandates the removal. A blocker stays open until a later scorer, given it
+  by name, confirms it resolved; one the next report merely omits is still
+  open. Resolved and still-open statuses go in a short list after the report,
+  outside its template. Only the round cap ends the loop with a blocker open;
+  the final report lists it as unresolved, and a behavior-changing one still
+  open at the cap goes back to implementation before the gates, with no
+  further rescore.
+- **Wrong tree**: a code-review stop (no findings, no verdict), or a `Target:`
+  fallback reading `uncommitted changes present, not reviewed`, means the
+  evaluator did not see the scored tree. Correct the target and rerun the
+  round; never read it as a round with no blocker.
 - **Against a spec**: the report's `Problem` answer must name the in-scope
   `REQ-`/`EDGE-` IDs the diff delivers. Every in-scope ID the answer does not
   cover, or that a `[Question]` marks as unclear, goes in the round's report
@@ -125,8 +149,9 @@ reads the report's findings, not its `VERDICT:` line.
   the whole-diff budget, treat it as a scoring limitation, not a defect of
   the change. Name the files not covered in the round's report; do not cap the
   score for it, and do not rewrite to cure it.
-- **Cost**: a rescoring round may reuse the previous round's Chesterton line
-  for deletions no rewrite touched; provenance does not change between rounds.
+- **Cost**: a rescoring round reuses the previous round's Chesterton line,
+  handed over in step 3, for deletions no rewrite touched; provenance does
+  not change between rounds.
 
 ## Rules
 

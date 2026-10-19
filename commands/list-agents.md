@@ -283,7 +283,7 @@ Agent information sourced from:
 ```bash
 # By technology
 /agentic-framework:list-agents rust-expert                    # Specific agent
-/agentic-framework:list-agents --language                     # All language experts
+/agentic-framework:list-agents --language                     # Language & automation experts
 /agentic-framework:list-agents --domain                       # All specialists
 
 # By capability
