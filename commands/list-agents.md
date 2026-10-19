@@ -68,7 +68,7 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
 ### 2. Category View (--language)
 
 ```
-🔧 LANGUAGE EXPERTS (9 agents)
+🔧 LANGUAGE & AUTOMATION EXPERTS (9 agents)
 
 ┌───────────────────┬────────────────────────────────────────────────┬────────┐
 │ Agent             │ Specialization                                  │ Status │
@@ -162,7 +162,8 @@ peer-review Stop gate (the `stop-peer-review-gate` hook pair in `${CLAUDE_PLUGIN
 
 ## Agent Categories
 
-### Language Experts (9 agents)
+### Language & Automation Experts (9 agents)
+Seven language experts plus the two command-line executors, which the registry files under its automation category.
 ```
 rust-expert          → Rust systems programming
 csharp-expert        → C#/.NET development

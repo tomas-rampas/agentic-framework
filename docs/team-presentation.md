@@ -149,7 +149,7 @@ mindmap
 - **peer-review-critic runs a curated toolset** (no Write/Edit/Agent) that narrows its default surface; its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
-### 3.2 Commands — the operations console (10)
+### 3.2 Commands — the operations console (12)
 
 | Command | Role |
 |---|---|
@@ -163,6 +163,8 @@ mindmap
 | `/agentic-framework:quality-report` | Quality assessment from actual config state |
 | `/agentic-framework:validate-hooks` | Hook registration parity check |
 | `/agentic-framework:migrate-legacy` | Migrate a local ~/.claude clone to the plugin distribution |
+| `/agentic-framework:setup` | Configure the bundled MCP servers' environment variables (Context7 API key, filesystem root) |
+| `/agentic-framework:log-triage` | Triage large log files locally: detect formats, fingerprint recurring issues, assess severity, suggest fixes, export JSON/SARIF/HTML/Markdown/CSV/NDJSON |
 
 ### 3.3 Hooks — the enforcement layer (5)
 
@@ -304,7 +306,7 @@ sequenceDiagram
 
 - Nothing is hardcoded: registry↔filesystem parity, category partition, hook registration parity, model parity, roster presence, stated-count scanning — all derived.
 - Headline numbers in the README are **generated blocks** — the docs physically cannot lie about counts.
-- A 34-assertion harness injects defects into throwaway repo copies and proves the validator catches each class.
+- A defect-injection harness copies the repo per case, breaks one thing, and proves the validator catches each class; its PASS tally is the assertion count, printed at the end of every run rather than written here.
 
 ---
 

@@ -123,7 +123,7 @@ This runs the full check battery, including:
 - Stated-count scan (headline agent/hook/skill/command counts match derived values)
 - Roster presence in prose tables (README, CLAUDE.md, list-agents.md)
 - README focus-text parity (README Focus cells match claude.json .focus fields)
-- Generated blocks are fresh (list-agents summary, README framework-stats footer)
+- Generated blocks are fresh (list-agents summary, README framework-stats footer, docs/team-presentation.md team-presentation-stats)
 
 Additional validation and testing:
 
@@ -174,7 +174,7 @@ Run it during development and before pushing. CI (`.github/workflows/consistency
   - `--write`: regenerate all `<!-- BEGIN GENERATED: ... -->` marker regions from claude.json + facts
   - `--check`: verify regions are up to date; fails if any are stale
 - **Machine-owned regions**: do not hand-edit content between the markers (the validator enforces freshness)
-- **Coverage:** currently generates the `commands/list-agents.md` JSON summary block and the README `framework-stats` footer. Prose tables (README "## Agents", CLAUDE.md roster, list-agents.md textual categories) are hand-written and guarded by roster-presence checks instead (better structural flexibility).
+- **Coverage:** currently generates the `commands/list-agents.md` JSON summary block, the README `framework-stats` footer, and the `docs/team-presentation.md` `team-presentation-stats` block. Prose tables (README "## Agents", CLAUDE.md roster, list-agents.md textual categories) are hand-written and guarded by roster-presence checks instead (better structural flexibility).
 
 Always run `--write` after editing `claude.json`, then validate.
 
