@@ -395,7 +395,7 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 | **agent-routing-advisor** | Recommend the right specialist agent for a task |
 | **code-review** | Three-pass review of a PR, branch, or diff (architecture → logic → idioms) with the five-question evaluator, a Chesterton's Fence provenance check, and ICE-prefixed findings behind a summary-first report |
 | **code-scaffolder** | Generate idiomatic project scaffolding for supported languages |
-| **code-scoring-loop** | Rubric-based score → rewrite → rescore loop for code diffs, scored by the specialist agents before the review gates |
+| **code-scoring-loop** | Rubric-based score → rewrite → rescore loop for code diffs, scored by the specialist agents, whose scorer also applies the code-review skill (an open `[Blocker]` holds the loop open), before the review gates |
 | **dependency-checker** | Verify the toolchain the framework needs (git, jq, pwsh 7, node, uv) |
 | **git-workflow-assistant** | Guide branching, commit conventions, and PR workflows (incl. the peer-review gate) |
 | **hook-config-generator** | Guide for adding a new real hook (script + registration + tests) |
