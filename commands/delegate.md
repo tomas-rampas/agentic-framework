@@ -69,7 +69,7 @@ with JWT issuing/validation + ASP.NET Core identity integration, tests in
 - **Model tier:** when the call runs off the agent's default tier, say which tier and why
   in the delegation itself (see Routing → Model tier), so the reason is on the record.
 - **Pinned decisions:** §3's reconciliation block is a required part of every
-  implementation brief; a plan or ticket todo reconciles its criteria the same way.
+  brief for the todo, gate briefs included; a plan or ticket todo reconciles alike.
 
 ---
 
@@ -187,9 +187,9 @@ report a clean state that isn't real.
   loosens no guardrail, gate or security setting; state it in the commit message
   and summary as `security pass: skipped (docs/config class)`. Skipped, never
   run at a lower tier. Class is judged on the final diff, fixes included; the
-  gatekeeper confirms it. A **mixed** todo, or one that gains an out-of-class
-  file or change, leaves the skip class at once and ends the pool, whose gates
-  then run with its full gates (its commits state no skip).
+  gatekeeper's brief states the claim and, unconfirmed, the pass runs. A **mixed**
+  todo, or one gaining an out-of-class file or change, leaves the skip class at
+  once and ends the pool; full gates then run over the pool's diff, no skip stated.
 - **Pool.** A maximal run of consecutive skip-class todos is one pool (a single
   one: a pool of one). After the last todo's docs step, and before any other
   todo starts, `code-review-gatekeeper` (and, against a spec, the scoped
@@ -200,23 +200,23 @@ report a clean state that isn't real.
   single owner: the later todo) and run a fresh round over the whole pool; the
   pool's commits wait for it.
 - **Second rounds.** After a reviewer's findings are applied, the same reviewer
-  runs a second round only after `CHANGES_REQUIRED` (for a reviewer with no
-  verdict line: a must-fix, Critical or High finding; none is `APPROVED`), a fix
-  that changed an algorithm, interface or data flow, or a fix touching an item
-  on the skip class's change list. This covers every reviewer this flow runs,
-  the Final Quality Gate's `peer-review-critic` round included (the Stop hook
-  forces it only after `CHANGES_REQUIRED`); cap 3 rounds per reviewer and todo,
-  then stop and report. `APPROVED` with minor findings ends with the minors
-  applied, the quality bar re-run and the commit; severity alone never triggers
-  a round. If such a minor breaks the bar, that fix alone is reverted by undoing
-  its edit (no file restore, no §4 retries) and listed in the summary as an open
-  follow-up; no extra round.
+  runs a second round only after `CHANGES_REQUIRED` (for the gatekeeper and the
+  security pass: a must-fix, Critical or High finding; none is `APPROVED`), a fix
+  that changed an algorithm, interface or data flow, or a fix that adds, changes
+  or loosens an item on the skip class's change list. This covers every reviewer
+  this flow runs, the Final Quality Gate's `peer-review-critic` round included
+  (the Stop hook forces it only after `CHANGES_REQUIRED`); cap 3 rounds per
+  reviewer and todo or pool, then stop and report. `APPROVED` with minor findings
+  ends with the minors applied, the quality bar re-run and the commit; severity
+  alone never triggers a round. If such a minor breaks the bar, that fix alone is
+  reverted by undoing its edit (no file restore, no §4 retries) and listed in the
+  summary as an open follow-up; no extra round.
 
 ## 6. Commit
-- Commit **per completed todo** (after §3 steps 1–8), not once at the end.
-  Meaningful message describing the behavior delivered.
-- **Pool:** once the pooled gates pass, make one commit per todo, staging only
-  its reviewed paths; todos whose file sets overlap (transitively) share one commit.
+- Commit **per completed todo** (after §3 steps 1–8), staging only its reviewed
+  paths, not once at the end. Meaningful message describing the behavior delivered.
+- **Pool:** once the pooled gates pass, make one commit per todo; todos whose file
+  sets overlap (transitively) share one commit. Name unreviewed dirty paths in the summary.
 
 ## 7. Documentation
 - **Documentation scope.** "Docs" means every surface a reader or author trusts:
@@ -225,13 +225,13 @@ report a clean state that isn't real.
   contracts (JSON Schema, OpenAPI, public API / XML-doc comments). A change is not
   done until every surface it *touches* is current.
 - Keep docs current per todo in at most two `technical-docs-writer` messages:
-  the §3 draft, then a closing message after the last review verdict (per todo
-  concerned, in a pool) only when a gate fix changed user-visible behavior or a
-  documented surface (a gate finding on the docs themselves counts); it carries
-  the fix's diff or that finding alone; the bar and §5's second-round rule apply
-  to it before the commit. A draft that fails the Docs bullet is corrected inline
-  by you, not by another message. Gate reports and fix-round facts are never
-  forwarded to the writer. The §8 drift audit is outside this cap.
+  the §3 draft (a docs-only todo's green step counts), then a closing message
+  after the last review verdict only when a gate fix changed user-visible
+  behavior or a documented surface (a gate finding on the docs themselves counts);
+  it carries the fix's diff or that finding alone; the bar and §5's second-round
+  rule apply to it before the commit. A draft that fails the Docs bullet is
+  corrected inline by you, not by another message. Gate reports and fix-round facts
+  are never forwarded to the writer. The §8 drift audit is outside this cap.
 
 ## 8. Wrap-up
 - Confirm every todo is complete and all acceptance criteria are met.
@@ -255,13 +255,13 @@ report a clean state that isn't real.
 
 ## Multi-agent coordination — for cross-domain objectives
 Default sequence: `system-architect` -> language-expert / specialist(s) ->
-`code-review-gatekeeper` -> `comprehensive-analyst` (gaps & risks) ->
-`technical-docs-writer`.
+`technical-docs-writer` -> `code-review-gatekeeper` -> `comprehensive-analyst`
+(gaps & risks).
 
 Example — *"auth with DB persistence and UI"*:
 `security-specialist` (flow + threat model) -> `database-specialist` (schema) ->
 `{language}-expert` (API) -> `frontend-specialist` (UI) ->
-`code-review-gatekeeper` -> `technical-docs-writer`.
+`technical-docs-writer` -> `code-review-gatekeeper`.
 
 ## Failure handling — applies throughout
 - If a sub-agent returns unusable output: retry once with clarified
