@@ -62,7 +62,8 @@ esac
 ### 2. Session summary
 
 ```bash
-find "$T" -maxdepth 1 -name '*.json' -exec cat {} + | jq -s --arg cutoff "$CUT" '
+{ find "$T" -maxdepth 1 -name '*.json' -exec cat {} +
+  find "$T" -mindepth 3 -maxdepth 3 -name 'subagent-*.json' -exec cat {} + 2>/dev/null; } | jq -s --arg cutoff "$CUT" '
   def R: {"fable-5-1":[10,50,0.25],"fable-5":[10,50,null],
           "opus-5-5":[4,20,0.20],"opus-5":[5,25,null],"opus-4-8":[5,25,null],
           "opus-4-7":[5,25,null],"opus-4-6":[5,25,null],
@@ -73,22 +74,29 @@ find "$T" -maxdepth 1 -name '*.json' -exec cat {} + | jq -s --arg cutoff "$CUT" 
     | max_by(.key | length) | .value;
   def cost($t; $r): ($t.input*$r[0] + $t.output*$r[1]
     + $t.cache_read*($r[2] // $r[0]*0.1) + $t.cache_creation*$r[0]*1.25) / 1e6;
-  [.[] | select((.started_at // "") >= $cutoff)] as $s
-  | [$s[] | {m: (.model // "unknown"), t: .tokens, r: rate(.model), d: .duration_s}] as $p
+  def tok($x): {input: ($x.input // 0), output: ($x.output // 0),
+                cache_read: ($x.cache_read // 0), cache_creation: ($x.cache_creation // 0)};
+  [.[] | select(.session_id and ((.started_at // "") >= $cutoff))] as $s
+  | [.[] | select(.agent_id and .tokens and ((.ended_at // "") >= $cutoff))] as $sub
+  | ([$s[] | {m: (.model // "unknown"), t: tok(.tokens), r: rate(.model), kind: "session"}]
+     + [$sub[] | {m: (.model_actual // "unknown"), t: tok(.tokens), r: rate(.model_actual), kind: "subagent"}]) as $p
   | {sessions: ($s | length),
-     total_duration_s: ([$p[].d // 0] | add // 0),
-     avg_duration_s: ([$p[] | select(.d != null) | .d] | if length > 0 then add / length else null end),
-     tokens: {input: ([$s[].tokens.input // 0] | add // 0),
-              output: ([$s[].tokens.output // 0] | add // 0),
-              cache_read: ([$s[].tokens.cache_read // 0] | add // 0),
-              cache_creation: ([$s[].tokens.cache_creation // 0] | add // 0)},
+     subagent_runs: ($sub | length),
+     total_duration_s: ([$s[].duration_s // 0] | add // 0),
+     avg_duration_s: ([$s[] | select(.duration_s != null) | .duration_s] | if length > 0 then add / length else null end),
+     tokens: {input: ([$p[].t.input] | add // 0),
+              output: ([$p[].t.output] | add // 0),
+              cache_read: ([$p[].t.cache_read] | add // 0),
+              cache_creation: ([$p[].t.cache_creation] | add // 0)},
+     subagent_tokens: ([$p[] | select(.kind == "subagent") | .t.input + .t.output + .t.cache_read + .t.cache_creation] | add // 0),
      est_cost_usd: ([$p[] | select(.r) | cost(.t; .r)] | add // 0),
+     subagent_cost_usd: ([$p[] | select(.r and .kind == "subagent") | cost(.t; .r)] | add // 0),
      unpriced: ([$p[] | select(.r == null)] | group_by(.m)
-       | map({model: .[0].m, sessions: length,
+       | map({model: .[0].m, records: length,
               tokens: (map(.t.input + .t.output + .t.cache_read + .t.cache_creation) | add)}))}'
 ```
 
-The rates table is embedded in `def R` (per million tokens: `[input, output, cache_read or null]`). A `model` that matches no key is **unpriced**: it is listed under `unpriced` with its token total and excluded from the cost, never counted as zero. Report the cost as "priced sessions only" whenever `unpriced` is non-empty.
+Session files carry the main-thread transcript's tokens (priced by `model`); `subagent-*.json` records carry each sub-agent's own transcript tokens (priced by `model_actual`). Both are summed into `tokens` and `est_cost_usd`; `subagent_tokens` and `subagent_cost_usd` show the sub-agent share. The rates table is embedded in `def R` (per million tokens: `[input, output, cache_read or null]`). A model that matches no key is **unpriced**: it is listed under `unpriced` with its record count and token total and excluded from the cost, never counted as zero. Report the cost as "priced records only" whenever `unpriced` is non-empty.
 
 ### Rates table (snapshot 2026-10-06, USD per million tokens)
 
@@ -109,20 +117,20 @@ Cache creation is billed at 1.25 x input. The model id has its leading `claude-`
 
 ```bash
 find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec cat {} + | jq -s --arg cutoff "$CUT" '
-  [.[] | select(.tool_use_id and ((.started_at // "") >= $cutoff))] as $a
+  [.[] | select(.tool_use_id and ((.started_at // .ended_at // "") >= $cutoff))] as $a
   | {invocations: ($a | length),
      tiers: ($a | group_by(.model_tier // "unknown")
        | map({tier: (.[0].model_tier // "unknown"), n: length}) | sort_by(-.n)),
-     agents: ($a | group_by(.agent_name)
+     agents: ($a | group_by(.agent_name // "general-purpose")
        | map(([.[] | select(.status == "completed" and .duration_s != null) | .duration_s]) as $d
-         | {agent: .[0].agent_name, n: length,
+         | {agent: (.[0].agent_name // "general-purpose"), n: length,
             background: ([.[] | select(.background)] | length),
             completed: ($d | length),
             avg_s: (if ($d | length) > 0 then ($d | add / length) else null end)})
        | sort_by(-.n) | .[:10])}'
 ```
 
-Only records with a `tool_use_id` count as invocations. Duration averages use completed records only; an agent with `completed: 0` shows `-`. A non-zero `background` count is flagged in the table, because background launches may never complete.
+Only records with a `tool_use_id` count as invocations; a record created by PostToolUse alone (hook installed mid-session) has no `started_at` and is placed by its `ended_at`; a call with no `subagent_type` is reported as `general-purpose`. Duration averages use completed records only; an agent with `completed: 0` shows `-`. A non-zero `background` count is flagged in the table, because background launches may never complete.
 
 ### 4. Review metrics
 
@@ -133,7 +141,7 @@ find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec jq -c '. + {file
  | jq -s --arg cutoff "$CUT" '
   [.[] | select(.tool_use_id
         and (.agent_name == "peer-review-critic" or .agent_name == "spec-compliance-reviewer")
-        and ((.started_at // "") >= $cutoff))
+        and ((.started_at // .ended_at // "") >= $cutoff))
       | . + {session: (.file | split("/") | .[-3])}] as $r
   | ($r | group_by(.session)
       | map({session: .[0].session, cycles: length,
@@ -150,7 +158,7 @@ If this reports `sessions: 0` (no agent records, for example telemetry not insta
 ```bash
 for m in "$S"/peer-review/*; do
   [ -f "$m" ] || continue
-  case "$m" in *.verdict-sources) continue ;; esac
+  case "$m" in *.*) continue ;; esac   # session ids carry no dot; skips .verdict-sources, .verdict-suppressed, .fired
   ts=$(head -n1 "$m")
   case "$ts" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) ;; *) continue ;; esac
   v=$(sed -n 's/^verdict=//p' "$m" | tail -n1)
@@ -174,19 +182,20 @@ Markers are written by the review-gate recorder and predate the telemetry hooks,
 Print the period and the date range first, then three Markdown tables from the JSON above. Round durations to whole seconds (or `1h 02m` above an hour), tokens with thousands separators, cost to 2 decimals, rates to a whole percent.
 
 ```
-# Metrics — last 7 days (since 2026-10-13T00:00:00Z)
+# Metrics — last 7 days (since 2026-10-13T14:02:11Z)
 
 ## Session summary
 | Metric                    | Value               |
 |---------------------------|---------------------|
-| Sessions                  | 12                  |
+| Sessions / sub-agent runs | 12 / 49             |
 | Total / average duration  | 4h 10m / 21m        |
 | Input tokens              | 1,204,331           |
 | Output tokens             | 310,022             |
 | Cache read tokens         | 18,440,900          |
 | Cache creation tokens     | 902,114             |
-| Estimated cost (USD)      | ~$23.41 (priced)    |
-| Unpriced                  | 1 session, mystery-model, 52,310 tokens |
+| Sub-agent share of tokens | 6,120,400           |
+| Estimated cost (USD)      | ~$23.41 (priced; ~$9.80 from sub-agents) |
+| Unpriced                  | 1 record, mystery-model, 52,310 tokens |
 
 ## Agent usage  (49 invocations)
 | Agent               | Invocations | Avg duration | Notes            |
@@ -213,7 +222,7 @@ If no session files exist for the period, say so plainly instead of printing zer
 
 - Session and agent files that are malformed JSON make the pipeline fail; name the offending file (`jq empty <file>`) and report it rather than guessing.
 - Telemetry older than 30 days is pruned by the session-start hook, so `all time` means "all retained".
-- Token totals are accumulated from transcripts; a session still in progress shows totals as of its last Stop event.
+- Session token totals come from the main-thread transcript (as of the session's last Stop event); sub-agent tokens come from the SubagentStop records (`subagent-*.json`) and are included in the totals and the cost. A background agent that never reaches SubagentStop contributes no tokens.
 
 ## Integration
 

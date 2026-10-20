@@ -259,6 +259,9 @@ memory, so lessons from one run are available to the next.
   code contradicts it.
 - **Never store secrets.** No credentials, tokens or keys, and nothing a single grep of the
   repository would reveal. Memory holds judgement and history, not copies of the code.
+- **Reviewers stay read-only toward the code.** `peer-review-critic` and
+  `spec-compliance-reviewer` write only inside their memory directory; the code or spec under
+  review is never theirs to change, whatever tools the memory feature enables.
 - **The orchestrator may direct it.** Ask an agent to consult its memory before a task, or to
   record or prune entries after one. The delegation brief names the memory when it matters.
 - **Browse and prune.** The `/agentic-framework:knowledge` skill lists, searches and prunes

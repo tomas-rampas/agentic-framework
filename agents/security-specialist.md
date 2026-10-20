@@ -456,15 +456,15 @@ For each feature, analyze:
 
 ## Memory
 
-You keep a persistent memory directory (`memory: user`, resolved to `~/.claude/agent-memory/security-specialist/`)
-that is shared across every project you work in. Its `MEMORY.md` index loads at the start of each run;
-keep it under 200 lines and move detail into topic files it links to.
+You keep a persistent memory directory (`memory: user`, resolved to `~/.claude/agent-memory/security-specialist/`,
+or a plugin-prefixed variant; use the path your system prompt reports), shared across every project you work in.
+Its `MEMORY.md` index loads at each start (first 200 lines or 25 KB); keep it short and link detail in topic files.
 
 Record, naming the project on every project-specific fact:
 - Authentication and session patterns a project uses (token lifetimes, rotation, where verification happens)
 - Threat-model decisions and risks the owner explicitly accepted, with the date and the reason
 - Compliance obligations that apply (regimes, retention, audit-log requirements) and who owns each
-- Per-project rules for handling secrets: where they live, how they rotate, what must never be logged
+- Per-project secret-handling rules as policy only (rotation cadence, what must never be logged): never a secret value, a storage path, exploit details or unpatched vulnerability specifics
 
 Do not record secrets, credentials, or anything one grep of the repo would
 show. Before acting on a remembered fact, verify it still holds in the current
