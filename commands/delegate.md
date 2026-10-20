@@ -68,6 +68,8 @@ with JWT issuing/validation + ASP.NET Core identity integration, tests in
 
 - **Model tier:** when the call runs off the agent's default tier, say which tier and why
   in the delegation itself (see Routing → Model tier), so the reason is on the record.
+- **Pinned decisions:** §3's reconciliation block is a required part of every
+  brief for the todo, gate briefs included; a plan or ticket todo reconciles alike.
 
 ---
 
@@ -118,21 +120,35 @@ in the plan**:
 (Skip §3–§6 entirely if §2 chose hand-off to `/agentic-framework:build`.)
 
 For each todo, in dependency order:
-1. Write a failing test for the acceptance criteria (**red**).
-2. Delegate implementation to the right specialist until the test passes (**green**).
-3. Refactor while keeping tests green. For a substantial change, the
+1. **Reconcile before red.** For each `REQ`/`EDGE` the todo delivers, list the
+   design or interface sections the spec cites (and the interface the code must
+   implement, where the criterion names one) and diff the acceptance criterion
+   against them. Write the outcome into the brief under a `Pinned decisions`
+   block:
+   - `none` when nothing diverges.
+   - Per divergence: the criterion's reading that governs, plus a doc-update
+     item for the design surface, carried by the docs step (out of scope: report only).
+   - `criterion stands alone` for an item citing no design or interface section.
+   - A criterion that cannot be honoured — it contradicts an interface the code
+     must implement, or names a mechanism the codebase cannot provide — is a
+     **spec defect**: stop and ask me before writing the test.
+2. Write a failing test for the acceptance criteria (**red**).
+3. Delegate implementation to the right specialist until the test passes (**green**).
+4. Refactor while keeping tests green. For a substantial change, the
    `code-scoring-loop` skill structures this step: a fixed rubric, the diff
    scored by the matching specialist, weakest parts rewritten until the score
    plateaus.
-4. **Update the docs this todo touches, in the same change.** If the todo adds,
+5. Run the **full unit-test suite**. Do **not** run integration tests.
+6. Confirm the quality bar (§4): the mechanical items; step 7 confirms its Docs bullet.
+7. **Update the docs this todo touches, in the same change.** If the todo adds,
    removes, or changes a public type, a DSL/config field, an event type, a CLI
    flag, a verdict, a schema, or any user-visible behavior, it has doc impact —
-   locate and update that surface now (via `technical-docs-writer`). A todo with
-   stale docs is **not** green. (Scope = §7.)
-5. Run the **full unit-test suite**. Do **not** run integration tests.
-6. Confirm the quality bar (§4).
-7. Run review gates (§5).
-8. Commit (§6).
+   locate and update that surface now, in one `technical-docs-writer` message
+   carrying the todo's final diff, so the gates review the docs. On that draft,
+   confirm the bar's Docs bullet (§4) and re-run the checks its files feed. A
+   todo with stale docs is **not** green. (Scope and the two-message rule = §7.)
+8. Run review gates (§5) — pooled for a skip-class todo.
+9. Commit (§6) — after the pool's gates, for a pooled todo.
 
 **Parallelism:** parallelize sub-agents only for todos that are independent and
 touch disjoint files/state. Serialize anything that shares files or state.
@@ -154,19 +170,53 @@ diagnostics. Never loop indefinitely, suppress warnings, skip/disable tests, or
 report a clean state that isn't real.
 
 ## 5. Review gates
-- Route each green + clean todo through `code-review-gatekeeper` and
-  `security-specialist`. Address findings before committing. If a finding is a
-  blocker you can't resolve, stop and report.
+- Route each green + clean todo — a pool as one, see **Pool** — through
+  `code-review-gatekeeper` and, unless in the skip class below, `security-specialist`.
+  Address findings before committing; a blocker you can't resolve: stop, report.
 - **When building against a spec**, also route the todo through
   `spec-compliance-reviewer` as a **scoped review** naming exactly the
   REQ-/EDGE-IDs the todo delivers (the agent verifies only those; other spec
   items report as out-of-scope, not FAIL). A `CHANGES_REQUIRED` verdict on the
   todo's own IDs blocks the commit like any other finding.
+- **Skip class for the security pass.** `security-specialist` is skipped for a
+  todo whose every changed file is documentation (agent-executed Markdown
+  included) or declarative configuration (only JSON, YAML, TOML, INI; never a
+  hook, CI, settings or MCP file, nor agent frontmatter), whose change adds or
+  changes no credential, token, permission, network endpoint, dependency, tool
+  grant, shell command, run step, post/push/publish step or trust boundary, and
+  loosens no guardrail, gate or security setting; state it in the commit message
+  and summary as `security pass: skipped (docs/config class)`. Skipped, never
+  run at a lower tier. Class is judged on the final diff, fixes included; the
+  gatekeeper's brief carries the claim and this test; unconfirmed, the pass runs. A **mixed**
+  todo, or one gaining an out-of-class file or change, leaves the skip class at
+  once and ends the pool as its last todo; full gates then cover the pool's diff, no skip stated.
+- **Pool.** A maximal run of consecutive skip-class todos is one pool (a single
+  one: a pool of one). After the last todo's docs step, and before any other
+  todo starts, `code-review-gatekeeper` (and, against a spec, the scoped
+  `spec-compliance-reviewer` review naming the union of the pool's IDs) runs
+  once over the pool's combined uncommitted diff — the paths its todos'
+  delegations reported changing, plus your inline edits. On `CHANGES_REQUIRED`,
+  apply each fix to the todo whose file or ID it names (a shared file, or no
+  single owner: the later todo) and run a fresh round over the whole pool; the
+  pool's commits wait for it.
+- **Second rounds.** After a reviewer's findings are applied, the same reviewer
+  runs a second round only after `CHANGES_REQUIRED` (for the gatekeeper and the
+  security pass: a must-fix, Critical or High finding; a round with none is `APPROVED`), a fix
+  that changed an algorithm, interface or data flow, or a fix that adds, changes
+  or loosens an item on the skip class's change list. This covers every reviewer
+  this flow runs, the Final Quality Gate's `peer-review-critic` round included
+  (the Stop hook forces it only after `CHANGES_REQUIRED`); cap 3 rounds per
+  reviewer and todo or pool, then stop and report. `APPROVED` with minor findings
+  ends with the minors applied, the quality bar re-run and the commit; severity
+  alone never triggers a round. If such a minor breaks the bar, that fix alone is
+  reverted by undoing its edit (no file restore, no §4 retries) and listed in the
+  summary as an open follow-up; no extra round.
 
 ## 6. Commit
-- Commit **per completed todo** (after red → green → refactor → quality bar →
-  review pass), not once at the end. Meaningful message describing the behavior
-  delivered.
+- Commit **per completed todo** (after §3 steps 1–8), staging only its reviewed and
+  gate-fix paths; name other dirty paths in the summary. Message: the behavior delivered.
+- **Pool:** once the pooled gates pass, make one commit per todo; todos whose file
+  sets overlap (transitively) share one commit.
 
 ## 7. Documentation
 - **Documentation scope.** "Docs" means every surface a reader or author trusts:
@@ -174,8 +224,14 @@ report a clean state that isn't real.
   sprint files, roadmap, **checkboxes**); any `CHANGELOG`; and machine-facing
   contracts (JSON Schema, OpenAPI, public API / XML-doc comments). A change is not
   done until every surface it *touches* is current.
-- Keep docs current **as you go** via `technical-docs-writer` (the per-todo doc
-  step, §3.4). Don't batch all doc updates to the end.
+- Keep docs current per todo in at most two `technical-docs-writer` messages:
+  the §3 draft (a docs-only todo's green step counts), then a closing message
+  after the last review verdict only when a gate fix changed user-visible
+  behavior or a documented surface (a gate finding on the docs themselves counts);
+  it carries the fix's diff or that finding alone; the bar and §5's second-round
+  rule apply to it before the commit. A draft that fails the Docs bullet is
+  corrected inline by you, not by another message. Gate reports and fix-round facts
+  are never forwarded to the writer. The §8 drift audit is outside this cap.
 
 ## 8. Wrap-up
 - Confirm every todo is complete and all acceptance criteria are met.
@@ -199,13 +255,13 @@ report a clean state that isn't real.
 
 ## Multi-agent coordination — for cross-domain objectives
 Default sequence: `system-architect` -> language-expert / specialist(s) ->
-`code-review-gatekeeper` -> `comprehensive-analyst` (gaps & risks) ->
-`technical-docs-writer`.
+`technical-docs-writer` -> `code-review-gatekeeper` -> `comprehensive-analyst`
+(gaps & risks).
 
 Example — *"auth with DB persistence and UI"*:
 `security-specialist` (flow + threat model) -> `database-specialist` (schema) ->
 `{language}-expert` (API) -> `frontend-specialist` (UI) ->
-`code-review-gatekeeper` -> `technical-docs-writer`.
+`technical-docs-writer` -> `code-review-gatekeeper`.
 
 ## Failure handling — applies throughout
 - If a sub-agent returns unusable output: retry once with clarified
