@@ -17,16 +17,22 @@ payload=$(cat)
 [ -z "$payload" ] && exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
-field() { printf '%s' "$payload" | jq -r "$1" | tr -d '\r'; }
 # clean <id>: keep [A-Za-z0-9._-] only; prints nothing for an empty or dots-only result.
 clean() {
   _c=$(printf '%s' "$1" | LC_ALL=C tr -cd 'A-Za-z0-9._-')
   case $_c in *[!.]*) printf '%s' "$_c" ;; esac
 }
 
-sid=$(clean "$(field '.session_id // empty')")
+# One jq call for every payload field (@sh makes the assignments safe to eval); the last
+# assistant message is only extracted for the two reviewer agents (verdict parsing).
+fields=$(printf '%s' "$payload" | jq -r '
+  (.agent_type // "" | tostring | sub("^agentic-framework:"; "")) as $an
+  | (.tool_input | if type == "object" then . else {} end) as $ti
+  | @sh "sid_raw=\(.session_id // "" | tostring) event=\(.hook_event_name // "" | tostring) tool=\(.tool_name // "" | tostring) tuid_raw=\(.tool_use_id // "" | tostring) agent=\((($ti.subagent_type | strings | .[0:100]) // "")) requested=\((($ti.model | strings | .[0:100]) // "")) aid_raw=\(.agent_id // "" | tostring) atype=\(.agent_type // "" | tostring) tpath=\(.agent_transcript_path // "" | tostring) lam=\(if $an == "peer-review-critic" or $an == "spec-compliance-reviewer" then (.last_assistant_message // "" | tostring) else "" end)"') || exit 0
+eval "$fields"
+sid=$(clean "$(printf '%s' "${sid_raw:-}" | tr -d '\r')")
 [ -z "$sid" ] && exit 0
-event=$(field '.hook_event_name // empty')
+event=$(printf '%s' "${event:-}" | tr -d '\r')
 
 state=${CLAUDE_STATE_DIR:-$HOME/.claude/.state}
 adir="$state/telemetry/sessions/$sid/agents"
@@ -40,46 +46,59 @@ parse_verdict() {
 }
 is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer) return 0 ;; esac; return 1; }
 
-# Token totals + last model over a transcript file (read through a 64 MiB cap), as one
+# Token totals + last model over a transcript file (read through a 16 MiB cap into $work/lines), as one
 # compact JSON object. Parsed line by line (a malformed line is skipped); usage is counted
 # once per .message.id (Claude Code repeats it on every content-block line; lines of one
 # id are contiguous, the last wins). Subagent transcripts are entirely isSidechain:true,
 # so sidechain lines are NOT excluded here (unlike the main-transcript accounting).
 sum_transcript() {
-  head -c 67108864 "$1" | tr -d '\r' | jq -c -n -R '
+  # jq reads a FILE (piping into the native jq.exe is ~7x slower); $work is trap-covered.
+  head -c 16777216 "$1" | tr -d '\r' > "$work/lines" || return 1
+  jq -c -n -R '
     [inputs | fromjson? | objects
      | select(.type == "assistant" and (.message | type) == "object"
-              and (.message.usage | type) == "object")] as $ls
+              and (.message.usage | type) == "object")
+     | .message as $m
+     | {id: (($m.id | strings | .[0:200]) // ""),
+        model: (($m.model | strings | .[0:100]) // null),
+        u: {input: ($m.usage.input_tokens | numbers // 0),
+            output: ($m.usage.output_tokens | numbers // 0),
+            cache_read: ($m.usage.cache_read_input_tokens | numbers // 0),
+            cache_creation: ($m.usage.cache_creation_input_tokens | numbers // 0)}}] as $ls
     | (reduce $ls[] as $l ([];
-        if ($l.message.id | type) == "string" and $l.message.id != ""
-           and length > 0 and (.[-1].message.id == $l.message.id)
-        then .[-1] = $l else . + [$l] end)) as $m
+        if $l.id != "" and (.[-1].id == $l.id) then .[-1] = $l else . + [$l] end)) as $m
     | reduce $m[] as $l
         ({model: null, tokens: {input: 0, output: 0, cache_read: 0, cache_creation: 0}};
-         .tokens.input += ($l.message.usage.input_tokens | numbers // 0)
-         | .tokens.output += ($l.message.usage.output_tokens | numbers // 0)
-         | .tokens.cache_read += ($l.message.usage.cache_read_input_tokens | numbers // 0)
-         | .tokens.cache_creation += ($l.message.usage.cache_creation_input_tokens | numbers // 0)
-         | .model = (($l.message.model | strings | .[0:100]) // .model))'
+         .tokens.input += $l.u.input
+         | .tokens.output += $l.u.output
+         | .tokens.cache_read += $l.u.cache_read
+         | .tokens.cache_creation += $l.u.cache_creation
+         | .model = (if $l.model != null and $l.model != "<synthetic>" then $l.model else .model end))' "$work/lines"
 }
 
-# write_record <dest>: atomically replace dest with JSON read from stdin.
+# mkwork: one trap-covered work directory per run, inside $adir so every rename into
+# $adir stays an atomic same-directory move. Removed on EXIT/INT/TERM.
+mkwork() {
+  mkdir -p "$adir" || exit 0
+  work=$(mktemp -d "$adir/.tmp.XXXXXX") || exit 0
+  trap 'rm -rf "$work"; exit 0' EXIT INT TERM
+}
+
+# write_record <dest>: atomically replace dest with JSON read from stdin (needs mkwork).
 write_record() {
-  mkdir -p "$adir" || return 1
-  _tmp=$(mktemp "$adir/.tmp.XXXXXX") || return 1
+  _tmp="$work/record.out"
   if cat > "$_tmp" && jq -e . "$_tmp" >/dev/null; then mv -f "$_tmp" "$1"; else rm -f "$_tmp"; fi
 }
 
 case "$event" in
   PreToolUse|PostToolUse)
-    tool=$(field '.tool_name // empty')
-    case "$tool" in Task|Agent) ;; *) exit 0 ;; esac
-    tuid=$(clean "$(field '.tool_use_id // empty')")
+    case "${tool:-}" in Task|Agent) ;; *) exit 0 ;; esac
+    tuid=$(clean "$(printf '%s' "${tuid_raw:-}" | tr -d '\r')")
     [ -z "$tuid" ] && exit 0
     dest="$adir/$tuid.json"
-    agent=$(field '.tool_input.subagent_type | strings | .[0:100]')
+    agent=$(printf '%s' "${agent:-}" | tr -d '\r')
     name=${agent#agentic-framework:}
-    requested=$(field '.tool_input.model | strings | .[0:100]')
+    requested=$(printf '%s' "${requested:-}" | tr -d '\r')
     tier=$requested
     plugin_json="${CLAUDE_PLUGIN_ROOT:-}/claude.json"
     if [ -z "$tier" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$plugin_json" ]; then
@@ -94,6 +113,7 @@ case "$event" in
        model_tier: (if $tier == "" then null else $tier end),
        background: ((.tool_input.run_in_background // false) == true),
        started_at: $now, description: ((.tool_input.description | strings | .[0:200]) // null)}') || exit 0
+    mkwork
     if [ "$event" = "PreToolUse" ]; then
       printf '%s' "$rec" | write_record "$dest"
       exit 0
@@ -111,13 +131,10 @@ case "$event" in
     fi
     # Records go to jq through files (--slurpfile), never the command line: a large
     # value would exceed the Windows 32 K command-line limit and the update would fail.
-    mkdir -p "$adir" || exit 0
-    pw=$(mktemp -d "$adir/.tmp.XXXXXX") || exit 0
-    trap 'rm -rf "$pw"; exit 0' EXIT INT TERM
-    printf '%s' "$rec" > "$pw/rec.json" || exit 0
-    : > "$pw/old.json"
-    if [ -f "$dest" ] && jq -e 'type == "object"' "$dest" >/dev/null; then cp "$dest" "$pw/old.json" || exit 0; fi
-    printf '%s' "$payload" | jq -c --slurpfile rec "$pw/rec.json" --slurpfile old "$pw/old.json" --arg now "$now" \
+    printf '%s' "$rec" > "$work/rec.json" || exit 0
+    : > "$work/old.json"
+    if [ -f "$dest" ] && jq -e 'type == "object"' "$dest" >/dev/null; then cp "$dest" "$work/old.json" || exit 0; fi
+    printf '%s' "$payload" | jq -c --slurpfile rec "$work/rec.json" --slurpfile old "$work/old.json" --arg now "$now" \
       --arg verdict "$verdict" '
       (if ($old | length) > 0 then $old[0] else $rec[0] + {started_at: null} end) as $base
       | $base + {ended_at: $now, status: "completed",
@@ -127,15 +144,16 @@ case "$event" in
       | write_record "$dest"
     ;;
   SubagentStop)
-    aid=$(clean "$(field '.agent_id // empty')")
+    aid=$(clean "$(printf '%s' "${aid_raw:-}" | tr -d '\r')")
     [ -z "$aid" ] && exit 0
-    atype=$(field '.agent_type // empty')
+    mkwork
+    atype=$(printf '%s' "${atype:-}" | tr -d '\r')
     name=${atype#agentic-framework:}
     verdict=""
     if is_reviewer "$name"; then
-      verdict=$(field '.last_assistant_message // empty' | parse_verdict)
+      verdict=$(printf '%s' "${lam:-}" | parse_verdict)
     fi
-    tpath=$(field '.agent_transcript_path // empty')
+    tpath=$(printf '%s' "${tpath:-}" | tr -d '\r')
     sums='{}'
     if [ -n "$tpath" ] && [ -f "$tpath" ] && [ -r "$tpath" ]; then sums=$(sum_transcript "$tpath") || sums='{}'; fi
     [ -z "$sums" ] && sums='{}'

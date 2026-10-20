@@ -2762,6 +2762,12 @@ https://ghp_SECRET2@example.com/|cwdname
 https://example.com/o/repo.git?private_token=SECRET3|repo
 git@github.com:o/repo.git|repo
 https://example.com/o/lib.git#frag|lib
+https://user:ghp_aa/SECRETX1@host.example|cwdname
+https://user:ghpYY?rest@host.example:o/repo.git|cwdname
+https://user:ghpZZ#rest@host.example/o/r.git|cwdname
+https://user:pa?x@host/|cwdname
+https://user:pw@host.example/o/a@b.git|cwdname
+ssh://git@host.example:22/o/svc.git|svc
 URLS
   rm -rf "$workdir"
 }
@@ -2907,6 +2913,108 @@ section "[TELEMETRY-AGENT-006] SubagentStop: usage once per message id, sidechai
   assert_jq "tokens 3/30 over distinct ids" "$TSTATE/telemetry/sessions/ag6/agents/subagent-a6.json" '.tokens.input==3 and .tokens.output==30 and .model_actual=="h"'
   tel telemetry-agent-run "$(jq -n --arg t "$workdir" '{session_id:"ag6",agent_id:"a7",agent_type:"rust-expert",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
   assert_jq "directory transcript: record without tokens" "$TSTATE/telemetry/sessions/ag6/agents/subagent-a7.json" 'has("tokens")|not'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-013] chunk larger than the cap is consumed across several Stops; offset advances; totals equal the whole file"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"; f="$TSTATE/telemetry/sessions/st13.json"
+  # 40 messages, two lines each (partial then final output), so chunk boundaries split messages.
+  i=0; : > "$tr_f"
+  while [ "$i" -lt 40 ]; do
+    tel_idline "msg_$i" 1 1 0 0 m1 >> "$tr_f"; tel_idline "msg_$i" 1 3 0 0 m1 >> "$tr_f"; i=$((i + 1))
+  done
+  size=$(wc -c < "$tr_f" | tr -d ' ')
+  stop="$(jq -n --arg t "$tr_f" '{session_id:"st13",transcript_path:$t,hook_event_name:"Stop"}')"
+  AF_TELEMETRY_CHUNK_CAP=4096; export AF_TELEMETRY_CHUNK_CAP
+  tel telemetry-session-stop "$stop"
+  o1=$(jq -r .transcript_offset "$f")
+  tel telemetry-session-stop "$stop"
+  o2=$(jq -r .transcript_offset "$f")
+  runs=2
+  while [ "$(jq -r .transcript_offset "$f")" -lt "$size" ] && [ "$runs" -lt 30 ]; do tel telemetry-session-stop "$stop"; runs=$((runs + 1)); done
+  unset AF_TELEMETRY_CHUNK_CAP
+  if [ "$o1" -gt 0 ] && [ "$o1" -lt "$size" ] && [ "$o2" -gt "$o1" ]; then _pass "offset advances per Stop ($o1 -> $o2 of $size)"; else _fail "offset advance" "o1=$o1 o2=$o2 size=$size"; fi
+  assert_jq "offset reaches EOF over several Stops; 40 messages counted once with final usage (40/120)" "$f" ".transcript_offset==$size and .tokens.input==40 and .tokens.output==120"
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-014] 40 KB message.id: record still written, id capped at 200, deduped within and across runs"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"; f="$TSTATE/telemetry/sessions/st14.json"
+  big=$(head -c 40000 /dev/zero | tr '\0' 'q')
+  { tel_idline "$big" 2 100 10 20 m1; tel_idline "$big" 2 100 10 20 m1; } > "$tr_f"
+  stop="$(jq -n --arg t "$tr_f" '{session_id:"st14",transcript_path:$t,hook_event_name:"Stop"}')"
+  tel telemetry-session-stop "$stop"
+  assert_rc_zero "40 KB id run"
+  assert_out_empty "40 KB id run silent"
+  assert_jq "two lines of one long id count once; id capped at 200" "$f" '.tokens=={input:2,output:100,cache_read:10,cache_creation:20} and (.last_message_id|length)==200'
+  tel_idline "$big" 2 160 10 20 m1 >> "$tr_f"
+  tel telemetry-session-stop "$stop"
+  assert_jq "continuation across runs adds only the growth (output 160, input 2)" "$f" '.tokens.output==160 and .tokens.input==2 and .tokens.cache_read==10'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-015] split message keeps last-line usage; <synthetic> model does not replace the model"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"; f="$TSTATE/telemetry/sessions/st15.json"
+  tel_idline msg_A 3 50 0 0 m1 > "$tr_f"
+  stop="$(jq -n --arg t "$tr_f" '{session_id:"st15",transcript_path:$t,hook_event_name:"Stop"}')"
+  tel telemetry-session-stop "$stop"
+  assert_jq "first part counted, usage stored" "$f" '.tokens.output==50 and (.last_message_usage.output)==50'
+  { tel_idline msg_A 3 80 0 0 m1; tel_line 1 1 0 0 "<synthetic>"; } >> "$tr_f"
+  tel telemetry-session-stop "$stop"
+  assert_jq "final usage wins (80 not 130), synthetic line counted but model stays m1" "$f" '.tokens.output==81 and .tokens.input==4 and .model=="m1"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-016] unreadable file size skips accounting: path, offset and totals untouched"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"; f="$TSTATE/telemetry/sessions/st16.json"
+  { tel_line 1 10 0 0 m1; tel_line 2 20 0 0 m1; tel_line 4 40 0 0 m1; } > "$tr_f"
+  stop="$(jq -n --arg t "$tr_f" '{session_id:"st16",transcript_path:$t,hook_event_name:"Stop"}')"
+  tel telemetry-session-stop "$stop"
+  before=$(jq -c '[.tokens,.transcript_offset,.transcript_path]' "$f")
+  mkdir -p "$workdir/shim"; printf '#!/bin/sh\nexit 1\n' > "$workdir/shim/wc"; chmod +x "$workdir/shim/wc"
+  RUN_OUT="$( (printf '%s' "$(jq -n --arg t "$tr_f" '{session_id:"st16",transcript_path:$t,hook_event_name:"SessionEnd",reason:"x"}')" \
+    | PATH="$workdir/shim:$PATH" CLAUDE_STATE_DIR="$TSTATE" sh "$SRC_REPO/hooks/telemetry-session-stop.sh") 2>&1)"; RUN_RC=$?
+  assert_rc_zero "stop with failing wc"
+  assert_out_empty "stop with failing wc silent"
+  after=$(jq -c '[.tokens,.transcript_offset,.transcript_path]' "$f")
+  if [ "$before" = "$after" ]; then _pass "totals, offset and path unchanged"; else _fail "state changed on size failure" "$before vs $after"; fi
+  assert_jq "end_reason still stamped" "$f" '.end_reason=="x"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-START-008] stale .tmp.* work dirs (>60 min, empty or not, any depth) are removed; fresh ones kept"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tdir="$TSTATE/telemetry/sessions"
+  mkdir -p "$tdir/.tmp.stale1" "$tdir/.tmp.staleempty" "$tdir/.tmp.fresh1" "$tdir/sx/agents/.tmp.stale2"
+  : > "$tdir/.tmp.stale1/chunk"; : > "$tdir/.tmp.fresh1/chunk"; : > "$tdir/sx/agents/.tmp.stale2/lines"
+  touch -t 202001010000 "$tdir/.tmp.stale1/chunk" "$tdir/.tmp.stale1" "$tdir/.tmp.staleempty" "$tdir/sx/agents/.tmp.stale2/lines" "$tdir/sx/agents/.tmp.stale2"
+  tel telemetry-session-start "$(jq -n --arg cwd "$workdir" '{session_id:"sess8",cwd:$cwd,source:"startup"}')"
+  assert_rc_zero "start with stale work dirs"
+  assert_out_empty "start with stale work dirs silent"
+  if [ ! -e "$tdir/.tmp.stale1" ] && [ ! -e "$tdir/.tmp.staleempty" ] && [ ! -e "$tdir/sx/agents/.tmp.stale2" ]; then _pass "stale work dirs removed"; else _fail "stale work dirs remain" "$(find "$tdir" -name '.tmp.*')"; fi
+  if [ -d "$tdir/.tmp.fresh1" ]; then _pass "fresh work dir kept"; else _fail "fresh work dir removed" "$(ls -a "$tdir")"; fi
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-007] no .tmp.* left behind after Pre / Post / SubagentStop"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/ag7/agents"
+  tr_f="$workdir/agent-a7.jsonl"; tel_idline m1 1 10 0 0 h > "$tr_f"
+  tel telemetry-agent-run '{"session_id":"ag7","tool_use_id":"t1","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"rust-expert"}}'
+  tel telemetry-agent-run '{"session_id":"ag7","tool_use_id":"t1","tool_name":"Agent","hook_event_name":"PostToolUse","tool_input":{"subagent_type":"rust-expert"},"tool_response":"ok"}'
+  tel telemetry-agent-run "$(jq -n --arg t "$tr_f" '{session_id:"ag7",agent_id:"a7",agent_type:"rust-expert",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
+  left=$(find "$TSTATE" -name '.tmp.*' | head -3)
+  if [ -z "$left" ] && [ -f "$d/t1.json" ] && [ -f "$d/subagent-a7.json" ]; then _pass "records written, no work dir left"; else _fail "leftover or missing record" "$left"; fi
   rm -rf "$workdir"
 }
 

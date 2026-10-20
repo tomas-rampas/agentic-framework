@@ -16,17 +16,18 @@ payload=$(cat)
 [ -z "$payload" ] && exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
-field() { printf '%s' "$payload" | jq -r "$1" | tr -d '\r'; }
-
-sid=$(field '.session_id // empty') || exit 0
-sid=$(printf '%s' "$sid" | LC_ALL=C tr -cd 'A-Za-z0-9._-')
+# One jq call for every payload field; @sh makes the assignments safe to eval.
+fields=$(printf '%s' "$payload" | jq -r '
+  @sh "sid=\(.session_id // "" | tostring) cwd=\(.cwd // "" | tostring) source_ev=\(.source // "" | tostring) model=\(.model // "" | tostring) version=\(.claude_version // "" | tostring)"') || exit 0
+eval "$fields"
+sid=$(printf '%s' "${sid:-}" | LC_ALL=C tr -cd 'A-Za-z0-9._-')
 case $sid in *[!.]*) ;; *) exit 0 ;; esac
 
-cwd=$(field '.cwd // empty')
+cwd=$(printf '%s' "${cwd:-}" | tr -d '\r')
 [ -z "$cwd" ] && cwd=$(pwd)
-source_ev=$(field '.source // empty')
-model=$(field '.model // empty')
-version=$(field '.claude_version // empty')
+source_ev=$(printf '%s' "${source_ev:-}" | tr -d '\r')
+model=$(printf '%s' "${model:-}" | tr -d '\r')
+version=$(printf '%s' "${version:-}" | tr -d '\r')
 
 # project: basename of the origin URL, with query/fragment, scheme and userinfo
 # (user:token@) removed first so no credential can reach the record; falls back to the
@@ -34,17 +35,44 @@ version=$(field '.claude_version // empty')
 url=$(git -C "$cwd" remote get-url origin 2>/dev/null | head -n 1 | tr -d '\r')
 project=""
 if [ -n "$url" ]; then
-  u=${url%%[?#]*}
-  case $u in
-    *://*) u=${u#*://}; a=${u%%/*}; u=${a##*@}${u#"$a"} ;;
-    *@*:*) u=${u#*@} ;;
-  esac
-  u=${u%/}
-  case $u in
-    */*|*:*) project=${u##*/}; project=${project##*:}; project=${project%.git}
-             project=$(printf '%s' "$project" | LC_ALL=C tr -cd 'A-Za-z0-9._-')
-             case $project in *[!.]*) ;; *) project="" ;; esac ;;
-  esac
+  # Anything that could hide part of a credential (a % anywhere, a ? or # in the authority or scp form, an @ that is not
+  # the single leading userinfo/scp user, a / inside the userinfo) falls back to the cwd
+  # basename: when in doubt, store nothing derived from the URL.
+  safe=1
+  case $url in *%*) safe=0 ;; esac
+  u=$url
+  if [ "$safe" -eq 1 ]; then
+    case $url in
+      *://*)
+        sch=${url%%://*}
+        case $sch in ''|*[!a-z]*) safe=0 ;; esac
+        u=${url#*://}; a=${u%%/*}
+        case $a in *[?#]*) safe=0 ;; esac
+        case $u in
+          *@*@*) safe=0 ;;
+          *@*) case $a in *@*) ;; *) safe=0 ;; esac ;;
+        esac
+        u=${a##*@}${u#"$a"} ;;
+      *@*)
+        case $url in *[?#]*) safe=0 ;; esac
+        usr=${url%%@*}; hp=${url#*@}
+        case $usr in ''|*[!A-Za-z0-9._-]*) safe=0 ;; esac
+        case $hp in *@*) safe=0 ;; esac
+        case $hp in
+          *:*) h=${hp%%:*}; case $h in ''|*/*) safe=0 ;; esac ;;
+          *) safe=0 ;;
+        esac
+        u=$hp ;;
+    esac
+  fi
+  if [ "$safe" -eq 1 ]; then
+    u=${u%%[?#]*}; u=${u%/}
+    case $u in
+      */*|*:*) project=${u##*/}; project=${project##*:}; project=${project%.git}
+               project=$(printf '%s' "$project" | LC_ALL=C tr -cd 'A-Za-z0-9._-')
+               case $project in *[!.]*) ;; *) project="" ;; esac ;;
+    esac
+  fi
 fi
 if [ -z "$project" ]; then
   project=$(printf '%s' "$cwd" | tr "\\\\" '/'); project=${project%/}; project=${project##*/}
@@ -84,8 +112,12 @@ else
   rm -f "$tmp"
 fi
 
-# Retention: drop files untouched for >30 days, then empty directories (a per-session
-# directory's own mtime does not refresh when files inside it change). Confined to $tdir.
+# Retention (confined to $tdir). Work directories (.tmp.*, any depth, empty or not) left by
+# a killed hook go first, judged on their own mtime (deleting files inside would refresh
+# it): one hour is far beyond any hook's life; -prune stops find descending into what it
+# removes. Then files untouched for >30 days, then empty directories (a per-session
+# directory's own mtime does not refresh when files inside it change).
+find "$tdir" -mindepth 1 -name '.tmp.*' -mmin +60 -prune -exec rm -rf {} + 2>/dev/null
 find "$tdir" -type f -mtime +30 -exec rm -f {} + 2>/dev/null
 find "$tdir" -mindepth 1 -depth -type d -empty ! -name '.tmp.*' -exec rmdir {} \; 2>/dev/null
 exit 0
