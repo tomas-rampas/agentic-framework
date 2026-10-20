@@ -88,9 +88,9 @@ now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 tmp=$(mktemp "$tdir/.tmp.XXXXXX") || exit 0
 trap 'rm -f "$tmp" "$tmp.old"; exit 0' EXIT INT TERM
 
-# The existing record goes to jq through a file (--slurpfile), never the command line:
-# an oversized cwd or model must not push the command past the Windows limit.
-# $old is then an array: the record, or empty when absent or unreadable.
+# The existing record (which already repeats cwd and model) goes to jq through a file
+# (--slurpfile) rather than being duplicated on the command line, keeping the command
+# short on Windows. $old is then an array: the record, or empty when absent or unreadable.
 oldf="$tmp.old"
 : > "$oldf"
 if [ -f "$dest" ] && jq -e 'type == "object"' "$dest" >/dev/null 2>&1; then

@@ -133,7 +133,7 @@ Output format:
 Prune report (stale threshold: 90 days), 61 files scanned
 
 #  Agent               File                Class          Evidence                               Action
-1  peer-review-critic  old_gate_notes.md   stale          cites scripts/gate.sh, not in repo     delete
+1  peer-review-critic  old_gate_notes.md   stale          names this repo; cites scripts/gate.sh, not in checkout  delete
 2  peer-review-critic  verdict_rules.md    contradictory  says 5 blocks; gate_behaviour.md says 3 fix
 3  mql-trading-dev     dash_a.md           duplicate      same body as dash_b.md (95% overlap)   merge
 4  mql-trading-dev     MEMORY.md           broken index   links missing hub_old.md               fix

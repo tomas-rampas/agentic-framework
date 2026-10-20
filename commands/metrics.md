@@ -135,7 +135,7 @@ Only records with a `tool_use_id` count as invocations; a record created by Post
 
 ### 4. Review metrics
 
-Primary source is the agent records. Reviewers are `peer-review-critic` and `spec-compliance-reviewer`; a session counts only when at least one of its reviewer records carries a verdict (a launch that was denied, is pending, or ran in the background without a parsed report does not count as a non-approval), and its outcome is the verdict of its last such record.
+Primary source is the agent records. Reviewers are `peer-review-critic` and `spec-compliance-reviewer`; a session counts only when at least one of its reviewer records carries a verdict (a launch that was denied, is pending, or ran in the background without a parsed report does not count as a non-approval), and its outcome is the verdict of its last such record; `cycles` counts only verdict-bearing records, the same unit as the marker fallback's `.verdict-sources` lines.
 
 ```bash
 find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec jq -c '. + {file: input_filename}' {} + \
@@ -146,7 +146,7 @@ find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec jq -c '. + {file
       | . + {session: (.file | split("/") | .[-3])}] as $r
   | ($r | group_by(.session)
       | map(select(any(.[]; .verdict != null)))
-      | map({session: .[0].session, cycles: length,
+      | map({session: .[0].session, cycles: ([.[] | select(.verdict)] | length),
              last: ([.[] | select(.verdict)] | sort_by(.started_at // .ended_at) | last | .verdict)})) as $s
   | {source: "agent-records", sessions: ($s | length),
      approved: ([$s[] | select(.last == "APPROVED")] | length),
