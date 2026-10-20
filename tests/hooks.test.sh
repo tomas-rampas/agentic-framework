@@ -2686,6 +2686,12 @@ section "[TELEMETRY-AGENT-002] PostToolUse: duration, status, verdict parsing"
   assert_jq "quoted / mid-line mention ignored" "$d/t4.json" 'has("verdict")|not'
   tel telemetry-agent-run "$(post t5 rust-expert '"VERDICT: APPROVED"')"
   assert_jq "non-reviewer agent gets no verdict" "$d/t5.json" 'has("verdict")|not'
+  tel telemetry-agent-run '{"session_id":"ag2","tool_use_id":"bg1","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"rust-expert","run_in_background":true}}'
+  tel telemetry-agent-run "$(post bg1 rust-expert '{"status":"async_launched"}' '{"tool_input":{"subagent_type":"rust-expert","run_in_background":true}}')"
+  assert_jq "background Pre+Post pair ends launched, ended_at and duration_s kept" "$d/bg1.json" '.background==true and .status=="launched" and (.ended_at|type)=="string" and (.duration_s|type)=="number"'
+  tel telemetry-agent-run '{"session_id":"ag2","tool_use_id":"fg1","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"rust-expert"}}'
+  tel telemetry-agent-run "$(post fg1 rust-expert '"done"')"
+  assert_jq "foreground Pre+Post pair ends completed" "$d/fg1.json" '.background==false and .status=="completed"'
   rm -rf "$workdir"
 }
 

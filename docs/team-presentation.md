@@ -86,7 +86,7 @@ flowchart TD
     SK["📚 Skills<br/>procedural knowledge"] -.-> S
     MCP["🔌 MCP servers<br/>code intel · live docs · web"] -.-> S
     S --> C1["code-review-gatekeeper<br/>quality review"]
-    C1 -->|findings fixed| C2["peer-review-critic<br/>independent final review — read-only tools"]
+    C1 -->|findings fixed| C2["peer-review-critic<br/>independent final review — read-only toward the code"]
     C2 --> GATE{"🚦 Stop gate<br/>review recorded?"}
     GATE -- no --> C2
     GATE -- yes --> DONE["✅ Session may end — work is done"]
@@ -146,7 +146,7 @@ mindmap
 ```
 
 - **Model tiers scale with stakes**: `opus` = review gates, security & architecture · `sonnet` = language implementation, domain & infrastructure specialists, analysis & planning · `haiku` = executors, docs & UI/UX. The orchestrator moves one tier per task at most, and no sub-agent ever runs on the top tier (Fable).
-- **peer-review-critic runs a curated toolset** (no Write/Edit/Agent) that narrows its default surface; its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
+- **peer-review-critic runs a curated toolset** (no Agent, and no Write/Edit beyond what the memory feature adds for its own memory directory) that narrows its default surface; it is read-only toward the code under review by conduct, and its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
 ### 3.2 Commands — the operations console (13)

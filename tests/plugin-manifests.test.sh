@@ -520,7 +520,7 @@ export FRAMEWORK_ROOT
   done <<< "$registered_ps1"
 
   if [[ "$rc" -eq 0 ]]; then
-    _pass "all registered hooks have both .ps1 and .sh implementations"
+    _pass "all hooks registered with a pwsh arm have both .ps1 and .sh implementations"
   fi
 }
 

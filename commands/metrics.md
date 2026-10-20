@@ -123,7 +123,7 @@ find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec cat {} + | jq -s
      tiers: ($a | group_by(.model_tier // "unknown")
        | map({tier: (.[0].model_tier // "unknown"), n: length}) | sort_by(-.n)),
      agents: ($a | group_by(.agent_name // "general-purpose")
-       | map(([.[] | select(.status == "completed" and .duration_s != null) | .duration_s]) as $d
+       | map(([.[] | select(.status == "completed" and (.background | not) and .duration_s != null) | .duration_s]) as $d
          | {agent: (.[0].agent_name // "general-purpose"), n: length,
             background: ([.[] | select(.background)] | length),
             completed: ($d | length),
@@ -131,11 +131,11 @@ find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec cat {} + | jq -s
        | sort_by(-.n) | .[:10])}'
 ```
 
-Only records with a `tool_use_id` count as invocations; a record created by PostToolUse alone (hook installed mid-session) has no `started_at` and is placed by its `ended_at`; a call with no `subagent_type` is reported as `general-purpose`. `pending` counts records with no `status`: launches that never completed because the model guard denied them, the user rejected them, or they are still running (the PreToolUse hook cannot see a later denial or the guard's model rewrite, so such a record may also carry a null tier). Duration averages use completed records only; an agent with `completed: 0` shows `-`. A non-zero `background` count is flagged in the table, because background launches may never complete.
+Only records with a `tool_use_id` count as invocations; a record created by PostToolUse alone (hook installed mid-session) has no `started_at` and is placed by its `ended_at`; a call with no `subagent_type` is reported as `general-purpose`. `pending` counts records with no `status`: launches that never completed because the model guard denied them, the user rejected them, or they are still running (the PreToolUse hook cannot see a later denial or the guard's model rewrite, so such a record may also carry a null tier). Duration averages use completed foreground records only; an agent with `completed: 0` shows `-`. A background launch is recorded with `status: "launched"` and the launch latency as its duration, so it is excluded from the average and its count is flagged in the table.
 
 ### 4. Review metrics
 
-Primary source is the agent records. Reviewers are `peer-review-critic` and `spec-compliance-reviewer`; a session's outcome is the verdict of its last reviewer record that carries one.
+Primary source is the agent records. Reviewers are `peer-review-critic` and `spec-compliance-reviewer`; a session counts only when at least one of its reviewer records carries a verdict (a launch that was denied, is pending, or ran in the background without a parsed report does not count as a non-approval), and its outcome is the verdict of its last such record.
 
 ```bash
 find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec jq -c '. + {file: input_filename}' {} + \
@@ -145,8 +145,9 @@ find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec jq -c '. + {file
         and ((.started_at // .ended_at // "") >= $cutoff))
       | . + {session: (.file | split("/") | .[-3])}] as $r
   | ($r | group_by(.session)
+      | map(select(any(.[]; .verdict != null)))
       | map({session: .[0].session, cycles: length,
-             last: ([.[] | select(.verdict)] | sort_by(.started_at) | last | .verdict)})) as $s
+             last: ([.[] | select(.verdict)] | sort_by(.started_at // .ended_at) | last | .verdict)})) as $s
   | {source: "agent-records", sessions: ($s | length),
      approved: ([$s[] | select(.last == "APPROVED")] | length),
      approval_rate: (if ($s | length) > 0
@@ -159,7 +160,7 @@ If this reports `sessions: 0` (no agent records, for example telemetry not insta
 ```bash
 for m in "$S"/peer-review/*; do
   [ -f "$m" ] || continue
-  case "$m" in *.*) continue ;; esac   # session ids carry no dot; skips .verdict-sources, .verdict-suppressed, .fired
+  case "${m##*/}" in *.*) continue ;; esac   # basename only (the state path itself contains .claude); session ids carry no dot, so this skips .verdict-sources, .verdict-suppressed, .fired
   ts=$(head -n1 "$m")
   case "$ts" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) ;; *) continue ;; esac
   v=$(sed -n 's/^verdict=//p' "$m" | tail -n1)
@@ -176,7 +177,7 @@ done | jq -R -s --arg cutoff "$CUT" '
      avg_cycles: (if ($m | length) > 0 then ([$m[].n] | add) / ($m | length) else null end)}'
 ```
 
-Markers are written by the review-gate recorder and predate the telemetry hooks, so the fallback also covers sessions from before 5.0.0. State which source produced the numbers.
+Markers are written by the review-gate recorder and predate the telemetry hooks, so the fallback covers sessions from before 5.0.0, but the recorder prunes markers after 7 days, so through this source `last 30 days` and `all time` mean the last week; say so in the report. The PowerShell recorder stamps local time, so a session near the cutoff can land on either side. State which source produced the numbers.
 
 ### 5. Render the report
 
@@ -223,6 +224,7 @@ If no session files exist for the period, say so plainly instead of printing zer
 
 - Session and agent files that are malformed JSON make the pipeline fail; name the offending file (`jq empty <file>`) and report it rather than guessing.
 - Telemetry older than 30 days is pruned by the session-start hook, so `all time` means "all retained".
+- A forked session (`source: fork`) gets its own session id and may start from a transcript that carries the parent's history; its totals can then overlap the parent's. Treat the sum over sessions as an upper bound when forks are in use.
 - Session token totals come from the main-thread transcript (as of the session's last Stop event); sub-agent tokens come from the SubagentStop records (`subagent-*.json`) and are included in the totals and the cost. A background agent that never reaches SubagentStop contributes no tokens.
 
 ## Integration

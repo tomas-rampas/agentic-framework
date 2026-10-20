@@ -16,7 +16,7 @@ Configuration lives in the **agentic-framework plugin** (typically at `~/.claude
   - **Override location** (if present): `~/.claude/agents/<name>.md` (takes priority)
 - `claude.json` — the registry. `.sub_agents` maps each agent to its config (including `model` shorthand and `focus`); `.agent_categories` partitions the roster into the canonical categories; `.consistency.model_tiers` lists the only legal model values (tier names only, never model ids); `.consistency.deprecated_agent_names` lists dead names that must never be referenced.
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/claude.json`
-- `hooks/hooks.json` — hook registration as shell-form dispatch chains (`sh dispatch.sh <name> || pwsh -NoProfile -File <name>.ps1`) with `${CLAUDE_PLUGIN_ROOT}` substitution; each hook is a `.ps1`/`.sh` pair routed by `hooks/dispatch.sh`. Hooks are loaded automatically by Claude Code.
+- `hooks/hooks.json` — hook registration as shell-form dispatch chains (`sh dispatch.sh <name> || pwsh -NoProfile -File <name>.ps1`) with `${CLAUDE_PLUGIN_ROOT}` substitution; gates and advisory hooks are `.ps1`/`.sh` pairs, the silent telemetry hooks are `.sh` only (`sh dispatch.sh <name> || exit 0`), all routed by `hooks/dispatch.sh`. Hooks are loaded automatically by Claude Code.
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/hooks/hooks.json`
 - `settings.template.json` — recommended permissions and `alwaysThinkingEnabled` for merging into user settings.
   - **Plugin location**: `~/.claude/plugins/cache/agentic-framework/agentic-framework/*/settings.template.json`

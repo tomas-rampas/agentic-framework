@@ -5,7 +5,7 @@ description: Guide for adding a new real Claude Code hook to this framework as a
 
 # Adding a New Hook
 
-Hooks in this framework are real Claude Code hooks: implemented as both PowerShell 7 (`.ps1`) and POSIX shell (`.sh`) scripts in `hooks/` that read a JSON payload on stdin and optionally emit a JSON decision on stdout. They are registered in `hooks/hooks.json` as a shell-form fallback chain (`sh dispatch.sh <name> || pwsh -NoProfile -File <name>.ps1`) and automatically loaded by Claude Code when the agentic-framework plugin is installed. On Linux/macOS, the dispatcher runs the `.sh` script; on Windows, the `.ps1` script runs (either via dispatch on Git Bash systems or directly if `sh` is unavailable). Study `hooks/stop-peer-review-gate.ps1` and `hooks/stop-peer-review-gate.sh` (blocking Stop gate pair) and `hooks/pretooluse-delegation-hint.ps1` and `hooks/pretooluse-delegation-hint.sh` (advisory pair) as reference implementations before writing anything.
+Hooks in this framework are real Claude Code hooks: gates and advisory hooks are implemented as both PowerShell 7 (`.ps1`) and POSIX shell (`.sh`) scripts in `hooks/`, silent hooks as `.sh` only (see "sh-only advisory hooks" below); each reads a JSON payload on stdin and optionally emits a JSON decision on stdout. They are registered in `hooks/hooks.json` as a shell-form fallback chain (`sh dispatch.sh <name> || pwsh -NoProfile -File <name>.ps1`, or `sh dispatch.sh <name> || exit 0` for an sh-only hook) and automatically loaded by Claude Code when the agentic-framework plugin is installed. On Linux/macOS, the dispatcher runs the `.sh` script; on Windows Git Bash it runs the `.sh` when `jq` is on PATH and the `.ps1` otherwise (or the `.ps1` directly if `sh` is unavailable). Study `hooks/stop-peer-review-gate.ps1` and `hooks/stop-peer-review-gate.sh` (blocking Stop gate pair) and `hooks/pretooluse-delegation-hint.ps1` and `hooks/pretooluse-delegation-hint.sh` (advisory pair) as reference implementations before writing anything.
 
 ## Hook Contract
 
@@ -53,7 +53,7 @@ The POSIX shell twin, used on Linux/macOS via dispatch.sh:
 
 Gates ship as `.ps1`/`.sh` pairs. An advisory or silent hook (telemetry, hints that never block) may ship as `.sh` only and simply no-op on Windows hosts without jq:
 
-- Skip Step 1 and the `.ps1` half of Step 5; register the bare chain `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name>` with no `|| pwsh` arm (and no `.ps1` token, which is what the parity checks key on).
+- Skip Step 1 and the `.ps1` half of Step 5; register the chain `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name> || exit 0` with no `|| pwsh` arm (and no `.ps1` token, which is what the parity checks key on); the `|| exit 0` arm keeps a host without `sh` silent instead of surfacing a hook error on every fire.
 - `dispatch.sh` runs pwsh in its Windows no-jq branch only when `hooks/<name>.ps1` exists, so an sh-only hook exits 0 there.
 - Never use this for a gate: a hook that must block or whose absence changes behaviour needs both implementations.
 - Examples: `telemetry-session-start`, `telemetry-session-stop`, `telemetry-agent-run`.

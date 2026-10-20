@@ -86,15 +86,17 @@ mkdir -p "$tdir" || exit 0
 dest="$tdir/$sid.json"
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 tmp=$(mktemp "$tdir/.tmp.XXXXXX") || exit 0
-trap 'rm -f "$tmp"; exit 0' EXIT INT TERM
+trap 'rm -f "$tmp" "$tmp.old"; exit 0' EXIT INT TERM
 
-# $old is the existing record (empty array when absent or unreadable).
-old='[]'
+# The existing record goes to jq through a file (--slurpfile), never the command line:
+# an oversized cwd or model must not push the command past the Windows limit.
+# $old is then an array: the record, or empty when absent or unreadable.
+oldf="$tmp.old"
+: > "$oldf"
 if [ -f "$dest" ] && jq -e 'type == "object"' "$dest" >/dev/null 2>&1; then
-  old=$(jq -c '[.]' "$dest")
+  cp "$dest" "$oldf" || exit 0
 fi
-
-if jq -n --argjson old "$old" --arg sid "$sid" --arg now "$now" --arg project "$project" \
+if jq -n --slurpfile old "$oldf" --arg sid "$sid" --arg now "$now" --arg project "$project" \
      --arg cwd "$cwd" --arg branch "$branch" --arg src "$source_ev" --arg model "$model" \
      --arg ver "$version" '
   {session_id: $sid, started_at: $now, project: $project, cwd: $cwd, branch: $branch,

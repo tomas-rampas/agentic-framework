@@ -33,8 +33,8 @@ NC='\033[0m' # No Color
 # Exception filters (in order): placeholder values, test fixtures, documented
 # examples, env-var expansion, template placeholders ({{ ... }}), lines
 # explicitly marked as educational anti-patterns in agent prompts, and the
-# plural usage-counter field `tokens` in its jq/JSON spellings only (`.tokens`,
-# `_tokens`, `tokens: (`, `"tokens"`): the telemetry hooks, their tests and
+# plural usage-counter field `tokens` in its jq spellings only (`.tokens`,
+# `tokens: (`, `has("tokens")`): the telemetry hooks, their tests and
 # /agentic-framework:metrics compare token counts against quoted strings on the
 # same line, which this rule read as `token ... = "literal"` (measured: six
 # false positives, zero real hits). A singular `token:`/`_token =` line is still
@@ -61,7 +61,7 @@ _secret_scan() {
         | grep -v '\${.*}' \
         | grep -v '{{.*}}' \
         | grep -v "NEVER DO THIS" \
-        | grep -v -E '\.tokens\b|_tokens\b|tokens: \(|"tokens"'
+        | grep -v -E '\.tokens\b|tokens: \(|has\("tokens"\)'
 }
 
 echo "🔍 Checking for hardcoded secrets..."

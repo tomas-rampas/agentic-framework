@@ -3,7 +3,7 @@
 #
 # Events: PreToolUse + PostToolUse (matcher Task|Agent) and SubagentStop.
 #   Pre  -> <telemetry>/<session>/agents/<tool_use_id>.json  (agent, model tier, start)
-#   Post -> same file updated with ended_at, duration_s, status, and the reviewer verdict
+#   Post -> same file updated with ended_at, duration_s, status ("launched" for a background agent: Post fires at launch, so duration_s is launch latency), and the reviewer verdict
 #           (created from the payload when the Pre record is missing)
 #   Stop -> <telemetry>/<session>/agents/subagent-<agent_id>.json  (actual model, tokens)
 # Silent by design: an empty PreToolUse output allows the tool call, so nothing is ever
@@ -137,7 +137,7 @@ case "$event" in
     printf '%s' "$payload" | jq -c --slurpfile rec "$work/rec.json" --slurpfile old "$work/old.json" --arg now "$now" \
       --arg verdict "$verdict" '
       (if ($old | length) > 0 then $old[0] else $rec[0] + {started_at: null} end) as $base
-      | $base + {ended_at: $now, status: "completed",
+      | $base + {ended_at: $now, status: (if $base.background == true then "launched" else "completed" end),
           duration_s: (if (.duration_ms | type) == "number" then (.duration_ms / 1000)
                        else (try (($now | fromdateiso8601) - ($base.started_at | fromdateiso8601)) catch null) end)}
         + (if $verdict == "" then {} else {verdict: $verdict} end)' \
