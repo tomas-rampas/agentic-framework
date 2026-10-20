@@ -31,8 +31,14 @@ NC='\033[0m' # No Color
 # dedicated AWS / GitHub-token / private-key / connection-string rules below are
 # unaffected.
 # Exception filters (in order): placeholder values, test fixtures, documented
-# examples, env-var expansion, template placeholders ({{ ... }}), and lines
-# explicitly marked as educational anti-patterns in agent prompts.
+# examples, env-var expansion, template placeholders ({{ ... }}), lines
+# explicitly marked as educational anti-patterns in agent prompts, and the
+# plural usage-counter field `tokens` in its jq/JSON spellings only (`.tokens`,
+# `_tokens`, `tokens: (`, `"tokens"`): the telemetry hooks, their tests and
+# /agentic-framework:metrics compare token counts against quoted strings on the
+# same line, which this rule read as `token ... = "literal"` (measured: six
+# false positives, zero real hits). A singular `token:`/`_token =` line is still
+# scanned, so an API token assignment stays caught.
 # Binary files are skipped (-I) and the code graph's store is excluded:
 # .code-review-graph/ is a self-ignored tool cache whose graph.db holds
 # source-derived text in binary form, so once an agent has built the graph it
@@ -54,7 +60,8 @@ _secret_scan() {
         | grep -v -i "example" \
         | grep -v '\${.*}' \
         | grep -v '{{.*}}' \
-        | grep -v "NEVER DO THIS"
+        | grep -v "NEVER DO THIS" \
+        | grep -v -E '\.tokens\b|_tokens\b|tokens: \(|"tokens"'
 }
 
 echo "🔍 Checking for hardcoded secrets..."
