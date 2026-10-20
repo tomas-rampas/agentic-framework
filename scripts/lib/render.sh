@@ -156,12 +156,15 @@ render_framework_stats() {
 # ---------------------------------------------------------------------------
 render_team_presentation_stats() {
   local root="$FACTS_REPO_ROOT"
-  local agents skills commands categories tiers hook_pairs
+  local agents skills commands categories tiers hook_pairs hook_total hook_sh_only
   local mcp_count mcp_list checks suites job_count job_list
 
   agents="$(fact_count agents)"     || return 1
   skills="$(fact_count skills)"     || return 1
   commands="$(fact_count commands)" || return 1
+  # Distinct registered hook scripts (the README "Hook Scripts" unit); the
+  # pair count below is a subset of it, the remainder being sh-only hooks.
+  hook_total="$(fact_count hooks)"  || return 1
 
   categories="$(_facts_jq -r '.agent_categories | keys | length' "$FACTS_CLAUDE_JSON")" || return 1
   tiers="$(_facts_jq -r '[.sub_agents[].model] | unique | length' "$FACTS_CLAUDE_JSON")" || return 1
@@ -176,6 +179,8 @@ render_team_presentation_stats() {
     [[ -f "$base.sh" ]] && hook_pairs=$((hook_pairs + 1))
   done
   shopt -u nullglob
+  hook_sh_only=$((hook_total - hook_pairs))
+  [[ "$hook_sh_only" -lt 0 ]] && hook_sh_only=0
 
   local mcp_json="$root/.mcp.json"
   mcp_count="$(_facts_jq -r '.mcpServers // {} | keys | length' "$mcp_json")" || return 1
@@ -212,7 +217,7 @@ render_team_presentation_stats() {
   printf '| | |\n'
   printf '|---|---|\n'
   printf '| Specialized agents | %s (%s categories, %s model tiers) |\n' "$agents" "$categories" "$tiers"
-  printf '| Hooks | %s .ps1/.sh implementation pairs |\n' "$hook_pairs"
+  printf '| Hooks | %s hook scripts (%s .ps1/.sh implementation pairs, %s sh-only) |\n' "$hook_total" "$hook_pairs" "$hook_sh_only"
   printf '| Skills | %s loadable knowledge modules |\n' "$skills"
   printf '| Commands | %s management commands |\n' "$commands"
   printf '| MCP servers | %s (%s) |\n' "$mcp_count" "$mcp_list"

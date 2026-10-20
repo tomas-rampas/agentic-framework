@@ -94,7 +94,7 @@ jq '.hooks.Stop' ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/h
 # Verify plugin is installed
 /plugin list | grep agentic-framework
 
-# Check hook scripts exist (each hook is a .ps1/.sh pair plus dispatch.sh)
+# Check hook scripts exist (gates and advisory hooks are .ps1/.sh pairs, telemetry hooks are .sh only, plus dispatch.sh)
 ls ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/hooks/*.ps1 \
    ~/.claude/plugins/cache/agentic-framework/agentic-framework/*/hooks/*.sh
 
@@ -117,7 +117,7 @@ Common causes, in order of likelihood:
 - A built-in agent (`Explore`, `Plan`, `general-purpose`, `claude`) ran on `haiku` or `sonnet` although the call named no model, and a `[model-guard] ... Model set to ...` notice appeared: the guard rewrote the call instead of letting it inherit the session's model. That is automatic and needs no setup. To run a built-in on a different tier, pass `model` explicitly — the guard never touches an explicit model other than the top tier. If `CLAUDE_CODE_SUBAGENT_MODEL` is set to a usable tier, the guard leaves built-ins alone and that variable decides.
 - Plugin cache stale: try `/plugin uninstall agentic-framework` and then `/plugin install agentic-framework@agentic-framework`.
 
-Check 3 of `validate-consistency.sh` asserts pair parity: every hook name in `hooks/hooks.json` has both .ps1 and .sh implementations; `dispatch.sh` is present and referenced in every registered chain; no orphans on either side. (The name allowlist inside dispatch.sh itself is not validator-checked — keep it in sync by hand.) Behavior is covered by `tests/hooks.test.ps1` (PowerShell) and `tests/hooks.test.sh` (POSIX).
+Check 3 of `validate-consistency.sh` asserts pair parity: every hook in `hooks/hooks.json` registered with a pwsh arm has both .ps1 and .sh implementations, and every sh-only chain has its .sh; `dispatch.sh` is present and referenced in every registered chain; no orphans on either side; every registered hook name appears in the dispatch.sh case allowlist (rule j of `scripts/lib/hookcheck.sh`). Behavior is covered by `tests/hooks.test.ps1` (PowerShell) and `tests/hooks.test.sh` (POSIX).
 
 Stop-gate specifics: `stop-peer-review-gate.ps1` blocks session end only when a feature branch has committed work ahead of its base and the latest `peer-review-critic` run this session did not record `VERDICT: APPROVED` (verdicts are parsed into the session marker by `record-subagent-run.ps1`; blocks are bounded — once with no review, up to 3 on `CHANGES_REQUIRED`). It is loop-safe and fail-open — if it appears to "block forever", verify the recorder hook is registered and firing, since the gate clears based on its records. Design rationale lives in `docs/design/`.
 
