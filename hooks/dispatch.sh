@@ -16,7 +16,7 @@ set -u
 
 hook=${1:-}
 case "$hook" in
-  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard) ;;
+  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard|telemetry-session-start|telemetry-session-stop|telemetry-agent-run) ;;
   *) exit 0 ;;
 esac
 
@@ -29,9 +29,10 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     if command -v jq >/dev/null 2>&1 && [ -f "$dir/$hook.sh" ]; then
       sh "$dir/$hook.sh"
-    else
+    elif [ -f "$dir/$hook.ps1" ]; then
       pwsh -NoProfile -File "$dir/$hook.ps1"
     fi
+    # else: sh-only advisory hook (no .ps1 twin) without jq — no-op, exit 0 below.
     ;;
   *) sh "$dir/$hook.sh" ;;
 esac

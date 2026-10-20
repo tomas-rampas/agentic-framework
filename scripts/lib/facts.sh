@@ -256,7 +256,7 @@ fact_commands() {
 
 # fact_counts - emit derived counts as key=value lines.
 #   agents   = number of registered sub_agents
-#   hooks    = number of DISTINCT hook scripts registered in hooks/hooks.json
+#   hooks    = number of DISTINCT hook names registered via dispatch.sh in hooks/hooks.json
 #              (one script may be registered under several events; the docs
 #              headline says "Hook Scripts", so scripts is the truthful unit)
 #   skills   = number of skills (skills/<name>/SKILL.md dirs + legacy flat skills/*.md)
@@ -264,7 +264,8 @@ fact_commands() {
 fact_counts() {
   local agents hooks skills commands
   agents="$(fact_agents | grep -c . || true)"
-  hooks="$(fact_registered_hook_scripts | grep -c . || true)"
+  # Dispatch-name based: counts sh-only advisory hooks (no .ps1 twin) too.
+  hooks="$(fact_registered_sh_scripts | grep -vx 'dispatch.sh' | grep -c . || true)"
   skills="$(fact_skills | grep -c . || true)"
   commands="$(fact_commands | grep -c . || true)"
   printf 'agents=%s\n' "$agents"

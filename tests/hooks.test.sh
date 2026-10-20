@@ -2464,6 +2464,276 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-022] per-field surrogate sanitising, rewri
   lower_model_count=$(printf '%s' "$RUN_OUT" | grep -o '"model"' | wc -l | tr -d ' ')
   if [ "$lower_model_count" = "1" ]; then _pass "edge022f case-variant-field has exactly one lowercase model field"; else _fail "edge022f lowercase model count" "got $lower_model_count"; fi
 }
+# ===========================================================================
+# Telemetry hooks (sh-only, silent): session start, session stop, agent run
+# ===========================================================================
+
+# tel <hook-name> <stdin>: run hooks/<name>.sh directly under $TSTATE; sets RUN_OUT/RUN_RC.
+# stdout+stderr are merged so assert_out_empty proves both streams are silent.
+tel() {
+  RUN_OUT="$( (printf '%s' "$2" | CLAUDE_STATE_DIR="$TSTATE" CLAUDE_PLUGIN_ROOT="${TEL_PLUGIN_ROOT:-}" \
+    sh "$SRC_REPO/hooks/$1.sh") 2>&1)"
+  RUN_RC=$?
+}
+
+# assert_jq <label> <json-file> <jq-filter>: filter must evaluate to true.
+assert_jq() {
+  if [ -f "$2" ] && [ "$(jq -r "$3" "$2" 2>/dev/null)" = "true" ]; then _pass "$1"
+  else _fail "$1" "jq '$3' on $2 -> $(jq -c . "$2" 2>&1 | head -c 400)"; fi
+}
+
+# tel_line <input> <output> <cache-read> <cache-create> <model>: one assistant transcript line.
+tel_line() {
+  printf '{"type":"assistant","timestamp":"2026-10-20T18:24:05.035Z","message":{"model":"%s","usage":{"input_tokens":%s,"cache_creation_input_tokens":%s,"cache_read_input_tokens":%s,"output_tokens":%s}}}\n' \
+    "$5" "$1" "$4" "$3" "$2"
+}
+
+section "[TELEMETRY-START-001] session file created with the REQ-301 fields"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; repo="$workdir/widget-checkout"; mkdir -p "$repo"
+  make_test_repo "$repo"
+  git -C "$repo" remote add origin 'https://user:s3cret@github.com/acme/widget.git'
+  tel telemetry-session-start "$(jq -n --arg cwd "$repo" '{session_id:"s/1;x",cwd:$cwd,source:"startup",model:"claude-opus-5-5",hook_event_name:"SessionStart"}')"
+  assert_rc_zero "start hook"
+  assert_out_empty "start hook silent"
+  f="$TSTATE/telemetry/sessions/s1x.json"
+  assert_jq "id sanitized, project from origin without userinfo/.git" "$f" '.session_id=="s1x" and .project=="widget"'
+  assert_jq "branch, cwd, source, last_source, model" "$f" '.branch=="feature/x" and .source=="startup" and .last_source=="startup" and .model=="claude-opus-5-5" and (.cwd|length>0)'
+  assert_jq "counters zeroed" "$f" '.turns==0 and .transcript_offset==0 and .tokens=={input:0,output:0,cache_read:0,cache_creation:0}'
+  assert_jq "started_at is ISO-8601 UTC" "$f" '.started_at|test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")'
+  if grep -q 's3cret' "$f"; then _fail "origin userinfo not persisted" "token leaked into $f"; else _pass "origin userinfo not persisted"; fi
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-START-002] resume keeps started_at/tokens/turns/offset, refreshes last_source/branch/cwd"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; repo="$workdir/r"; mkdir -p "$repo"
+  make_test_repo "$repo"
+  tel telemetry-session-start "$(jq -n --arg cwd "$repo" '{session_id:"sess2",cwd:$cwd,source:"startup"}')"
+  f="$TSTATE/telemetry/sessions/sess2.json"
+  jq '.started_at="2026-01-02T03:04:05Z" | .tokens.input=77 | .turns=4 | .transcript_offset=123' "$f" > "$f.t" && mv "$f.t" "$f"
+  git -C "$repo" checkout -q -b other
+  tel telemetry-session-start "$(jq -n --arg cwd "$repo" '{session_id:"sess2",cwd:$cwd,source:"resume"}')"
+  assert_rc_zero "resume start"
+  assert_out_empty "resume start silent"
+  assert_jq "started_at, tokens, turns, offset preserved" "$f" '.started_at=="2026-01-02T03:04:05Z" and .tokens.input==77 and .turns==4 and .transcript_offset==123'
+  assert_jq "last_source and branch refreshed, source kept" "$f" '.last_source=="resume" and .branch=="other" and .source=="startup"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-START-003] non-git cwd gives branch '-' and cwd basename as project"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; plain="$workdir/plainproj"; mkdir -p "$plain"
+  tel telemetry-session-start "$(jq -n --arg cwd "$plain" '{session_id:"sess3",cwd:$cwd,source:"startup"}')"
+  assert_rc_zero "non-git start"
+  assert_jq "branch is '-', project is cwd basename, model null" "$TSTATE/telemetry/sessions/sess3.json" '.branch=="-" and .project=="plainproj" and .model==null'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-START-004] malformed / empty stdin exits 0 silently, writes nothing"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"
+  for bad in 'not json{' '' '{"cwd":"/x"}' '[1,2]'; do
+    tel telemetry-session-start "$bad"
+    assert_rc_zero "start malformed ($bad)"
+    assert_out_empty "start malformed silent ($bad)"
+  done
+  n=$(find "$TSTATE" -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$n" = "0" ]; then _pass "no files written for malformed input"; else _fail "no files written" "found $n"; fi
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-START-005] prune removes 31-day-old entries (file and dir), keeps 1-day-old"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tdir="$TSTATE/telemetry/sessions"; mkdir -p "$tdir/oldsess/agents"
+  : > "$tdir/old.json"; : > "$tdir/new.json"; : > "$tdir/oldsess/agents/a.json"
+  touch -d '31 days ago' "$tdir/old.json" "$tdir/oldsess/agents/a.json" "$tdir/oldsess"
+  touch -d '1 day ago' "$tdir/new.json"
+  tel telemetry-session-start "$(jq -n --arg cwd "$workdir" '{session_id:"sess5",cwd:$cwd,source:"startup"}')"
+  assert_rc_zero "prune run"
+  if [ ! -e "$tdir/old.json" ] && [ ! -e "$tdir/oldsess" ]; then _pass "31-day-old file and directory removed"; else _fail "31-day-old pruned" "still present"; fi
+  if [ -e "$tdir/new.json" ] && [ -e "$tdir/sess5.json" ]; then _pass "1-day-old and current session kept"; else _fail "recent kept" "missing"; fi
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-001] token sums over a 3-assistant-line transcript; other lines ignored; incremental append"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"
+  { tel_line 2 100 10 20 claude-opus-5-5; printf '{"type":"user","message":{"content":"hi"}}\n'
+    tel_line 3 200 30 40 claude-opus-5-5; tel_line 5 300 50 60 claude-sonnet-5-5; } > "$tr_f"
+  tel telemetry-session-start "$(jq -n --arg cwd "$workdir" '{session_id:"st1",cwd:$cwd,source:"startup"}')"
+  f="$TSTATE/telemetry/sessions/st1.json"
+  jq '.started_at="2026-10-20T10:00:00Z"' "$f" > "$f.t" && mv "$f.t" "$f"
+  stop="$(jq -n --arg t "$tr_f" '{session_id:"st1",transcript_path:$t,hook_event_name:"Stop",stop_hook_active:false}')"
+  tel telemetry-session-stop "$stop"
+  assert_rc_zero "stop run"
+  assert_out_empty "stop silent"
+  assert_jq "tokens summed (10/600/90/120), model = last, turns 1" "$f" '.tokens=={input:10,output:600,cache_read:90,cache_creation:120} and .model=="claude-sonnet-5-5" and .turns==1'
+  assert_jq "offset = file size, ended_at set, duration_s positive" "$f" ".transcript_offset==$(wc -c < "$tr_f" | tr -d ' ') and (.ended_at|type)==\"string\" and .duration_s>0"
+
+  # second run over an appended transcript adds only the new line
+  tel_line 7 9 1 2 claude-opus-5-5 >> "$tr_f"
+  tel telemetry-session-stop "$stop"
+  assert_jq "append adds only the new line (17/609/91/122), turns 2" "$f" '.tokens=={input:17,output:609,cache_read:91,cache_creation:122} and .turns==2'
+  tel telemetry-session-stop "$stop"
+  assert_jq "rerun with no new bytes changes no totals" "$f" '.tokens.input==17 and .tokens.output==609'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-002] trailing partial line is not consumed, then is once completed"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"
+  tel_line 1 10 0 0 m1 > "$tr_f"
+  full_size=$(wc -c < "$tr_f" | tr -d ' ')
+  printf '{"type":"assistant","message":{"model":"m2","usage":{"input_tokens":5,' >> "$tr_f"
+  stop="$(jq -n --arg t "$tr_f" --arg c "$workdir" '{session_id:"st2",transcript_path:$t,cwd:$c,hook_event_name:"Stop"}')"
+  tel telemetry-session-stop "$stop"
+  f="$TSTATE/telemetry/sessions/st2.json"
+  assert_rc_zero "stop with partial tail"
+  assert_jq "only the complete line counted; offset stops at the newline" "$f" ".tokens.input==1 and .tokens.output==10 and .transcript_offset==$full_size"
+  printf '"output_tokens":6}}}\n' >> "$tr_f"
+  tel telemetry-session-stop "$stop"
+  assert_jq "completed line consumed on the next run" "$f" '.tokens.input==6 and .tokens.output==16 and .model=="m2"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-003] corrupt complete line: offset and totals unchanged, ended_at still stamped"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"
+  { tel_line 1 10 0 0 m1; printf 'this is not json\n'; } > "$tr_f"
+  tel telemetry-session-stop "$(jq -n --arg t "$tr_f" '{session_id:"st3",transcript_path:$t,hook_event_name:"Stop"}')"
+  assert_rc_zero "stop with corrupt line"
+  assert_out_empty "stop corrupt silent"
+  assert_jq "totals and offset untouched, ended_at stamped" "$TSTATE/telemetry/sessions/st3.json" '.tokens.input==0 and .transcript_offset==0 and (.ended_at|type)=="string"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-004] SessionEnd writes end_reason, does not bump turns"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"; tel_line 1 10 0 0 m1 > "$tr_f"
+  tel telemetry-session-stop "$(jq -n --arg t "$tr_f" '{session_id:"st4",transcript_path:$t,hook_event_name:"Stop"}')"
+  tel telemetry-session-stop "$(jq -n --arg t "$tr_f" '{session_id:"st4",transcript_path:$t,hook_event_name:"SessionEnd",reason:"logout"}')"
+  assert_rc_zero "SessionEnd run"
+  assert_out_empty "SessionEnd silent"
+  assert_jq "end_reason set, turns still 1, tokens not double-counted" "$TSTATE/telemetry/sessions/st4.json" '.end_reason=="logout" and .turns==1 and .tokens.output==10'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-005] malformed stdin exits 0 silently; missing transcript leaves totals and stamps ended_at"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"
+  for bad in 'not json{' '' '{"transcript_path":"/x"}'; do
+    tel telemetry-session-stop "$bad"
+    assert_rc_zero "stop malformed ($bad)"
+    assert_out_empty "stop malformed silent ($bad)"
+  done
+  tel telemetry-session-stop '{"session_id":"st5","transcript_path":"/nonexistent/t.jsonl","hook_event_name":"Stop"}'
+  assert_rc_zero "stop with missing transcript"
+  assert_jq "totals zero, ended_at stamped" "$TSTATE/telemetry/sessions/st5.json" '.tokens.input==0 and .tokens.output==0 and (.ended_at|type)=="string"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-001] PreToolUse: record shape, tier from claude.json, silent"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT="$workdir/plugin"; mkdir -p "$TEL_PLUGIN_ROOT"
+  printf '{"sub_agents":{"peer-review-critic":{"model":"opus"},"rust-expert":{"model":"sonnet"}}}\n' > "$TEL_PLUGIN_ROOT/claude.json"
+  pre() { jq -n --arg id "$1" --argjson ti "$2" '{session_id:"ag1",tool_use_id:$id,tool_name:"Agent",hook_event_name:"PreToolUse",tool_input:$ti}'; }
+  tel telemetry-agent-run "$(pre toolu_01 '{"subagent_type":"agentic-framework:peer-review-critic","description":"final review","prompt":"p"}')"
+  assert_rc_zero "pre hook"
+  assert_out_empty "pre hook silent (empty output allows the call)"
+  d="$TSTATE/telemetry/sessions/ag1/agents"
+  assert_jq "agent / agent_name / tier from claude.json / not background" "$d/toolu_01.json" '.agent=="agentic-framework:peer-review-critic" and .agent_name=="peer-review-critic" and .model_requested==null and .model_tier=="opus" and .background==false and .description=="final review" and .tool_use_id=="toolu_01"'
+  assert_jq "started_at is ISO-8601" "$d/toolu_01.json" '.started_at|test("^[0-9]{4}-")'
+  tel telemetry-agent-run "$(pre toolu_02 '{"subagent_type":"rust-expert","model":"haiku","run_in_background":true}')"
+  assert_jq "model_requested wins over claude.json; background true" "$d/toolu_02.json" '.model_tier=="haiku" and .model_requested=="haiku" and .background==true'
+  TEL_PLUGIN_ROOT=""
+  tel telemetry-agent-run "$(pre toolu_03 '{"subagent_type":"rust-expert"}')"
+  assert_jq "model_tier null when CLAUDE_PLUGIN_ROOT unset" "$d/toolu_03.json" '.model_tier==null'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-002] PostToolUse: duration, status, verdict parsing"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/ag2/agents"
+  tel telemetry-agent-run '{"session_id":"ag2","tool_use_id":"t1","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"peer-review-critic"}}'
+  # post <tool_use_id> <subagent_type> <tool_response json> [extra-json]
+  post() {
+    _extra="${4:-}"; [ -z "$_extra" ] && _extra='{}'
+    jq -n --arg id "$1" --arg st "$2" --argjson resp "$3" --argjson extra "$_extra" \
+      '{session_id:"ag2",tool_use_id:$id,tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:$st},tool_response:$resp} + $extra'
+  }
+  tel telemetry-agent-run "$(post t1 peer-review-critic '"All good.\nVERDICT: APPROVED\n"' '{"duration_ms":12500}')"
+  assert_rc_zero "post hook"
+  assert_out_empty "post hook silent"
+  assert_jq "duration_s from duration_ms, completed, APPROVED, Pre fields kept" "$d/t1.json" '.duration_s==12.5 and .status=="completed" and .verdict=="APPROVED" and .agent_name=="peer-review-critic" and (.ended_at|type)=="string"'
+  tel telemetry-agent-run "$(post t2 spec-compliance-reviewer '{"content":[{"type":"text","text":"x\nVERDICT: APPROVED\nrevised\n  VERDICT: CHANGES_REQUIRED  \n"}]}')"
+  assert_jq "content[] shape, last match wins, record created without Pre" "$d/t2.json" '.verdict=="CHANGES_REQUIRED" and .status=="completed" and .started_at==null'
+  tel telemetry-agent-run "$(post t3 peer-review-critic '[{"type":"text","text":"VERDICT: CHANGES_REQUIRED"}]')"
+  assert_jq "array-of-blocks shape; CHANGES_REQUIRED" "$d/t3.json" '.verdict=="CHANGES_REQUIRED"'
+  tel telemetry-agent-run "$(post t4 peer-review-critic '"The line `VERDICT: APPROVED` is quoted here, and > VERDICT: APPROVED too"')"
+  assert_jq "quoted / mid-line mention ignored" "$d/t4.json" 'has("verdict")|not'
+  tel telemetry-agent-run "$(post t5 rust-expert '"VERDICT: APPROVED"')"
+  assert_jq "non-reviewer agent gets no verdict" "$d/t5.json" 'has("verdict")|not'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-003] SubagentStop: tokens and model from the subagent transcript"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; tr_f="$workdir/agent-a1.jsonl"
+  { tel_line 1 10 2 3 claude-haiku-4-5; printf '{"type":"user"}\n'; tel_line 4 20 5 6 claude-haiku-4-5; } > "$tr_f"
+  d="$TSTATE/telemetry/sessions/ag3/agents"
+  tel telemetry-agent-run "$(jq -n --arg t "$tr_f" '{session_id:"ag3",agent_id:"a1/../x",agent_type:"agentic-framework:peer-review-critic",hook_event_name:"SubagentStop",agent_transcript_path:$t,last_assistant_message:"done\nVERDICT: APPROVED"}')"
+  assert_rc_zero "subagent stop"
+  assert_out_empty "subagent stop silent"
+  assert_jq "tokens, model_actual, names, verdict" "$d/subagent-a1..x.json" '.tokens=={input:5,output:30,cache_read:7,cache_creation:9} and .model_actual=="claude-haiku-4-5" and .agent_name=="peer-review-critic" and .agent_type=="agentic-framework:peer-review-critic" and .verdict=="APPROVED" and .agent_id=="a1..x"'
+  tel telemetry-agent-run '{"session_id":"ag3","agent_id":"a2","agent_type":"rust-expert","hook_event_name":"SubagentStop","agent_transcript_path":"/nonexistent"}'
+  assert_jq "missing transcript: record without tokens" "$d/subagent-a2.json" '.agent_name=="rust-expert" and (has("tokens")|not)'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-004] non-Agent tool and malformed stdin: exit 0, silent, no files"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""
+  tel telemetry-agent-run '{"session_id":"ag4","tool_use_id":"t1","tool_name":"Bash","hook_event_name":"PreToolUse","tool_input":{"command":"ls"}}'
+  assert_rc_zero "non-Agent tool"
+  assert_out_empty "non-Agent tool silent"
+  for bad in 'not json{' '' '{"hook_event_name":"PreToolUse"}'; do
+    tel telemetry-agent-run "$bad"
+    assert_rc_zero "agent-run malformed ($bad)"
+    assert_out_empty "agent-run malformed silent ($bad)"
+  done
+  n=$(find "$TSTATE" -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$n" = "0" ]; then _pass "no files written"; else _fail "no files written" "found $n"; fi
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-DISPATCH-001] dispatch routes a telemetry name to its sh implementation"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; mkdir -p "$workdir/hooks"
+  cp "$SRC_REPO/hooks/dispatch.sh" "$SRC_REPO/hooks/telemetry-session-start.sh" "$workdir/hooks/"
+  RUN_OUT="$( (printf '%s' "$(jq -n --arg c "$workdir" '{session_id:"dsp",cwd:$c,source:"startup"}')" \
+    | CLAUDE_STATE_DIR="$TSTATE" sh "$workdir/hooks/dispatch.sh" telemetry-session-start) 2>&1)"; RUN_RC=$?
+  assert_rc_zero "dispatch telemetry-session-start"
+  assert_out_empty "dispatch telemetry-session-start silent"
+  assert_jq "dispatch wrote the session file" "$TSTATE/telemetry/sessions/dsp.json" '.session_id=="dsp"'
+  rm -rf "$workdir"
+}
+
 
 # ===========================================================================
 # Summary

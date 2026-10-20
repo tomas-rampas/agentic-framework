@@ -1,6 +1,6 @@
 ---
 name: hook-config-generator
-description: Guide for adding a new real Claude Code hook to this framework as a .ps1/.sh pair (registration in hooks/hooks.json as a shell-form chain, tests in both suites, validation) — use when asked to create, generate, or extend a hook or quality gate.
+description: Guide for adding a new real Claude Code hook to this framework as a .ps1/.sh pair, or .sh only for a silent advisory hook (registration in hooks/hooks.json as a shell-form chain, dispatch allowlist, tests, validation) — use when asked to create, generate, or extend a hook or quality gate.
 ---
 
 # Adding a New Hook
@@ -48,6 +48,15 @@ The POSIX shell twin, used on Linux/macOS via dispatch.sh:
 10. Output JSON only — use `jq` to emit compressed JSON (`jq -c`), never partial output.
 11. Line endings: .gitattributes enforces LF on *.sh; the script must produce LF-only output for sidecar files (markers, verdict records).
 12. Byte-identical output to the .ps1 version — same JSON structure, same field order (jq -c --sort-keys helps), same state file format (LF-only, same field order).
+
+### sh-only advisory hooks
+
+Gates ship as `.ps1`/`.sh` pairs. An advisory or silent hook (telemetry, hints that never block) may ship as `.sh` only and simply no-op on Windows hosts without jq:
+
+- Skip Step 1 and the `.ps1` half of Step 5; register the bare chain `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name>` with no `|| pwsh` arm (and no `.ps1` token, which is what the parity checks key on).
+- `dispatch.sh` runs pwsh in its Windows no-jq branch only when `hooks/<name>.ps1` exists, so an sh-only hook exits 0 there.
+- Never use this for a gate: a hook that must block or whose absence changes behaviour needs both implementations.
+- Examples: `telemetry-session-start`, `telemetry-session-stop`, `telemetry-agent-run`.
 
 ## Step 3: Add the Hook Name to dispatch.sh's Case Allowlist
 
@@ -115,7 +124,7 @@ Run `bash scripts/validate-hooks.sh`. It enforces pair parity and must pass:
 - every `.ps1` pins PowerShell 7; every `.sh` starts with `#!/bin/sh` and sets `set -u`,
 - no deprecated names appear in hook scripts.
 
-The same checks run inside `bash scripts/validate-consistency.sh` (the full check battery) and in CI, so an unregistered or orphaned hook fails the build. Note the validator does NOT parse dispatch.sh's name allowlist — Step 3 stays your responsibility. Run the full battery too if you touched anything beyond `hooks/` and `hooks/hooks.json`.
+The same checks run inside `bash scripts/validate-consistency.sh` (the full check battery) and in CI, so an unregistered or orphaned hook fails the build. The validator also parses dispatch.sh's name allowlist (rule j in `scripts/lib/hookcheck.sh`): a registered hook name missing from the case pattern fails as `missing-dispatch-allowlist`. Run the full battery too if you touched anything beyond `hooks/` and `hooks/hooks.json`.
 
 ## Step 7: Deploy
 
@@ -292,5 +301,5 @@ The hook is automatically deployed when the agentic-framework plugin is updated 
 - Registered in `hooks/hooks.json` under a valid event with matcher and timeout, using `sh dispatch.sh` invocation (using `${CLAUDE_PLUGIN_ROOT}`).
 - Test cases added to BOTH `tests/hooks.test.ps1` AND `tests/hooks.test.sh`; both harnesses pass.
 - Equivalence fixture added to `tests/hooks-equivalence.test.sh` if the hook writes state files.
-- `bash scripts/validate-hooks.sh` passes (pair parity, dispatch presence + chain reference, events, PS7/sh pin, no deprecated names) — remembering the dispatch.sh name allowlist itself is not validator-checked.
+- `bash scripts/validate-hooks.sh` passes (pair parity, dispatch presence + chain reference, dispatch allowlist membership, events, PS7/sh pin, no deprecated names).
 - Plugin reinstalled or updated; live session restarted to load the hook.
