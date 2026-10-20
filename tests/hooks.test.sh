@@ -2552,8 +2552,8 @@ section "[TELEMETRY-START-005] prune removes 31-day-old entries (file and dir), 
   workdir="$(make_work_dir)" || exit 2
   TSTATE="$workdir/state"; tdir="$TSTATE/telemetry/sessions"; mkdir -p "$tdir/oldsess/agents"
   : > "$tdir/old.json"; : > "$tdir/new.json"; : > "$tdir/oldsess/agents/a.json"
-  touch -d '31 days ago' "$tdir/old.json" "$tdir/oldsess/agents/a.json" "$tdir/oldsess"
-  touch -d '1 day ago' "$tdir/new.json"
+  touch -t 202001010000 "$tdir/old.json" "$tdir/oldsess/agents/a.json" "$tdir/oldsess"
+  touch "$tdir/new.json"
   tel telemetry-session-start "$(jq -n --arg cwd "$workdir" '{session_id:"sess5",cwd:$cwd,source:"startup"}')"
   assert_rc_zero "prune run"
   if [ ! -e "$tdir/old.json" ] && [ ! -e "$tdir/oldsess" ]; then _pass "31-day-old file and directory removed"; else _fail "31-day-old pruned" "still present"; fi
@@ -2604,7 +2604,7 @@ section "[TELEMETRY-STOP-002] trailing partial line is not consumed, then is onc
   rm -rf "$workdir"
 }
 
-section "[TELEMETRY-STOP-003] corrupt complete line: offset and totals unchanged, ended_at still stamped"
+section "[TELEMETRY-STOP-003] corrupt complete line is skipped (no freeze): valid line counted, offset reaches EOF, ended_at stamped"
 {
   workdir="$(make_work_dir)" || exit 2
   TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"
@@ -2612,7 +2612,7 @@ section "[TELEMETRY-STOP-003] corrupt complete line: offset and totals unchanged
   tel telemetry-session-stop "$(jq -n --arg t "$tr_f" '{session_id:"st3",transcript_path:$t,hook_event_name:"Stop"}')"
   assert_rc_zero "stop with corrupt line"
   assert_out_empty "stop corrupt silent"
-  assert_jq "totals and offset untouched, ended_at stamped" "$TSTATE/telemetry/sessions/st3.json" '.tokens.input==0 and .transcript_offset==0 and (.ended_at|type)=="string"'
+  assert_jq "valid line counted, offset = file size, ended_at stamped" "$TSTATE/telemetry/sessions/st3.json" ".tokens.input==1 and .tokens.output==10 and .transcript_offset==$(wc -c < "$tr_f" | tr -d ' ') and (.ended_at|type)==\"string\""
   rm -rf "$workdir"
 }
 
@@ -2731,6 +2731,198 @@ section "[TELEMETRY-DISPATCH-001] dispatch routes a telemetry name to its sh imp
   assert_rc_zero "dispatch telemetry-session-start"
   assert_out_empty "dispatch telemetry-session-start silent"
   assert_jq "dispatch wrote the session file" "$TSTATE/telemetry/sessions/dsp.json" '.session_id=="dsp"'
+  rm -rf "$workdir"
+}
+
+# tel_idline <id> <input> <output> <cache-read> <cache-create> <model> [extra-json-fields]:
+# one assistant line carrying a message id (Claude Code writes one such line per content block).
+tel_idline() {
+  printf '{"type":"assistant"%s,"message":{"id":"%s","model":"%s","usage":{"input_tokens":%s,"cache_creation_input_tokens":%s,"cache_read_input_tokens":%s,"output_tokens":%s}}}\n' \
+    "${7:-}" "$1" "$6" "$2" "$5" "$4" "$3"
+}
+
+section "[TELEMETRY-START-006] project derivation never stores credentials; scp form; bare host falls back to cwd"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; repo="$workdir/cwdname"; mkdir -p "$repo"
+  make_test_repo "$repo"
+  n=0
+  while IFS='|' read -r u want; do
+    n=$((n + 1))
+    git -C "$repo" remote remove origin 2>/dev/null
+    git -C "$repo" remote add origin "$u"
+    tel telemetry-session-start "$(jq -n --arg cwd "$repo" --arg s "pj$n" '{session_id:$s,cwd:$cwd,source:"startup"}')"
+    f="$TSTATE/telemetry/sessions/pj$n.json"
+    assert_out_empty "project case $n silent"
+    assert_jq "project case $n is '$want'" "$f" ".project==\"$want\""
+    if grep -qE 'SECRET|ghp_' "$f"; then _fail "no credential in record (case $n)" "$(cat "$f")"; else _pass "no credential in record (case $n)"; fi
+  done <<'URLS'
+https://user:ghp_SECRET1@github.com|cwdname
+https://ghp_SECRET2@example.com/|cwdname
+https://example.com/o/repo.git?private_token=SECRET3|repo
+git@github.com:o/repo.git|repo
+https://example.com/o/lib.git#frag|lib
+URLS
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-START-007] dots-only / newline-bearing session ids write nothing outside sessions/"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"
+  for bad in '..' '.' '...' ''; do
+    tel telemetry-session-start "$(jq -n --arg s "$bad" --arg c "$workdir" '{session_id:$s,cwd:$c,source:"startup"}')"
+    assert_rc_zero "start with id '$bad'"
+    tel telemetry-session-stop "$(jq -n --arg s "$bad" '{session_id:$s,hook_event_name:"Stop"}')"
+    assert_rc_zero "stop with id '$bad'"
+  done
+  tel telemetry-agent-run "$(jq -n '{session_id:"..",tool_use_id:"t",tool_name:"Agent",hook_event_name:"PreToolUse",tool_input:{subagent_type:"x"}}')"
+  assert_out_empty "agent-run with id '..' silent"
+  n=$(find "$TSTATE" -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$n" = "0" ]; then _pass "nothing written for dots-only ids"; else _fail "nothing written" "found $n files"; fi
+  tel telemetry-session-start "$(jq -n --arg c "$workdir" '{session_id:"a\nb/c",cwd:$c,source:"startup"}')"
+  if [ -f "$TSTATE/telemetry/sessions/abc.json" ]; then _pass "newline and slash stripped from id"; else _fail "newline stripped" "$(find "$TSTATE" -type f | head -5)"; fi
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-006] usage counted once per message id (last line of the id wins); sidechain excluded"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"
+  { tel_idline msg_A 2 5 10 20 m1; tel_idline msg_A 2 5 10 20 m1; tel_idline msg_A 2 100 10 20 m1
+    printf '{"type":"user","message":{"content":"hi"}}\n'
+    tel_idline msg_B 3 200 30 40 m2
+    tel_idline msg_S 99 99 99 99 m3 ',"isSidechain":true'
+    tel_line 1 1 1 1 m4; tel_line 1 1 1 1 m4; } > "$tr_f"
+  stop="$(jq -n --arg t "$tr_f" '{session_id:"st6",transcript_path:$t,hook_event_name:"Stop"}')"
+  tel telemetry-session-stop "$stop"
+  f="$TSTATE/telemetry/sessions/st6.json"
+  assert_rc_zero "dedupe run"
+  assert_out_empty "dedupe run silent"
+  assert_jq "A once (last line), B once, id-less lines individually, sidechain skipped" "$f" '.tokens=={input:7,output:302,cache_read:42,cache_creation:62} and .model=="m4" and .last_message_id==null'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-007] a message whose lines straddle two runs is counted once"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"
+  { tel_idline msg_A 2 100 10 20 m1; tel_idline msg_A 2 100 10 20 m1; } > "$tr_f"
+  stop="$(jq -n --arg t "$tr_f" '{session_id:"st7",transcript_path:$t,hook_event_name:"Stop"}')"
+  tel telemetry-session-stop "$stop"
+  f="$TSTATE/telemetry/sessions/st7.json"
+  assert_jq "first chunk: A counted, last_message_id persisted" "$f" '.tokens.output==100 and .last_message_id=="msg_A"'
+  { tel_idline msg_A 2 100 10 20 m1; tel_idline msg_B 3 7 0 0 m1; } >> "$tr_f"
+  tel telemetry-session-stop "$stop"
+  assert_jq "continuation of A skipped, B counted once" "$f" '.tokens.output==107 and .tokens.input==5 and .last_message_id=="msg_B"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-008] corrupt line is skipped: valid lines around it counted, offset reaches EOF"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"
+  { tel_line 1 10 0 0 m1; printf 'this is not json\n{"type":"assistant"\n'; tel_line 2 20 0 0 m2; tel_line 4 40 0 0 m3; } > "$tr_f"
+  tel telemetry-session-stop "$(jq -n --arg t "$tr_f" '{session_id:"st8",transcript_path:$t,hook_event_name:"Stop"}')"
+  assert_rc_zero "stop with corrupt lines"
+  assert_out_empty "stop corrupt silent"
+  assert_jq "all three valid lines counted; offset = file size" "$TSTATE/telemetry/sessions/st8.json" ".tokens.input==7 and .tokens.output==70 and .transcript_offset==$(wc -c < "$tr_f" | tr -d ' ') and (.ended_at|type)==\"string\""
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-009] shrunk or replaced transcript: totals equal the recount, not the sum"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"; f="$TSTATE/telemetry/sessions/st9.json"
+  { tel_line 1 10 0 0 m1; tel_line 2 20 0 0 m1; tel_line 4 40 0 0 m1; } > "$tr_f"
+  stop="$(jq -n --arg t "$tr_f" '{session_id:"st9",transcript_path:$t,hook_event_name:"Stop"}')"
+  tel telemetry-session-stop "$stop"
+  assert_jq "baseline 7/70" "$f" '.tokens.input==7 and .tokens.output==70'
+  tel_line 8 80 0 0 m2 > "$tr_f"
+  tel telemetry-session-stop "$stop"
+  assert_jq "shrunk file: totals == recount (8/80), not the sum" "$f" ".tokens.input==8 and .tokens.output==80 and .model==\"m2\" and .transcript_offset==$(wc -c < "$tr_f" | tr -d ' ')"
+  tr2="$workdir/other.jsonl"
+  { tel_line 1 1 0 0 m3; tel_line 1 1 0 0 m3; tel_line 1 1 0 0 m3; tel_line 1 1 0 0 m3; } > "$tr2"
+  tel telemetry-session-stop "$(jq -n --arg t "$tr2" '{session_id:"st9",transcript_path:$t,hook_event_name:"Stop"}')"
+  assert_jq "different transcript_path (larger file): totals == recount (4/4)" "$f" '.tokens.input==4 and .tokens.output==4 and .model=="m3"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-010] CRLF transcript is parsed"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; tr_f="$workdir/t.jsonl"
+  { tel_line 1 10 2 3 m1; tel_line 2 20 4 5 m1; } | sed 's/$/\r/' > "$tr_f"
+  tel telemetry-session-stop "$(jq -n --arg t "$tr_f" '{session_id:"st10",transcript_path:$t,hook_event_name:"Stop"}')"
+  assert_jq "CRLF lines counted, offset = file size" "$TSTATE/telemetry/sessions/st10.json" ".tokens=={input:3,output:30,cache_read:6,cache_creation:8} and .transcript_offset==$(wc -c < "$tr_f" | tr -d ' ')"
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-011] stop_hook_active=true does not increment turns"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; f="$TSTATE/telemetry/sessions/st11.json"
+  tel telemetry-session-stop '{"session_id":"st11","hook_event_name":"Stop","stop_hook_active":false}'
+  tel telemetry-session-stop '{"session_id":"st11","hook_event_name":"Stop","stop_hook_active":true}'
+  assert_rc_zero "re-fired stop"
+  assert_jq "turns stays 1, ended_at stamped" "$f" '.turns==1 and (.ended_at|type)=="string"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-STOP-012] non-regular transcript path (directory) is skipped; ended_at still stamped"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; mkdir -p "$workdir/adir"
+  tel telemetry-session-stop "$(jq -n --arg t "$workdir/adir" '{session_id:"st12",transcript_path:$t,hook_event_name:"Stop"}')"
+  assert_rc_zero "directory as transcript"
+  assert_out_empty "directory as transcript silent"
+  assert_jq "totals zero, offset 0, ended_at stamped" "$TSTATE/telemetry/sessions/st12.json" '.tokens.input==0 and .transcript_offset==0 and (.ended_at|type)=="string"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-005] PostToolUse without duration_ms falls back to ended_at - started_at; oversized fields capped"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/ag5/agents"
+  head -c 40000 /dev/zero | tr '\0' 'x' > "$workdir/big.txt"
+  jq -n --rawfile big "$workdir/big.txt" '{session_id:"ag5",tool_use_id:"t1",tool_name:"Agent",hook_event_name:"PreToolUse",tool_input:{subagent_type:"rust-expert",description:$big}}' > "$workdir/pre.json"
+  tel telemetry-agent-run "$(cat "$workdir/pre.json")"
+  assert_jq "description capped to 200 chars" "$d/t1.json" '(.description|length)==200'
+  jq '.started_at="2020-01-01T00:00:00Z"' "$d/t1.json" > "$d/t1.tmp" && mv "$d/t1.tmp" "$d/t1.json"
+  jq -n --rawfile big "$workdir/big.txt" '{session_id:"ag5",tool_use_id:"t1",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"rust-expert",description:$big},tool_response:"ok"}' > "$workdir/post.json"
+  tel telemetry-agent-run "$(cat "$workdir/post.json")"
+  assert_rc_zero "post with 40 KB description"
+  assert_out_empty "post silent"
+  assert_jq "status completed, duration_s from started_at fallback" "$d/t1.json" '.status=="completed" and (.duration_s|type)=="number" and .duration_s>1000000 and (.description|length)==200'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-006] SubagentStop: usage once per message id, sidechain lines counted, corrupt line skipped"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; tr_f="$workdir/agent-a6.jsonl"
+  { tel_idline m1 1 10 0 0 h ',"isSidechain":true'; tel_idline m1 1 10 0 0 h ',"isSidechain":true'
+    printf 'garbage\n'; tel_idline m2 2 20 0 0 h ',"isSidechain":true'; } | sed 's/$/\r/' > "$tr_f"
+  tel telemetry-agent-run "$(jq -n --arg t "$tr_f" '{session_id:"ag6",agent_id:"a6",agent_type:"rust-expert",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
+  assert_jq "tokens 3/30 over distinct ids" "$TSTATE/telemetry/sessions/ag6/agents/subagent-a6.json" '.tokens.input==3 and .tokens.output==30 and .model_actual=="h"'
+  tel telemetry-agent-run "$(jq -n --arg t "$workdir" '{session_id:"ag6",agent_id:"a7",agent_type:"rust-expert",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
+  assert_jq "directory transcript: record without tokens" "$TSTATE/telemetry/sessions/ag6/agents/subagent-a7.json" 'has("tokens")|not'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-DISPATCH-002] MINGW arm without jq and without a .ps1 twin: exit 0, silent, nothing run"
+{
+  workdir="$(make_work_dir)" || exit 2
+  mkdir -p "$workdir/hooks" "$workdir/bin"
+  cp "$SRC_REPO/hooks/dispatch.sh" "$SRC_REPO/hooks/telemetry-session-start.sh" "$workdir/hooks/"
+  printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$workdir/bin/uname"; chmod +x "$workdir/bin/uname"
+  sh_bin="$(command -v sh)"
+  # PATH holds only the fake uname, so `command -v jq` fails inside dispatch.sh.
+  RUN_OUT="$( (printf '%s' '{"session_id":"nojq","source":"startup"}' | PATH="$workdir/bin" CLAUDE_STATE_DIR="$workdir/state" \
+    "$sh_bin" "$workdir/hooks/dispatch.sh" telemetry-session-start) 2>&1)"; RUN_RC=$?
+  assert_rc_zero "dispatch no-jq MINGW"
+  assert_out_empty "dispatch no-jq MINGW silent"
+  if [ ! -e "$workdir/state" ]; then _pass "no-jq MINGW: hook not run, nothing written"; else _fail "hook ran without jq" "$(find "$workdir/state" | head -3)"; fi
   rm -rf "$workdir"
 }
 

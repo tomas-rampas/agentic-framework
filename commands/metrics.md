@@ -119,6 +119,7 @@ Cache creation is billed at 1.25 x input. The model id has its leading `claude-`
 find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec cat {} + | jq -s --arg cutoff "$CUT" '
   [.[] | select(.tool_use_id and ((.started_at // .ended_at // "") >= $cutoff))] as $a
   | {invocations: ($a | length),
+     pending: ([$a[] | select(.status == null)] | length),
      tiers: ($a | group_by(.model_tier // "unknown")
        | map({tier: (.[0].model_tier // "unknown"), n: length}) | sort_by(-.n)),
      agents: ($a | group_by(.agent_name // "general-purpose")
@@ -130,7 +131,7 @@ find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec cat {} + | jq -s
        | sort_by(-.n) | .[:10])}'
 ```
 
-Only records with a `tool_use_id` count as invocations; a record created by PostToolUse alone (hook installed mid-session) has no `started_at` and is placed by its `ended_at`; a call with no `subagent_type` is reported as `general-purpose`. Duration averages use completed records only; an agent with `completed: 0` shows `-`. A non-zero `background` count is flagged in the table, because background launches may never complete.
+Only records with a `tool_use_id` count as invocations; a record created by PostToolUse alone (hook installed mid-session) has no `started_at` and is placed by its `ended_at`; a call with no `subagent_type` is reported as `general-purpose`. `pending` counts records with no `status`: launches that never completed because the model guard denied them, the user rejected them, or they are still running (the PreToolUse hook cannot see a later denial or the guard's model rewrite, so such a record may also carry a null tier). Duration averages use completed records only; an agent with `completed: 0` shows `-`. A non-zero `background` count is flagged in the table, because background launches may never complete.
 
 ### 4. Review metrics
 
@@ -197,7 +198,7 @@ Print the period and the date range first, then three Markdown tables from the J
 | Estimated cost (USD)      | ~$23.41 (priced; ~$9.80 from sub-agents) |
 | Unpriced                  | 1 record, mystery-model, 52,310 tokens |
 
-## Agent usage  (49 invocations)
+## Agent usage  (49 invocations, 2 pending)
 | Agent               | Invocations | Avg duration | Notes            |
 |---------------------|-------------|--------------|------------------|
 | peer-review-critic  | 6           | 142 s        |                  |

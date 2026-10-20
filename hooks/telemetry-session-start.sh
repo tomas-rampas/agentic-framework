@@ -8,6 +8,7 @@
 # Prunes telemetry entries older than 30 days. sh-only advisory hook: silent (no stdout,
 # no stderr), no network, fail-open (exits 0 on every path, including malformed stdin).
 set -u
+umask 077
 trap 'exit 0' EXIT INT TERM
 exec 2>/dev/null
 
@@ -18,8 +19,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 field() { printf '%s' "$payload" | jq -r "$1" | tr -d '\r'; }
 
 sid=$(field '.session_id // empty') || exit 0
-sid=$(printf '%s' "$sid" | sed 's/[^-._[:alnum:]]//g')
-[ -z "$sid" ] && exit 0
+sid=$(printf '%s' "$sid" | LC_ALL=C tr -cd 'A-Za-z0-9._-')
+case $sid in *[!.]*) ;; *) exit 0 ;; esac
 
 cwd=$(field '.cwd // empty')
 [ -z "$cwd" ] && cwd=$(pwd)
@@ -27,12 +28,23 @@ source_ev=$(field '.source // empty')
 model=$(field '.model // empty')
 version=$(field '.claude_version // empty')
 
-# project: basename of the origin URL (this also drops any user:token@ userinfo,
-# which precedes the last path segment); falls back to the cwd basename.
+# project: basename of the origin URL, with query/fragment, scheme and userinfo
+# (user:token@) removed first so no credential can reach the record; falls back to the
+# cwd basename when nothing usable remains (e.g. a bare host).
 url=$(git -C "$cwd" remote get-url origin 2>/dev/null | head -n 1 | tr -d '\r')
 project=""
 if [ -n "$url" ]; then
-  project=${url%/}; project=${project##*/}; project=${project##*:}; project=${project%.git}
+  u=${url%%[?#]*}
+  case $u in
+    *://*) u=${u#*://}; a=${u%%/*}; u=${a##*@}${u#"$a"} ;;
+    *@*:*) u=${u#*@} ;;
+  esac
+  u=${u%/}
+  case $u in
+    */*|*:*) project=${u##*/}; project=${project##*:}; project=${project%.git}
+             project=$(printf '%s' "$project" | LC_ALL=C tr -cd 'A-Za-z0-9._-')
+             case $project in *[!.]*) ;; *) project="" ;; esac ;;
+  esac
 fi
 if [ -z "$project" ]; then
   project=$(printf '%s' "$cwd" | tr "\\\\" '/'); project=${project%/}; project=${project##*/}
@@ -46,6 +58,7 @@ mkdir -p "$tdir" || exit 0
 dest="$tdir/$sid.json"
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 tmp=$(mktemp "$tdir/.tmp.XXXXXX") || exit 0
+trap 'rm -f "$tmp"; exit 0' EXIT INT TERM
 
 # $old is the existing record (empty array when absent or unreadable).
 old='[]'
@@ -71,6 +84,8 @@ else
   rm -f "$tmp"
 fi
 
-# Retention: drop session files and per-session directories untouched for >30 days.
-find "$tdir" -mindepth 1 -maxdepth 1 -mtime +30 -exec rm -rf {} + 2>/dev/null
+# Retention: drop files untouched for >30 days, then empty directories (a per-session
+# directory's own mtime does not refresh when files inside it change). Confined to $tdir.
+find "$tdir" -type f -mtime +30 -exec rm -f {} + 2>/dev/null
+find "$tdir" -mindepth 1 -depth -type d -empty ! -name '.tmp.*' -exec rmdir {} \; 2>/dev/null
 exit 0
