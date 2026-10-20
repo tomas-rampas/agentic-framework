@@ -243,6 +243,27 @@ job does the job.
   variable is the only cover for that case. When it holds a usable tier (non-empty and not
   naming the top tier), the hook leaves built-in calls alone and the variable decides.
 
+### 🧠 Agent Memory Policy
+
+**Principle**: Agents build institutional knowledge in Claude Code's native per-agent
+memory, so lessons from one run are available to the next.
+
+- **Where it lives.** Every agent declares `memory: user`. Its memory directory is
+  `~/.claude/agent-memory/<agent>/`, and the first 200 lines (or 25 KB) of its `MEMORY.md`
+  index load at the start of each run. Detail belongs in topic files that the index links to.
+- **Scope is user-wide.** Memories persist across sessions and across projects, so every
+  project-specific fact must name its project. An unlabelled fact will be applied to the
+  wrong repository sooner or later.
+- **Verify before applying.** A memory is a hint about a past state, not a measurement of the
+  present one. Check it against the current checkout first, and correct or delete it when the
+  code contradicts it.
+- **Never store secrets.** No credentials, tokens or keys, and nothing a single grep of the
+  repository would reveal. Memory holds judgement and history, not copies of the code.
+- **The orchestrator may direct it.** Ask an agent to consult its memory before a task, or to
+  record or prune entries after one. The delegation brief names the memory when it matters.
+- **Browse and prune.** The `/agentic-framework:knowledge` skill lists, searches and prunes
+  the store across all agents.
+
 ### Orchestration Guidelines
 When delegating tasks to specialized agents:
 

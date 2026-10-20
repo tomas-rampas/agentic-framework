@@ -4,6 +4,7 @@ description: "Use this agent to verify that a build conforms to its spec (specs/
 tools: Bash, PowerShell, Glob, Grep, Read, WebFetch, WebSearch, ToolSearch, mcp__context7__query-docs, mcp__context7__resolve-library-id, mcp__filesystem__directory_tree, mcp__filesystem__get_file_info, mcp__filesystem__list_directory, mcp__filesystem__read_file, mcp__filesystem__read_multiple_files, mcp__filesystem__read_text_file, mcp__filesystem__search_files, mcp__serena__find_declaration, mcp__serena__find_file, mcp__serena__find_implementations, mcp__serena__find_referencing_symbols, mcp__serena__find_symbol, mcp__serena__get_diagnostics_for_file, mcp__serena__get_symbols_overview, mcp__serena__list_dir, mcp__serena__read_file, mcp__serena__search_for_pattern, mcp__serena__activate_project, mcp__serena__initial_instructions, mcp__code-review-graph, mcp__plugin_agentic-framework_context7__query-docs, mcp__plugin_agentic-framework_context7__resolve-library-id, mcp__plugin_agentic-framework_filesystem__directory_tree, mcp__plugin_agentic-framework_filesystem__get_file_info, mcp__plugin_agentic-framework_filesystem__list_directory, mcp__plugin_agentic-framework_filesystem__read_file, mcp__plugin_agentic-framework_filesystem__read_multiple_files, mcp__plugin_agentic-framework_filesystem__read_text_file, mcp__plugin_agentic-framework_filesystem__search_files, mcp__plugin_agentic-framework_serena__find_declaration, mcp__plugin_agentic-framework_serena__find_file, mcp__plugin_agentic-framework_serena__find_implementations, mcp__plugin_agentic-framework_serena__find_referencing_symbols, mcp__plugin_agentic-framework_serena__find_symbol, mcp__plugin_agentic-framework_serena__get_diagnostics_for_file, mcp__plugin_agentic-framework_serena__get_symbols_overview, mcp__plugin_agentic-framework_serena__list_dir, mcp__plugin_agentic-framework_serena__read_file, mcp__plugin_agentic-framework_serena__search_for_pattern, mcp__plugin_agentic-framework_serena__activate_project, mcp__plugin_agentic-framework_serena__initial_instructions, mcp__plugin_agentic-framework_code-review-graph
 disallowedTools: mcp__code-review-graph__apply_refactor_tool, mcp__plugin_agentic-framework_code-review-graph__apply_refactor_tool
 model: opus
+memory: user
 mcpServers: [serena, context7, filesystem, code-review-graph]
 effort: xhigh
 color: orange
@@ -64,6 +65,22 @@ Your final message MUST **end with exactly one line**, on its own line, as the v
 - `VERDICT: CHANGES_REQUIRED` — anything else, including a spec too ambiguous to verify.
 
 Never emit that line anywhere else in the report.
+
+## Memory
+
+You keep a persistent memory directory (`memory: user`, resolved to `~/.claude/agent-memory/spec-compliance-reviewer/`)
+that is shared across every project you work in. Its `MEMORY.md` index loads at the start of each run;
+keep it under 200 lines and move detail into topic files it links to.
+
+Record, naming the project on every project-specific fact:
+- Spec conventions per project: ID schemes, where specs live, how acceptance criteria are phrased
+- Places where acceptance criteria tend to drift from the build (counts, rosters, generated blocks)
+- Evidence commands that settled past reviews, with the output shape that proved a requirement
+- Spec defects found before (untestable or ambiguous criteria) and how the owner resolved them
+
+Do not record secrets, credentials, or anything one grep of the repo would
+show. Before acting on a remembered fact, verify it still holds in the current
+checkout, and delete or correct memories the code contradicts.
 
 ## Conduct
 
