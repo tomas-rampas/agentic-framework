@@ -3,10 +3,12 @@
 #
 # Thin wrapper over the shared hook checks in scripts/lib/hookcheck.sh (the same
 # logic validate-consistency.sh runs as check 3, so the two cannot drift):
-#   - every hook script registered in hooks/hooks.json exists (both .ps1 and .sh)
+#   - every hook script registered in hooks/hooks.json exists: both .ps1 and .sh for a
+#     chain with a pwsh arm, the .sh for an sh-only chain (silent hooks)
 #   - every hooks/*.ps1 and hooks/*.sh is registered (no orphaned scripts)
-#   - dispatch.sh exists and is referenced in all hook chains
-#   - every hook chain's dispatch argument matches its .ps1 filename stem
+#   - dispatch.sh exists and is referenced in all hook chains; every registered hook
+#     name is in its case allowlist
+#   - every hook chain with a pwsh arm has a dispatch argument matching its .ps1 stem
 #   - every registered event is a real Claude Code hook event
 #   - every .ps1 hook script pins PowerShell 7 ('#Requires -Version 7.0')
 #   - every .sh hook script has #!/bin/sh shebang and 'set -u' line

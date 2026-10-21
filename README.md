@@ -12,6 +12,8 @@ This framework extends Claude Code CLI with:
 
 - **21 Specialized Agents** covering the full development lifecycle
 - **Real Enforcement Hooks** — a blocking peer-review Stop gate and a model-tier guard on sub-agent calls, plus session-context and delegation-hint hooks, registered via the plugin's `hooks/hooks.json` and covered by tests
+- **Persistent Agent Memory** — every agent keeps its own institutional knowledge across sessions and projects (`memory: user`, under `~/.claude/agent-memory/<agent>/`), browsed, searched and pruned with `/agentic-framework:knowledge`
+- **Local Telemetry** — silent hooks record sessions, token usage and sub-agent invocations under `~/.claude/.state/telemetry/` (no network, pruned after 30 days); `/agentic-framework:metrics` reports usage, estimated cost and review outcomes
 - **Anti-Drift Consistency System** — dynamic validator, doc generator, and CI gate that keep the registry, docs, and filesystem in lockstep
 - **MCP Integration** — 6 MCP servers ship with the plugin, covering code intelligence, file operations, documentation lookup, structured reasoning, web fetching, and a persistent code-review knowledge graph
 
@@ -336,9 +338,9 @@ The framework distributes as one plugin:
 ├── settings.template.json   # Recommended permissions + alwaysThinkingEnabled
 ├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph)
 ├── agents/                  # 21 agent definitions (.md with YAML frontmatter)
-├── commands/                # 12 namespaced commands (delegate, spec, build, review-spec, log-triage, etc.)
+├── commands/                # 13 namespaced commands (delegate, spec, build, review-spec, log-triage, metrics, etc.)
 │   └── setup.md             # Configures the two MCP environment variables (both optional)
-├── hooks/                   # Real hook scripts + hooks/hooks.json registration (peer-review Stop gate, recorder, session context, delegation hint)
+├── hooks/                   # Real hook scripts + hooks/hooks.json registration (peer-review Stop gate, recorder, session context, delegation hint, model guard, telemetry)
 ├── skills/                  # Operational skills
 ├── scripts/                 # Validation, anti-drift consistency, and doc-generation scripts
 ├── tests/                   # Consistency + hook test harnesses
@@ -362,6 +364,7 @@ The framework distributes as one plugin:
 | `/agentic-framework:validate-hooks` | Hook coverage and consistency verification |
 | `/agentic-framework:agent-status` | Agent configuration status and health assessment |
 | `/agentic-framework:quality-report` | Quality metrics, trend analysis, and reporting |
+| `/agentic-framework:metrics` | Local usage telemetry: session count and duration, tokens by class with an estimated cost, sub-agent invocations by agent and tier, review approval rate and cycles — `last 7 days` (default), `last 30 days` or `all time` |
 | `/agentic-framework:setup` | Configure the two MCP environment variables, `CONTEXT7_API_KEY` and `MCP_FS_ROOT` (both optional) |
 
 ## Analysis Commands
@@ -399,6 +402,7 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 | **dependency-checker** | Verify the toolchain the framework needs (git, jq, pwsh 7, node, uv) |
 | **git-workflow-assistant** | Guide branching, commit conventions, and PR workflows (incl. the peer-review gate) |
 | **hook-config-generator** | Guide for adding a new real hook (script + registration + tests) |
+| **knowledge** | Browse, search and prune the agents' persistent memories (`~/.claude/agent-memory/<agent>/`, plus Serena project memories when present): by agent, topic or recency; keyword search; stale/duplicate/contradictory detection with suggested actions |
 | **refactoring-advisor** | Identify refactoring opportunities and improvement patterns |
 | **self-scoring-loop** | Rubric-based score → rewrite → rescore loop for non-code deliverables |
 
@@ -406,7 +410,7 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 
 ## Enforcement Hooks
 
-The framework ships real Claude Code hooks via the **agentic-framework plugin** in `hooks/hooks.json`. Each hook is registered as a shell-form fallback chain: `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name> || pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/hooks/<name>.ps1"`. On Linux/macOS, the dispatcher runs the POSIX shell script; on Windows, it runs the PowerShell script. Each hook exists as both a `.ps1` (PowerShell 7) and `.sh` (POSIX shell) pair.
+The framework ships real Claude Code hooks via the **agentic-framework plugin** in `hooks/hooks.json`. Gates and advisory hooks are registered as a shell-form fallback chain: `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name> || pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/hooks/<name>.ps1"`. On Linux/macOS, the dispatcher runs the POSIX shell script; on Windows Git Bash it runs the POSIX script when `jq` is on PATH and the PowerShell script otherwise. Those hooks exist as a `.ps1` (PowerShell 7) and `.sh` (POSIX shell) pair. The silent telemetry hooks ship `.sh` only (chain `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name> || exit 0`, no pwsh arm) and do nothing on a Windows host without `jq` or without `sh`.
 
 | Hook | Event | Behavior |
 |------|-------|----------|
@@ -415,8 +419,11 @@ The framework ships real Claude Code hooks via the **agentic-framework plugin** 
 | `session-start-context` (.ps1/.sh pair) | `SessionStart` | Injects branch/review status into the session context at startup. |
 | `pretooluse-delegation-hint` (.ps1/.sh pair) | `PreToolUse` | Advisory: suggests the matching specialist subagent when a technology-specific file is written (once per session per agent). |
 | `pretooluse-model-guard` (.ps1/.sh pair) | `PreToolUse` (`Task\|Agent`) | **Blocking and rewriting.** The model-tier ceiling, automatic with nothing to configure (POSIX hosts need `jq`, or the hook enforces nothing): denies a sub-agent call whose `model` names the top tier (`fable`, in any spelling or as a full model id), denies every `fork` (a fork always runs on its parent's model), and **rewrites** a built-in agent call (`Explore`, `Plan`, `general-purpose`, `claude`, or no type) that carries no `model` — it sets `haiku` for `Explore` and `sonnet` for the rest, echoes every other field back unchanged, and lets the call proceed without touching your permission rules (when `CLAUDE_CODE_SUBAGENT_MODEL` is set to a usable tier the hook stays out of the way and the variable decides). It is not a general ceiling: an agent type the hook does not know (your own, or another plugin's) is neither denied nor rewritten, because its frontmatter is invisible to the hook; if that definition has no `model:` it inherits the caller's tier, and `CLAUDE_CODE_SUBAGENT_MODEL` is the cover. Fail-open on any payload it cannot parse; `AF_MODEL_GUARD=off` disables it. |
+| `telemetry-session-start` (.sh only) | `SessionStart` | **Silent.** Records session id, project, branch, start time and source to `~/.claude/.state/telemetry/sessions/<session>.json` (`CLAUDE_STATE_DIR` overrides the root); prunes telemetry older than 30 days. No network, fail-open. |
+| `telemetry-session-stop` (.sh only) | `Stop` + `SessionEnd` | **Silent.** Stamps end time and duration, counts turns, and sums the transcript's token usage (input, output, cache read, cache creation) incrementally into the session record; SessionEnd adds the end reason. |
+| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` (`Task\|Agent`) + `SubagentStop` | **Silent.** Records each sub-agent invocation under `sessions/<session>/agents/`: agent, model tier (requested, else the registry default), start/end and duration, the parsed `VERDICT:` for reviewer agents, and the sub-agent transcript's token usage. Read by `/agentic-framework:metrics`. |
 
-Design rationale (including why the legacy TDD hard block was retired) lives in `docs/design/`. The hook scripts are tested by `tests/hooks.test.ps1` (PowerShell) and `tests/hooks.test.sh` (POSIX), and `/agentic-framework:validate-hooks` asserts pair parity: every registered hook has both .ps1 and .sh implementations, every registered script exists and is paired, all event names are valid. An equivalence test `tests/hooks-equivalence.test.sh` verifies the two implementations produce identical output on systems where both interpreters are present (primarily CI).
+Design rationale (including why the legacy TDD hard block was retired) lives in `docs/design/`. The hook scripts are tested by `tests/hooks.test.ps1` (PowerShell) and `tests/hooks.test.sh` (POSIX), and `/agentic-framework:validate-hooks` asserts pair parity: every hook registered with a pwsh arm has both .ps1 and .sh implementations on disk, sh-only hooks have their .sh and a `dispatch.sh` allowlist entry, no script on disk is unregistered, all event names are valid. An equivalence test `tests/hooks-equivalence.test.sh` verifies the two implementations produce identical output on systems where both interpreters are present (primarily CI).
 
 ---
 
@@ -517,5 +524,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 5 Hook Scripts • 10 Skills • 12 Commands • v4.7.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 8 Hook Scripts • 11 Skills • 13 Commands • v5.0.0**
 <!-- END GENERATED: framework-stats -->

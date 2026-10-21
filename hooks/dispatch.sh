@@ -2,21 +2,25 @@
 # dispatch.sh — cross-platform hook dispatcher for the agentic-framework plugin.
 # Registered per hook in hooks/hooks.json as the primary arm of:
 #
-# Arms:
+# Arms (gates and advisory hooks, shipped as .ps1/.sh pairs):
 #   sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <hook> \
 #     || pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/hooks/<hook>.ps1"
+# Arms (silent sh-only hooks, e.g. telemetry-*):
+#   sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <hook> || exit 0
 # POSIX -> runs hooks/<hook>.sh (pwsh NOT required).
 # Windows Git Bash (MSYS/MINGW/CYGWIN) -> runs hooks/<hook>.sh directly when jq
 #   (the .sh implementations' only non-bundled dependency) is on PATH — skipping
-#   a pwsh cold start (~1-2 s) on every hook fire; falls back to pwsh otherwise.
-# Windows without Git Bash -> sh not found -> the "|| pwsh" arm is reached instead.
-# ALWAYS exits 0 so the "|| pwsh" arm is reached only when sh cannot spawn.
+#   a pwsh cold start (~1-2 s) on every hook fire; falls back to pwsh otherwise,
+#   and exits 0 silently when the hook has no .ps1 (sh-only hooks).
+# Windows without Git Bash -> sh not found -> the "|| pwsh" arm is reached instead
+#   (sh-only hooks reach "|| exit 0" and stay silent).
+# ALWAYS exits 0 so the second arm is reached only when sh cannot spawn.
 # SECURITY: Chain safety relies on CLAUDE_PLUGIN_ROOT never containing double-quotes, backticks, or $( — guaranteed by CI-enforced kebab-case names, not platform contract.
 set -u
 
 hook=${1:-}
 case "$hook" in
-  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard) ;;
+  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard|telemetry-session-start|telemetry-session-stop|telemetry-agent-run) ;;
   *) exit 0 ;;
 esac
 
@@ -29,9 +33,10 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     if command -v jq >/dev/null 2>&1 && [ -f "$dir/$hook.sh" ]; then
       sh "$dir/$hook.sh"
-    else
+    elif [ -f "$dir/$hook.ps1" ]; then
       pwsh -NoProfile -File "$dir/$hook.ps1"
     fi
+    # else: sh-only advisory hook (no .ps1 twin) without jq — no-op, exit 0 below.
     ;;
   *) sh "$dir/$hook.sh" ;;
 esac

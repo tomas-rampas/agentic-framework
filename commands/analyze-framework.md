@@ -75,9 +75,9 @@ Analyzes every registered agent using the canonical categories from `${CLAUDE_PL
 
 ### 3. Hook Architecture Analysis
 
-Hooks are real Claude Code hooks: .ps1/.sh script pairs in `${CLAUDE_PLUGIN_ROOT}/hooks/`, routed by `${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh`, registered in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` as shell-form dispatch chains.
+Hooks are real Claude Code hooks: .ps1/.sh script pairs (gates and advisory hooks) or sh-only scripts (silent telemetry hooks) in `${CLAUDE_PLUGIN_ROOT}/hooks/`, routed by `${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh`, registered in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` as shell-form dispatch chains.
 
-- Pair parity: every registered hook name has both .ps1 and .sh implementations; dispatch.sh is present and referenced in every registered chain; no orphans on either side (check 3). The name allowlist inside dispatch.sh is validator-checked: every registered hook name must appear in the case statement pattern.
+- Pair parity: every hook registered with a pwsh arm has both .ps1 and .sh implementations; an sh-only chain has its .sh and a dispatch.sh allowlist entry; dispatch.sh is present and referenced in every registered chain; no orphans on either side (check 3). The name allowlist inside dispatch.sh is validator-checked: every registered hook name must appear in the case statement pattern.
 - Behavior: `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1` (PowerShell suite) and `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.sh` (POSIX suite) exercise block/allow paths of the peer-review Stop gate, the run recorder, session context, and the delegation hint on both implementations
 - Design rationale: `${CLAUDE_PLUGIN_ROOT}/docs/design/`
 
@@ -90,7 +90,7 @@ Verifies the skills on disk parse and match the documented roster. See README's 
 ```
 ${CLAUDE_PLUGIN_ROOT}/
 ├── agents/                  ✓ (one .md per registered agent)
-├── commands/                ✓ (12 commands)
+├── commands/                ✓ (13 commands)
 ├── hooks/                   ✓ (registered hook scripts)
 ├── skills/                  ✓ (operational skills)
 ├── scripts/                 ✓ (install + validation + doc generation)
@@ -129,7 +129,7 @@ AGENTS
    • Registry == filesystem; all categories partition the roster; model parity OK
 
 HOOKS
-   • Pair parity OK (.ps1 + .sh present for every hook, dispatch referenced, events valid)
+   • Pair parity OK (.ps1 + .sh present for every paired hook, .sh + allowlist entry for sh-only hooks, dispatch referenced, events valid)
    • hooks.test.ps1 + hooks.test.sh: all assertions pass
 
 DOCS

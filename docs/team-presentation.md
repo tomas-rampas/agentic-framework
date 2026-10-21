@@ -86,7 +86,7 @@ flowchart TD
     SK["📚 Skills<br/>procedural knowledge"] -.-> S
     MCP["🔌 MCP servers<br/>code intel · live docs · web"] -.-> S
     S --> C1["code-review-gatekeeper<br/>quality review"]
-    C1 -->|findings fixed| C2["peer-review-critic<br/>independent final review — read-only tools"]
+    C1 -->|findings fixed| C2["peer-review-critic<br/>independent final review — read-only toward the code"]
     C2 --> GATE{"🚦 Stop gate<br/>review recorded?"}
     GATE -- no --> C2
     GATE -- yes --> DONE["✅ Session may end — work is done"]
@@ -146,10 +146,10 @@ mindmap
 ```
 
 - **Model tiers scale with stakes**: `opus` = review gates, security & architecture · `sonnet` = language implementation, domain & infrastructure specialists, analysis & planning · `haiku` = executors, docs & UI/UX. The orchestrator moves one tier per task at most, and no sub-agent ever runs on the top tier (Fable).
-- **peer-review-critic runs a curated toolset** (no Write/Edit/Agent) that narrows its default surface; its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
+- **peer-review-critic runs a curated toolset** (no Agent, and no Write/Edit beyond what the memory feature adds for its own memory directory) that narrows its default surface; it is read-only toward the code under review by conduct, and its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
-### 3.2 Commands — the operations console (12)
+### 3.2 Commands — the operations console (13)
 
 | Command | Role |
 |---|---|
@@ -161,22 +161,26 @@ mindmap
 | `/agentic-framework:agent-status` | Per-agent configuration health |
 | `/agentic-framework:analyze-framework` | Full health check (runs the real validators) |
 | `/agentic-framework:quality-report` | Quality assessment from actual config state |
+| `/agentic-framework:metrics` | Local usage telemetry: sessions, tokens and estimated cost, sub-agent invocations by agent and tier, review approval rate (last 7 days by default) |
 | `/agentic-framework:validate-hooks` | Hook registration parity check |
 | `/agentic-framework:migrate-legacy` | Migrate a local ~/.claude clone to the plugin distribution |
 | `/agentic-framework:setup` | Configure the bundled MCP servers' environment variables (Context7 API key, filesystem root) |
 | `/agentic-framework:log-triage` | Triage large log files locally: detect formats, fingerprint recurring issues, assess severity, suggest fixes, export JSON/SARIF/HTML/Markdown/CSV/NDJSON |
 
-### 3.3 Hooks — the enforcement layer (5)
+### 3.3 Hooks — the enforcement layer (8)
 
-The only component that can **say no**: hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. The .sh implementations parse that JSON with `jq` and enforce nothing without it — if `jq` is absent on a POSIX host, the gate is disarmed; hooks fire but don't enforce. Windows runs the .ps1 via pwsh (which parses JSON natively with ConvertFrom-Json), or the .sh under Git Bash when jq is available.
+The only component that can **say no**: gate and advisory hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, plus three silent sh-only telemetry hooks, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. The .sh implementations parse that JSON with `jq` and enforce nothing without it — if `jq` is absent on a POSIX host, the gate is disarmed; hooks fire but don't enforce. Windows runs the .ps1 via pwsh (which parses JSON natively with ConvertFrom-Json), or the .sh under Git Bash when jq is available.
 
-| Hook (.ps1/.sh pair) | Event | Guards |
+| Hook (.ps1/.sh pair unless noted) | Event | Guards |
 |---|---|---|
 | `stop-peer-review-gate` | `Stop` | **The one hard gate** — no session ends with committed, unreviewed work |
 | `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic runs and parses the review's `VERDICT:` line — `APPROVED` is what unlocks the gate |
 | `session-start-context` | `SessionStart` | Injects branch + review status into context at startup |
 | `pretooluse-delegation-hint` | `PreToolUse` | Suggests the matching specialist when a `.rs`/`.py`/`.cs`/… file is written |
 | `pretooluse-model-guard` | `PreToolUse` | **The model-tier ceiling, automatic** (nothing to configure; POSIX hosts need `jq`) — denies a sub-agent call whose `model` names the top tier (`fable`) and every `fork`; rewrites a built-in agent call with no `model` to `haiku` (`Explore`) or `sonnet` (the rest) |
+| `telemetry-session-start` (.sh only) | `SessionStart` | Silent — records session, project, branch, start time under `~/.claude/.state/telemetry/`; prunes after 30 days |
+| `telemetry-session-stop` (.sh only) | `Stop` + `SessionEnd` | Silent — end time, duration, turns, incremental transcript token totals |
+| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` + `SubagentStop` | Silent — per-invocation agent, tier, duration, reviewer verdict, sub-agent tokens; read by `/agentic-framework:metrics` |
 
 The gate's lifecycle:
 
@@ -236,7 +240,7 @@ Design philosophy: **one hard gate at the single choke point** (all work becomes
 
 *Field note: minutes after installation, the gate blocked its own author's session — for having unreviewed commits. It was reviewing the commits that created it.*
 
-### 3.4 Skills — procedural knowledge (10)
+### 3.4 Skills — procedural knowledge (11)
 
 Loaded on demand when a task matches. An agent is *someone to delegate to*; a skill is *knowledge the current agent absorbs*.
 
@@ -250,6 +254,7 @@ Loaded on demand when a task matches. An agent is *someone to delegate to*; a sk
 | dependency-checker | Verify the toolchain (git, jq, pwsh 7, node, uv) |
 | git-workflow-assistant | Branch/commit/PR flow, incl. working *with* the Stop gate |
 | hook-config-generator | Add a new real hook (script → registration → tests) |
+| knowledge | Browse, search and prune the agents' persistent memories (`~/.claude/agent-memory/`), with a confirm-before-delete prune report |
 | refactoring-advisor | Spot code smells, prioritize refactorings |
 | self-scoring-loop | Rubric-score a non-code deliverable, rewrite the weakest parts, rescore until it plateaus |
 
@@ -339,9 +344,9 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | | |
 |---|---|
 | Specialized agents | 21 (7 categories, 3 model tiers) |
-| Hooks | 5 .ps1/.sh implementation pairs |
-| Skills | 10 loadable knowledge modules |
-| Commands | 12 management commands |
+| Hooks | 8 hook scripts (5 .ps1/.sh implementation pairs, 3 sh-only) |
+| Skills | 11 loadable knowledge modules |
+| Commands | 13 management commands |
 | MCP servers | 6 (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph) |
 | Validator checks | 15, all derived at runtime |
 | Test suites | 8 automated suites under tests/ |

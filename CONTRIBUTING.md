@@ -38,6 +38,7 @@ model: <tier-shorthand>            # opus | sonnet | haiku (must match claude.js
                                     # Policy). `fable` is never a valid subagent tier: it is
                                     # not listed in `.consistency.model_tiers`, and the
                                     # pretooluse-model-guard hook denies it at call time.
+memory: user                       # required: persistent per-agent memory (~/.claude/agent-memory/<name>/)
 color: <color-name>
 effort: <reasoning-effort>         # optional: low | medium | high | xhigh | max
 mcpServers: [<server-name>, ...]   # optional: MCP servers available to the agent
@@ -63,7 +64,13 @@ gets `sonnet`; executors and mechanical prose get `haiku`.
 `effort` sets the reasoning effort the agent runs at (`low`/`medium`/`high`/`xhigh`/`max`).
 Per Claude Code's documentation, `mcpServers` is not applied to plugin-shipped agents;
 treat it as effective only for user-scope agent files. `tools` gives an explicit
-comma-separated tool allowlist, overriding the default full tool access for that agent.
+comma-separated tool allowlist, overriding the default full tool access for that agent;
+note that `memory:` adds Read, Write and Edit on top of any allowlist (Claude Code enables
+them so the agent can maintain its memory files), so a reviewer's read-only stance toward
+the code under review is a conduct rule, stated in its prompt, not a tool restriction.
+Every agent carries `memory: user` and a 10-to-16-line `## Memory` section (what to record,
+the project-name rule, verify-before-apply, no secrets, no copied instructions); CLAUDE.md's
+Agent Memory Policy is the governing text.
 
 **MCP tool names come in twins.** The same server is addressable under two prefixes:
 the bare `mcp__<server>__<tool>` form and the plugin-served

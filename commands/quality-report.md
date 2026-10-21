@@ -47,7 +47,7 @@ Check agent ecosystem completeness:
 ### 3. Hook Architecture
 
 Assess the real hook system:
-- Pair parity: every hook name in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` has both .ps1 and .sh implementations; dispatch.sh is present and referenced in every registered chain; no orphans on either side. The name allowlist inside dispatch.sh is validator-checked: every registered hook name must appear in the case statement pattern
+- Pair parity: every hook in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json` registered with a pwsh arm has both .ps1 and .sh implementations, and every sh-only chain has its .sh plus a dispatch.sh allowlist entry; dispatch.sh is present and referenced in every registered chain; no orphans on either side. The name allowlist inside dispatch.sh is validator-checked: every registered hook name must appear in the case statement pattern
 - All event names are valid Claude Code hook events; all .ps1 scripts pin PowerShell 7; all .sh scripts have proper shebang and `set -u`
 - Hook behavior tests pass (`${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.ps1` and `${CLAUDE_PLUGIN_ROOT}/tests/hooks.test.sh`)
 - No references to deprecated agent names
@@ -98,7 +98,7 @@ Agent Coverage:          all registered agents have definition files
                          all agent frontmatter valid (model parity OK)
                          0 orphaned files
 
-Hook Architecture:       pair parity OK (no missing .ps1, no missing .sh, no orphans)
+Hook Architecture:       pair parity OK (no missing .ps1 for paired hooks, no missing .sh, no orphans)
                          dispatch.sh present and referenced in every chain
                          all events valid; all .ps1 pin PS7; all .sh have shebang+set -u
                          hooks.test.ps1 + hooks.test.sh: all assertions pass
