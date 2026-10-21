@@ -7,7 +7,7 @@ description: Iteratively improve a non-code deliverable (spec, plan, document, d
 
 Turn a single-shot draft into a converging loop: score the work against an explicit rubric, fix the weakest parts, and repeat until improvement stalls. Scoring and rewriting are different acts — critiquing the work *before* rewriting turns blind editing into directed search.
 
-This is the quality loop for deliverables that have no test suite. For code, use the `code-scoring-loop` sibling skill — the same loop with the diff scored by the framework's specialist agents, the scorer also applying the `code-review` skill, and run before (never instead of) the review gates (`code-review-gatekeeper`, `peer-review-critic`).
+This is the quality loop for deliverables that have no test suite. For code, use the `code-scoring-loop` sibling skill — the same loop, with the diff scored by the framework's specialist agents and run before (never instead of) the review gates (`code-review-gatekeeper`, `peer-review-critic`).
 
 ## When to Apply
 

@@ -250,7 +250,7 @@ Loaded on demand when a task matches. An agent is *someone to delegate to*; a sk
 | agent-routing-advisor | Pick the right agent or agent sequence |
 | code-review | Review a PR, branch or diff in three ordered passes (architecture → logic → idioms) with the five-question evaluator, a Chesterton's Fence provenance check, and ICE-prefixed findings under a summary-first report |
 | code-scaffolder | Bootstrap idiomatic projects per language |
-| code-scoring-loop | Score a code diff via the specialist agents, with the scorer also applying the code-review skill (an open `[Blocker]` holds the loop open until the round cap), rewrite the weakest parts, rescore until it plateaus — before, never instead of, the review gates |
+| code-scoring-loop | Score a code diff via the specialist agents, rewrite the weakest parts, rescore until it plateaus — before, never instead of, the review gates |
 | dependency-checker | Verify the toolchain (git, jq, pwsh 7, node, uv) |
 | git-workflow-assistant | Branch/commit/PR flow, incl. working *with* the Stop gate |
 | hook-config-generator | Add a new real hook (script → registration → tests) |

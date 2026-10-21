@@ -396,9 +396,9 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 |-------|---------|
 | **agent-debugger** | Diagnose agent routing, loading, and configuration issues |
 | **agent-routing-advisor** | Recommend the right specialist agent for a task |
-| **code-review** | Three-pass review of a PR, branch, or diff (architecture → logic → idioms) with the five-question evaluator, a Chesterton's Fence provenance check, and ICE-prefixed findings behind a summary-first report |
+| **code-review** | Three-pass review of a PR, branch, or diff (architecture → logic → idioms) with the five-question evaluator, a Chesterton's Fence provenance check, and ICE-prefixed findings behind a summary-first report; `code-review-gatekeeper` applies it for the push/PR gate review |
 | **code-scaffolder** | Generate idiomatic project scaffolding for supported languages |
-| **code-scoring-loop** | Rubric-based score → rewrite → rescore loop for code diffs, scored by the specialist agents, with the scorer also applying the code-review skill (an open `[Blocker]` holds the loop open until the round cap), before the review gates |
+| **code-scoring-loop** | Rubric-based score → rewrite → rescore loop for code diffs, scored by the specialist agents, before the review gates |
 | **dependency-checker** | Verify the toolchain the framework needs (git, jq, pwsh 7, node, uv) |
 | **git-workflow-assistant** | Guide branching, commit conventions, and PR workflows (incl. the peer-review gate) |
 | **hook-config-generator** | Guide for adding a new real hook (script + registration + tests) |
@@ -524,5 +524,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 8 Hook Scripts • 11 Skills • 13 Commands • v5.0.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 8 Hook Scripts • 11 Skills • 13 Commands • v5.1.0**
 <!-- END GENERATED: framework-stats -->
