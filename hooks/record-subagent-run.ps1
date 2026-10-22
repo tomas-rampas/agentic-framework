@@ -16,6 +16,10 @@
 # quoted mentions cannot spoof the real one. A marker without a verdict line keeps
 # the legacy "reviewer ran" semantics (the gate treats it as unlocking — fail-open).
 #
+# code-review-gatekeeper (bare or agentic-framework:-scoped) is recorded the same way into
+# <state>/code-review/<session>, plus a last line target=<text> from the report's first
+# "Target:" line (CR removed, trimmed, printable ASCII only, max 200 chars).
+#
 # Stale-verdict hardening (applies only when a verdict is parsed):
 #   1. Instance dedupe, HEAD-qualified (primary): Resolves an instance ID from the payload
 #      (SubagentStop: first non-empty of agent_id, agent_session_id, subagent_id, task_id,
@@ -47,15 +51,19 @@ try {
     if (-not $sessionId) { exit 0 }
 
     $reportText = ''
+    $reviewSub = 'peer-review'
+    $agentRx = '^(agentic-framework:)?(peer-review-critic|code-review-gatekeeper)$'
     if ([string]$payload.hook_event_name -eq 'SubagentStop') {
-        if ([string]$payload.agent_type -notmatch '^(agentic-framework:)?peer-review-critic$') { exit 0 }
+        if ([string]$payload.agent_type -notmatch $agentRx) { exit 0 }
+        if ([string]$payload.agent_type -match 'code-review-gatekeeper$') { $reviewSub = 'code-review' }
         $reportText = [string]$payload.last_assistant_message
     } else {
         # PostToolUse (Task|Agent). The response field is tool_response on current
         # builds and tool_output in the documented schema; the report text is a
         # plain string, an object carrying a content[] array of text blocks, or a
         # bare array of such blocks.
-        if ([string]$payload.tool_input.subagent_type -notmatch '^(agentic-framework:)?peer-review-critic$') { exit 0 }
+        if ([string]$payload.tool_input.subagent_type -notmatch $agentRx) { exit 0 }
+        if ([string]$payload.tool_input.subagent_type -match 'code-review-gatekeeper$') { $reviewSub = 'code-review' }
         $resp = $payload.tool_response
         if ($null -eq $resp) { $resp = $payload.tool_output }
         $blocks = $null
@@ -83,7 +91,7 @@ try {
 
     $stateRoot = $env:CLAUDE_STATE_DIR
     if (-not $stateRoot) { $stateRoot = Join-Path $HOME '.claude/.state' }
-    $reviewDir = Join-Path $stateRoot 'peer-review'
+    $reviewDir = Join-Path $stateRoot $reviewSub
     New-Item -ItemType Directory -Force -Path $reviewDir | Out-Null
     $marker = Join-Path $reviewDir $sessionId
 
@@ -227,6 +235,19 @@ try {
         $lines += "verdict=$verdict"
         if ($currentHead) {
             $lines += "head=$currentHead"
+        }
+    }
+
+    if ($reviewSub -eq 'code-review' -and $reportText) {
+        $tline = ($reportText -replace "`r", '') -split "`n" | Where-Object {
+            $_.StartsWith('**Target:**', [System.StringComparison]::Ordinal) -or $_.StartsWith('Target:', [System.StringComparison]::Ordinal)
+        } | Select-Object -First 1
+        if ($null -ne $tline) {
+            if ($tline.StartsWith('**Target:**', [System.StringComparison]::Ordinal)) { $t = $tline.Substring(11) } else { $t = $tline.Substring(7) }
+            # non-ASCII dropped BEFORE trimming (the .sh order)
+            $t = ($t -replace '[^\x20-\x7E]', '').Trim()
+            if ($t.Length -gt 200) { $t = $t.Substring(0, 200) }
+            if ($t) { $lines += "target=$t" }
         }
     }
 

@@ -167,14 +167,15 @@ mindmap
 | `/agentic-framework:setup` | Configure the bundled MCP servers' environment variables (Context7 API key, filesystem root) |
 | `/agentic-framework:log-triage` | Triage large log files locally: detect formats, fingerprint recurring issues, assess severity, suggest fixes, export JSON/SARIF/HTML/Markdown/CSV/NDJSON |
 
-### 3.3 Hooks — the enforcement layer (8)
+### 3.3 Hooks — the enforcement layer (9)
 
 The only component that can **say no**: gate and advisory hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, plus three silent sh-only telemetry hooks, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. The .sh implementations parse that JSON with `jq` and enforce nothing without it — if `jq` is absent on a POSIX host, the gate is disarmed; hooks fire but don't enforce. Windows runs the .ps1 via pwsh (which parses JSON natively with ConvertFrom-Json), or the .sh under Git Bash when jq is available.
 
 | Hook (.ps1/.sh pair unless noted) | Event | Guards |
 |---|---|---|
-| `stop-peer-review-gate` | `Stop` | **The one hard gate** — no session ends with committed, unreviewed work |
-| `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic runs and parses the review's `VERDICT:` line — `APPROVED` is what unlocks the gate |
+| `stop-peer-review-gate` | `Stop` | **The session gate** — no session ends with committed, unreviewed work |
+| `pretooluse-code-review-gate` | `PreToolUse` (`Bash\|PowerShell`) | **The push/PR gate** — a PR/MR creation, or a push to main/master, is allowed only as a plain single command with literal names (every other command that mentions one is denied and must be split), and needs a code-review-gatekeeper review approved for that exact range |
+| `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic and code-review-gatekeeper runs and parses each review's `VERDICT:` line — `APPROVED` is what unlocks the Stop gate and the push/PR gate respectively |
 | `session-start-context` | `SessionStart` | Injects branch + review status into context at startup |
 | `pretooluse-delegation-hint` | `PreToolUse` | Suggests the matching specialist when a `.rs`/`.py`/`.cs`/… file is written |
 | `pretooluse-model-guard` | `PreToolUse` | **The model-tier ceiling, automatic** (nothing to configure; POSIX hosts need `jq`) — denies a sub-agent call whose `model` names the top tier (`fable`) and every `fork`; rewrites a built-in agent call with no `model` to `haiku` (`Explore`) or `sonnet` (the rest) |
@@ -236,7 +237,7 @@ flowchart TD
     class ERR neutral
 ```
 
-Design philosophy: **one hard gate at the single choke point** (all work becomes committed code) · everything else advisory · fail-open everywhere · bounded blocking — once when no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`: a gate, not a nag. Behavior pinned by 40+ test assertions; CI fails if a script and its registration ever drift apart.
+Design philosophy: **two gates at two choke points** (session end: all work becomes committed code; the moment code leaves the working copy: a PR, MR or push to main/master needs a code-review-gatekeeper review) · everything else advisory · the advisory hooks and the session gate fail open, while the push/PR gate denies any command text that is not a plain push or PR command and fails open only on what it cannot read (a payload it cannot parse, a push from a directory that is not a repository or has no commit yet, a POSIX host without `jq`); it is a best-effort guardrail over direct shell commands, not a sandbox · the session gate blocks a bounded number of times (once when no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`) and the push/PR gate denies until a review is recorded or `AF_CODE_REVIEW_GATE=off` is set: a gate, not a nag. Behavior pinned by 40+ test assertions; CI fails if a script and its registration ever drift apart.
 
 *Field note: minutes after installation, the gate blocked its own author's session — for having unreviewed commits. It was reviewing the commits that created it.*
 
@@ -344,7 +345,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | | |
 |---|---|
 | Specialized agents | 21 (7 categories, 3 model tiers) |
-| Hooks | 8 hook scripts (5 .ps1/.sh implementation pairs, 3 sh-only) |
+| Hooks | 9 hook scripts (6 .ps1/.sh implementation pairs, 3 sh-only) |
 | Skills | 11 loadable knowledge modules |
 | Commands | 13 management commands |
 | MCP servers | 6 (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph) |

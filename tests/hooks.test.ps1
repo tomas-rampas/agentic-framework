@@ -342,6 +342,58 @@ Assert 'PostToolUse with wrong plugin-scoped agent does not record' ($r.Code -eq
 $r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'plugin-neg-other'; hook_event_name = 'SubagentStop'; agent_type = 'otherplugin:some-agent'; last_assistant_message = "VERDICT: APPROVED" })
 Assert 'SubagentStop with different plugin agent does not record' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $stateDir 'peer-review' 'plugin-neg-other')))
 
+Write-Host "[RECORD-SUBAGENT-RUN-CR] record-subagent-run.ps1 — code-review marker"
+
+function Get-Lines([string]$Path) { if (Test-Path $Path) { (Get-Content $Path -Raw) -split "`n" } else { @() } }
+$crDir = Join-Path $stateDir 'code-review'
+$prDir = Join-Path $stateDir 'peer-review'
+$headSha = (git -C $scratch rev-parse HEAD).Trim()
+
+# CR-1: APPROVED with Target -> four-line marker under code-review/, nothing under peer-review/
+$tgt = 'feature/x vs origin/main (abc1234..def5678); fallback: none'
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr1'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_input = @{ subagent_type = 'code-review-gatekeeper' }; tool_response = "Review.`nTarget: $tgt`nVERDICT: APPROVED" })
+$ln = Get-Lines (Join-Path $crDir 'cr1')
+Assert '[RECORD-SUBAGENT-RUN-CR-1] code-review marker exists' ($r.Code -eq 0 -and (Test-Path (Join-Path $crDir 'cr1')))
+Assert '[RECORD-SUBAGENT-RUN-CR-1] four lines: verdict, head, target' ($ln.Count -eq 4 -and $ln[1] -eq 'verdict=APPROVED' -and $ln[2] -eq "head=$headSha" -and $ln[3] -eq "target=$tgt")
+Assert '[RECORD-SUBAGENT-RUN-CR-1] no peer-review marker' (-not (Test-Path (Join-Path $prDir 'cr1')))
+
+# CR-2: peer-review-critic writes nothing under code-review/
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr2'; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = "Target: x`nVERDICT: APPROVED" })
+Assert '[RECORD-SUBAGENT-RUN-CR-2] peer-review marker written' ($r.Code -eq 0 -and (Test-Path (Join-Path $prDir 'cr2')))
+Assert '[RECORD-SUBAGENT-RUN-CR-2] no code-review marker' (-not (Test-Path (Join-Path $crDir 'cr2')))
+Assert '[RECORD-SUBAGENT-RUN-CR-2] no target= in peer-review marker' ((Get-Content (Join-Path $prDir 'cr2') -Raw) -notmatch 'target=')
+
+# CR-3: no Target line -> three lines
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr3'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_input = @{ subagent_type = 'code-review-gatekeeper' }; tool_response = "No target here.`nVERDICT: CHANGES_REQUIRED" })
+$ln = Get-Lines (Join-Path $crDir 'cr3')
+Assert '[RECORD-SUBAGENT-RUN-CR-3] three lines, no target' ($r.Code -eq 0 -and $ln.Count -eq 3 -and $ln[1] -eq 'verdict=CHANGES_REQUIRED' -and $ln[2] -like 'head=*')
+
+# CR-4: instance dedupe at same HEAD
+$null = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr4'; cwd = $scratch; tool_use_id = 'toolu_X'; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_input = @{ subagent_type = 'code-review-gatekeeper' }; tool_response = 'VERDICT: CHANGES_REQUIRED' })
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr4'; cwd = $scratch; tool_use_id = 'toolu_X'; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_input = @{ subagent_type = 'code-review-gatekeeper' }; tool_response = 'VERDICT: APPROVED' })
+$sup = Join-Path $crDir 'cr4.verdict-suppressed'
+Assert '[RECORD-SUBAGENT-RUN-CR-4] marker still CHANGES_REQUIRED' ($r.Code -eq 0 -and (Get-Content (Join-Path $crDir 'cr4') -Raw) -match 'verdict=CHANGES_REQUIRED')
+Assert '[RECORD-SUBAGENT-RUN-CR-4] one suppression line guard=instance-dedupe' ((Test-Path $sup) -and @(Get-Content $sup).Count -eq 1 -and (Get-Content $sup -Raw) -match 'guard=instance-dedupe')
+
+# CR-5: scoped, mixed-case SubagentStop
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr5'; hook_event_name = 'SubagentStop'; agent_type = 'AgentiC-Framework:Code-Review-Gatekeeper'; last_assistant_message = "Done.`nTarget:   main..HEAD  `nVERDICT: APPROVED" })
+$m = if (Test-Path (Join-Path $crDir 'cr5')) { Get-Content (Join-Path $crDir 'cr5') -Raw } else { '' }
+Assert '[RECORD-SUBAGENT-RUN-CR-5] scoped SubagentStop records verdict and trimmed target' ($r.Code -eq 0 -and $m -match '(?m)^verdict=APPROVED$' -and $m -match '(?m)^target=main\.\.HEAD$')
+
+# CR-6: sanitization (CR removed, non-ASCII dropped, 200-char cap)
+$long = 'a' * 250
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr6'; hook_event_name = 'SubagentStop'; agent_type = 'code-review-gatekeeper'; last_assistant_message = ("Target: caf" + [char]0xE9 + "-" + $long + "`r`nVERDICT: APPROVED") })
+$m = if (Test-Path (Join-Path $crDir 'cr6')) { Get-Content (Join-Path $crDir 'cr6') -Raw } else { '' }
+$val = ((($m -split "`n") | Where-Object { $_ -like 'target=*' } | Select-Object -First 1) -replace '^target=', '')
+Assert '[RECORD-SUBAGENT-RUN-CR-6] target is 200 printable ASCII chars, CR and e-acute dropped' ($r.Code -eq 0 -and $val.Length -eq 200 -and $val -match '^[\x20-\x7E]+$' -and $val.StartsWith('caf-'))
+
+# CR-7: Markdown-bold **Target:** label; non-ASCII dropped BEFORE trimming (an e-acute at
+# each edge of the value would leave an edge space if trimming ran first)
+$cr7v = 'feat/x vs origin/main (abc1234..def5678); fallback: none'
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr7'; hook_event_name = 'SubagentStop'; agent_type = 'code-review-gatekeeper'; last_assistant_message = ("Done.`n**Target:** " + [char]0xE9 + "  $cr7v " + [char]0xA0 + " " + [char]0xE9 + "`nVERDICT: APPROVED") })
+$m = if (Test-Path (Join-Path $crDir 'cr7')) { Get-Content (Join-Path $crDir 'cr7') -Raw } else { '' }
+$val = ((($m -split "`n") | Where-Object { $_.StartsWith('target=', [System.StringComparison]::Ordinal) } | Select-Object -First 1) -replace '^target=', '')
+Assert '[RECORD-SUBAGENT-RUN-CR-7] bold **Target:** label recorded, value trimmed after non-ASCII removal' ($r.Code -eq 0 -and [string]::Equals($val, $cr7v))
 Write-Host "session-start-context.ps1"
 
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'c1'; cwd = $scratch })
@@ -349,7 +401,7 @@ Assert 'reports ahead-of-base state on feature branch' ($r.Code -eq 0 -and $r.Ou
 
 git -C $scratch checkout -q main
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'c2'; cwd = $scratch })
-Assert 'reports base-branch state on main' ($r.Code -eq 0 -and $r.Out -match "On 'main'")
+Assert 'reports base-branch state on main' ($r.Code -eq 0 -and $r.Out -match "On 'main'" -and $r.Out -match 'code-review-gatekeeper')
 git -C $scratch checkout -q feature/x
 
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'c3'; cwd = $workRoot })
@@ -646,6 +698,1021 @@ try {
     if ($null -ne $savedFloor) { $env:CLAUDE_CODE_SUBAGENT_MODEL = $savedFloor } else { Remove-Item Env:\CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
     if ($null -ne $savedGuard) { $env:AF_MODEL_GUARD = $savedGuard } else { Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue }
 }
+
+# ── pretooluse-code-review-gate.ps1 (REQ-004, EDGE-001 .. EDGE-008) ───────────
+# Mirrors the [PRETOOLUSE-CODE-REVIEW-GATE-*] sections of tests/hooks.test.sh.
+$script:GateState = $stateDir
+$script:GateRun = $null
+$script:GateHome = $null
+$script:GF = @{}
+
+function Add-GateCommit([string]$Dir, [string]$Msg) {
+    Add-Content -Path (Join-Path $Dir 'f.txt') -Value $Msg
+    git -C $Dir add -A 2>$null | Out-Null
+    git -C $Dir commit -q -m $Msg 2>$null | Out-Null
+}
+
+function Initialize-GateRepoBare([string]$Dir, [string]$Branch = 'main') {
+    New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+    git -C $Dir init -q -b $Branch
+    git -C $Dir config user.email 'test@test.local'
+    git -C $Dir config user.name 'hooks-test'
+    git -C $Dir config commit.gpgsign false
+}
+
+# Repo with origin/<branch> one commit behind <branch>, origin/HEAD -> origin/<branch>, feat/x at the tip.
+# The remote URL points at a path that does not exist; nothing here ever contacts it.
+function Build-GateRepo([string]$Dir, [string]$Branch = 'main') {
+    Initialize-GateRepoBare $Dir $Branch
+    Add-GateCommit $Dir 'c1'
+    git -C $Dir remote add origin "$Dir.nowhere"
+    git -C $Dir update-ref "refs/remotes/origin/$Branch" (git -C $Dir rev-parse HEAD)
+    git -C $Dir symbolic-ref refs/remotes/origin/HEAD "refs/remotes/origin/$Branch"
+    Add-GateCommit $Dir 'c2'
+    git -C $Dir branch feat/x
+}
+
+function Build-GateFixtures([string]$Root) {
+    $f = @{}
+    $f.M = Join-Path $Root 'm';   Build-GateRepo $f.M 'main'
+    $f.XS = Join-Path $Root 'xs'; Copy-Item -Recurse $f.M $f.XS; git -C $f.XS checkout -q feat/x
+    $f.X = Join-Path $Root 'x';   Copy-Item -Recurse $f.XS $f.X; Add-GateCommit $f.X 'c3'
+    $f.U = Join-Path $Root 'u';   Copy-Item -Recurse $f.X $f.U
+    git -C $f.U config branch.feat/x.remote origin
+    git -C $f.U config branch.feat/x.merge refs/heads/main
+    $f.U2 = Join-Path $Root 'u2'; Copy-Item -Recurse $f.X $f.U2
+    git -C $f.U2 update-ref refs/remotes/origin/feat/x (git -C $f.U2 rev-parse main)
+    git -C $f.U2 config branch.feat/x.remote origin
+    git -C $f.U2 config branch.feat/x.merge refs/heads/feat/x
+    $f.MT = Join-Path $Root 'mt'; Copy-Item -Recurse $f.X $f.MT; git -C $f.MT config push.default matching
+    $f.DY = Join-Path $Root 'dy'; Copy-Item -Recurse $f.X $f.DY; Add-Content -Path (Join-Path $f.DY 'f.txt') -Value 'dirty'
+    $f.SB = Join-Path $Root 'sb'; Copy-Item -Recurse $f.X $f.SB; Build-GateRepo (Join-Path $f.SB 'sub') 'main'
+    $f.DT = Join-Path $Root 'dt'; Copy-Item -Recurse $f.M $f.DT; git -C $f.DT checkout -q --detach
+    $f.EQ = Join-Path $Root 'eq'; Copy-Item -Recurse $f.X $f.EQ
+    git -C $f.EQ update-ref refs/remotes/origin/main (git -C $f.EQ rev-parse main)
+    $f.MS = Join-Path $Root 'ms'; Build-GateRepo $f.MS 'master'
+    # <home>/other: on main, one ahead of origin/main
+    $f.HOME = Join-Path $Root 'home'; $f.OTH = Join-Path $f.HOME 'other'; Build-GateRepo $f.OTH 'main'
+    # main one commit behind origin/main
+    $f.BH = Join-Path $Root 'bh'; Copy-Item -Recurse $f.X $f.BH; git -C $f.BH checkout -q main
+    git -C $f.BH update-ref refs/remotes/origin/main (git -C $f.BH rev-parse feat/x)
+    # branch.main.remote=upstream
+    $f.UP = Join-Path $Root 'up'; Copy-Item -Recurse $f.M $f.UP
+    git -C $f.UP remote add upstream "$($f.UP).nowhere-up"
+    git -C $f.UP update-ref refs/remotes/upstream/main (git -C $f.UP rev-parse 'main~1')
+    git -C $f.UP update-ref refs/remotes/origin/main (git -C $f.UP rev-parse main)
+    git -C $f.UP config branch.main.remote upstream
+    # not a git work tree
+    $f.PL = Join-Path $Root 'plain'; New-Item -ItemType Directory -Force -Path $f.PL | Out-Null
+    $script:GF = $f
+}
+
+# Write a code-review marker: '-' omits a line.
+function Set-GateMarker([string]$Sid, [string]$Verdict, [string]$Head, [string]$Target) {
+    $d = Join-Path $script:GateState 'code-review'
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+    $t = '2026-10-21T00:00:00Z'
+    if ($Verdict -ne '-') { $t += "`nverdict=$Verdict" }
+    if ($Head -ne '-') { $t += "`nhead=$Head" }
+    if ($Target -ne '-') { $t += "`ntarget=$Target" }
+    [IO.File]::WriteAllText((Join-Path $d $Sid), $t)
+}
+
+# A marker whose target carries the real reviewed range (<merge-base>..<HEAD>) of $Dir.
+function Set-GateRealMarker([string]$Sid, [string]$Dir, [string]$Prefix, [string]$BaseRef, [string]$Verdict = 'APPROVED', [string]$Head = '') {
+    $h = (git -C $Dir rev-parse HEAD).Trim()
+    $mb = (git -C $Dir merge-base $BaseRef HEAD).Trim()
+    if (-not $Head) { $Head = $h }
+    Set-GateMarker $Sid $Verdict $Head "$Prefix ($mb..$h); fallback: none"
+}
+
+function Invoke-GateRaw([string]$Raw, $GateEnv = $null) {
+    $savedGate = $env:AF_CODE_REVIEW_GATE
+    $savedState = $env:CLAUDE_STATE_DIR
+    $savedHome = $env:HOME
+    $env:CLAUDE_STATE_DIR = $script:GateState
+    if ($script:GateHome) { $env:HOME = $script:GateHome }
+    if ($null -ne $GateEnv) { $env:AF_CODE_REVIEW_GATE = [string]$GateEnv } else { Remove-Item Env:\AF_CODE_REVIEW_GATE -ErrorAction SilentlyContinue }
+    try { $script:GateRun = Invoke-Hook 'pretooluse-code-review-gate.ps1' $Raw }
+    finally {
+        if ($null -ne $savedGate) { $env:AF_CODE_REVIEW_GATE = $savedGate } else { Remove-Item Env:\AF_CODE_REVIEW_GATE -ErrorAction SilentlyContinue }
+        $env:CLAUDE_STATE_DIR = $savedState
+        if ($null -ne $savedHome) { $env:HOME = $savedHome } else { Remove-Item Env:\HOME -ErrorAction SilentlyContinue }
+    }
+}
+
+function Invoke-Gate([string]$Sid, [string]$Cwd, [string]$Cmd, $GateEnv = $null, [string]$Tool = 'Bash') {
+    Invoke-GateRaw (New-Payload @{ session_id = $Sid; cwd = $Cwd; tool_name = $Tool; tool_input = @{ command = $Cmd } }) $GateEnv
+}
+
+function Assert-GateAllow([string]$Label) {
+    Assert $Label ($script:GateRun.Code -eq 0 -and -not $script:GateRun.Out)
+}
+
+function Assert-GateDeny([string]$Label, [string[]]$Needle = @(), [bool]$AlsoTrue = $true) {
+    $ok = ($script:GateRun.Code -eq 0 -and $AlsoTrue)
+    $reason = ''
+    try {
+        $j = $script:GateRun.Out | ConvertFrom-Json
+        if ($j.hookSpecificOutput.permissionDecision -ne 'deny') { $ok = $false }
+        $reason = [string]$j.hookSpecificOutput.permissionDecisionReason
+    } catch { $ok = $false }
+    foreach ($n in $Needle) { if (-not $reason.Contains($n)) { $ok = $false } }
+    Assert $Label $ok
+}
+
+# Decision S.5: a row whose command is a plain form (S.2) keeps its table decision;
+# every other row is denied as not plain, whatever the table column says.
+$script:GatePlain = 'not a plain push or pull request command'
+
+# One EDGE-001 row: $Expect is allow | none | src | unconf | plain | loc | norepo | stale.
+# $Fix is a fixture key of $script:GF or an absolute directory.
+function Test-GateRow([string]$Row, [string]$Fix, [string]$Expect, [string]$Cmd, [string]$Extra = '', [string]$Tool = 'Bash') {
+    # $Row is 'EDGE-001 row <nn>'; the session id is r<nn>
+    $Nn = $Row.Substring('EDGE-001 row '.Length)
+    $shown = $Cmd.Replace("`n", '\n').Replace("`r", '<CR>')
+    $label = "${Row}: $shown"
+    if ($Tool -eq 'PowerShell') { $label += ' [PowerShell]' }
+    $cwd = if ($script:GF.ContainsKey($Fix)) { $script:GF[$Fix] } else { $Fix }
+    Invoke-Gate "r$Nn" $cwd $Cmd $null $Tool
+    if ($Expect -eq 'allow') { Assert-GateAllow $label; return }
+    $want = switch ($Expect) {
+        'none'   { 'review is recorded' }
+        'src'    { 'checked-out commit' }
+        'unconf' { 'configured remote' }
+        'plain'  { $script:GatePlain }
+        'loc'    { 'does not exist or is not a git work tree' }
+        'norepo' { 'not a git work tree' }
+        'stale'  { 'stale' }
+    }
+    $needles = @($want)
+    if ($Extra) { $needles += $Extra }
+    Assert-GateDeny $label $needles
+}
+
+function Test-GateRowPs([string]$Row, [string]$Fix, [string]$Expect, [string]$Cmd, [string]$Extra = '') {
+    Test-GateRow $Row $Fix $Expect $Cmd $Extra 'PowerShell'
+}
+
+Write-Host "pretooluse-code-review-gate.ps1"
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE001] 201-row command decision table (decision S)"
+$script:GateState = Join-Path $workRoot 'gate-state-1'
+Build-GateFixtures (Join-Path $workRoot 'gate-fx-1')
+Set-GateRealMarker 'r42' $script:GF.M 'main vs origin/main' 'refs/remotes/origin/main'
+Set-GateRealMarker 'r125' $script:GF.M 'main vs origin/main' 'refs/remotes/origin/main'
+Set-GateRealMarker 'r126' $script:GF.M 'main vs origin/main' 'refs/remotes/origin/main'
+
+Test-GateRow 'EDGE-001 row 01' M none 'git push' 'main vs origin/main'
+Test-GateRow 'EDGE-001 row 02' X allow 'git push'
+Test-GateRow 'EDGE-001 row 03' U none 'git push' 'feat/x vs origin/main'
+Test-GateRow 'EDGE-001 row 04' U2 allow 'git push'
+Test-GateRow 'EDGE-001 row 05' MT src 'git push'
+Test-GateRow 'EDGE-001 row 06' X src 'git push origin main'
+Test-GateRow 'EDGE-001 row 07' XS src 'git push origin main'
+Test-GateRow 'EDGE-001 row 08' M none 'git push origin HEAD'
+Test-GateRow 'EDGE-001 row 09' M none 'git push origin HEAD:main'
+Test-GateRow 'EDGE-001 row 10' M none 'git push origin main:main'
+Test-GateRow 'EDGE-001 row 11' MS none 'git push origin HEAD:refs/heads/master' 'master vs origin/master'
+Test-GateRow 'EDGE-001 row 12' M none 'git push origin +HEAD:main'
+Test-GateRow 'EDGE-001 row 13' M none 'git push --force origin main'
+Test-GateRow 'EDGE-001 row 14' M none 'git push --force-with-lease origin +main'
+Test-GateRow 'EDGE-001 row 15' M plain 'git push --repo=origin HEAD:main'
+Test-GateRow 'EDGE-001 row 16' M none 'git push -o ci.skip origin main'
+Test-GateRow 'EDGE-001 row 17' X plain 'git push origin feat/x main'
+Test-GateRow 'EDGE-001 row 18' M none 'git push origin main --tags'
+Test-GateRow 'EDGE-001 row 19' DY none 'git push origin feat/x:main'
+Test-GateRow 'EDGE-001 row 20' M unconf 'git push https://host/r.git main'
+Test-GateRow 'EDGE-001 row 21' M plain 'git push origin main 2>&1 | tail'
+Test-GateRow 'EDGE-001 row 22' M none 'git push 2>&1'
+Test-GateRow 'EDGE-001 row 23' X allow 'git push -u origin feat/x'
+Test-GateRow 'EDGE-001 row 24' M allow 'git push origin HEAD:feat/x'
+Test-GateRow 'EDGE-001 row 25' M allow 'git push --tags'
+Test-GateRow 'EDGE-001 row 26' M allow 'git push origin v1.2.0'
+Test-GateRow 'EDGE-001 row 27' M allow 'git push --dry-run origin main'
+Test-GateRow 'EDGE-001 row 28' M allow 'git push -n origin main'
+Test-GateRow 'EDGE-001 row 29' X allow 'git push origin :main'
+Test-GateRow 'EDGE-001 row 30' X allow 'git push --delete origin main'
+Test-GateRow 'EDGE-001 row 31' X allow 'git push -d origin main'
+Test-GateRow 'EDGE-001 row 32' X plain 'git push --all origin'
+Test-GateRow 'EDGE-001 row 33' M plain 'git push --all origin'
+Test-GateRow 'EDGE-001 row 34' EQ plain 'git push --all origin'
+Test-GateRow 'EDGE-001 row 35' M plain 'git push --mirror origin'
+Test-GateRow 'EDGE-001 row 36' SB none 'git -C sub push origin main' 'main vs origin/main'
+Test-GateRow 'EDGE-001 row 37' SB none 'cd sub && git push' 'main vs origin/main'
+Test-GateRow 'EDGE-001 row 38' SB plain '(cd sub && git push origin main); git status'
+Test-GateRow 'EDGE-001 row 39' M plain 'cd "$(git rev-parse --show-toplevel)" && git push'
+Test-GateRow 'EDGE-001 row 40' M plain 'git add -A && git commit -m x && git push'
+Test-GateRow 'EDGE-001 row 41' X plain 'git add -A && git commit -m x && git push'
+Test-GateRow 'EDGE-001 row 42' M plain 'git commit --amend --no-edit && git push --force-with-lease origin main'
+Test-GateRow 'EDGE-001 row 43' X plain 'git checkout main && git push'
+Test-GateRow 'EDGE-001 row 44' M plain 'git merge feat/x && git push origin main'
+Test-GateRow 'EDGE-001 row 45' U2 plain 'git pull && git push'
+Test-GateRow 'EDGE-001 row 46' X plain 'git switch - && git push'
+Test-GateRow 'EDGE-001 row 47' M plain 'git push origin main && gh pr create --fill'
+Test-GateRow 'EDGE-001 row 48' M plain 'git commit -m "docs: gate git push to main"'
+$row49 = @('git commit -m "$(cat <<''EOF''', 'git push origin main', 'EOF', ')"') -join "`n"
+Test-GateRow 'EDGE-001 row 49' M plain $row49
+Test-GateRow 'EDGE-001 row 50' X src 'git push origin "main"'
+Test-GateRow 'EDGE-001 row 51' M plain 'echo git push origin main'
+Test-GateRow 'EDGE-001 row 52' M plain 'FOO=1 git push'
+Test-GateRow 'EDGE-001 row 53' M plain 'AF_CODE_REVIEW_GATE=off git push'
+Test-GateRow 'EDGE-001 row 54' M plain 'sudo git push origin main'
+Test-GateRow 'EDGE-001 row 55' M plain 'sudo -u deploy git push origin main'
+Test-GateRow 'EDGE-001 row 56' M plain 'timeout 30 git push origin main'
+Test-GateRow 'EDGE-001 row 57' M plain 'git.exe push origin main'
+Test-GateRow 'EDGE-001 row 58' M plain '/usr/bin/git push origin main'
+Test-GateRow 'EDGE-001 row 59' M plain '& git push origin main'
+Test-GateRow 'EDGE-001 row 60' M plain "sh -c 'git push origin main'"
+Test-GateRow 'EDGE-001 row 61' M plain 'bash -c "git fetch && git push origin HEAD:main"'
+Test-GateRow 'EDGE-001 row 62' M plain 'eval "git push origin main"'
+Test-GateRow 'EDGE-001 row 63' M plain 'git push origin main "unbalanced'
+Test-GateRow 'EDGE-001 row 64' M allow 'git commit -m "unbalanced'
+Test-GateRow 'EDGE-001 row 65' DT src 'git push origin main'
+Test-GateRow 'EDGE-001 row 66' X none 'gh pr create --fill' 'gh pr create denied'
+Test-GateRow 'EDGE-001 row 67' X none 'gh pr create --draft --fill'
+Test-GateRow 'EDGE-001 row 68' X none 'gh pr create --web'
+Test-GateRow 'EDGE-001 row 69' X none 'gh pr create --base develop --fill' 'feat/x vs develop'
+Test-GateRow 'EDGE-001 row 70' X plain 'gh pr create -Bdevelop --fill'
+Test-GateRow 'EDGE-001 row 71' X none 'gh pr create -b "text" --fill' 'feat/x vs main'
+Test-GateRow 'EDGE-001 row 72' X src 'gh pr create --head=other --fill'
+Test-GateRow 'EDGE-001 row 73' X src 'gh pr create --head owner:feat/x --fill'
+Test-GateRow 'EDGE-001 row 74' X allow 'gh pr create --dry-run'
+Test-GateRow 'EDGE-001 row 75' X allow 'gh pr view 12'
+Test-GateRow 'EDGE-001 row 76' X allow 'gh pr merge 12'
+Test-GateRow 'EDGE-001 row 77' X allow 'gh api repos/o/r/pulls -X POST'
+Test-GateRow 'EDGE-001 row 78' X none 'glab mr create --fill' 'glab mr create denied'
+Test-GateRow 'EDGE-001 row 79' X none 'glab mr new --fill'
+Test-GateRow 'EDGE-001 row 80' X none 'glab mr create --target-branch develop --fill' 'feat/x vs develop'
+Test-GateRow 'EDGE-001 row 81' X src 'glab mr create -s other --fill'
+Test-GateRow 'EDGE-001 row 82' X allow 'glab mr list'
+
+# rows 83-96: PowerShell dialect (tool_name PowerShell)
+$othW = $script:GF.OTH
+Test-GateRowPs 'EDGE-001 row 83' M plain 'if ($?) { git push origin main }'
+Test-GateRowPs 'EDGE-001 row 84' M plain 'try { git push origin main } catch { Write-Error $_ }'
+Test-GateRowPs 'EDGE-001 row 85' M plain '$out = git push origin main 2>&1'
+Test-GateRowPs 'EDGE-001 row 86' X plain '$url = gh pr create --fill'
+Test-GateRowPs 'EDGE-001 row 87' M plain '$r = @(git push origin main)'
+Test-GateRowPs 'EDGE-001 row 88' M plain 'foreach ($b in @("main")) { git push origin $b }'
+Test-GateRowPs 'EDGE-001 row 89' M plain '. { git push origin main }'
+Test-GateRowPs 'EDGE-001 row 90' M plain 'iex "git push origin main"'
+Test-GateRowPs 'EDGE-001 row 91' X none "Set-Location '$othW'; git push origin main" 'main vs origin/main'
+Test-GateRowPs 'EDGE-001 row 92' X none "cd $othW; git push origin main" 'main vs origin/main'
+Test-GateRowPs 'EDGE-001 row 93' X none "git -C $othW push origin main" 'main vs origin/main'
+Test-GateRowPs 'EDGE-001 row 94' M loc 'git -C C:\nope\x push origin main'
+Test-GateRowPs 'EDGE-001 row 95' M plain "echo hi`rgit push origin main"
+Test-GateRowPs 'EDGE-001 row 96' M none ('git push origin ' + [char]0x201C + 'main' + [char]0x201D)
+
+# rows 97-133: POSIX completeness, refspec forms, redirection, caps
+$othFwd = $script:GF.OTH.Replace('\', '/')
+Test-GateRow 'EDGE-001 row 97' M plain 'f() { git push origin main; }; f'
+Test-GateRow 'EDGE-001 row 98' M plain 'git push -u origin "$(git branch --show-current)"'
+Test-GateRow 'EDGE-001 row 99' X plain 'git push -u origin "$(git branch --show-current)"'
+Test-GateRow 'EDGE-001 row 100' M plain 'B=main; git push origin "$B"'
+Test-GateRow 'EDGE-001 row 101' X plain 'git push origin HEAD:"$B"'
+Test-GateRow 'EDGE-001 row 102' M none 'git push origin @'
+Test-GateRow 'EDGE-001 row 103' M none 'git push origin HEAD:heads/main'
+Test-GateRow 'EDGE-001 row 104' X plain 'git push origin :'
+Test-GateRow 'EDGE-001 row 105' M plain "git push origin 'refs/heads/*:refs/heads/*'"
+Test-GateRow 'EDGE-001 row 106' M plain 'git push --dry-run --no-dry-run origin main'
+Test-GateRow 'EDGE-001 row 107' M plain 'git push -d --no-delete origin main'
+Test-GateRow 'EDGE-001 row 108' X none 'gh pr new --fill'
+Test-GateRow 'EDGE-001 row 109' X plain 'git push --branches origin'
+Test-GateRow 'EDGE-001 row 110' X plain 'git -c push.default=matching push'
+Test-GateRow 'EDGE-001 row 111' X plain 'git -c remote.origin.push=HEAD:main push'
+Test-GateRow 'EDGE-001 row 112' X plain "GIT_DIR=$othFwd/.git git push"
+Test-GateRow 'EDGE-001 row 113' X plain "git --git-dir=$othFwd/.git push origin main"
+$script:GateHome = $script:GF.HOME
+Test-GateRow 'EDGE-001 row 114' X none 'cd ~/other && git push origin main' 'main vs origin/main'
+$script:GateHome = $null
+Test-GateRow 'EDGE-001 row 115' M plain "echo `$'\'' ; git push origin main ; echo \'"
+Test-GateRow 'EDGE-001 row 116' M plain "echo `$((1<<2))`ngit push origin main"
+Test-GateRow 'EDGE-001 row 117' M plain 'echo "$(case a in a) true ;; esac; git push origin main)"'
+Test-GateRow 'EDGE-001 row 118' M plain "bash -c `"bash -c 'git push origin main'`""
+Test-GateRow 'EDGE-001 row 119' M plain "git `$'push' origin main"
+Test-GateRow 'EDGE-001 row 120' M plain 'Git push origin main'
+Test-GateRow 'EDGE-001 row 121' M plain 'GIT.exe push origin main'
+Test-GateRow 'EDGE-001 row 122' M plain 'time -p git push origin main'
+Test-GateRow 'EDGE-001 row 123' M plain 'command -p git push origin main'
+Test-GateRow 'EDGE-001 row 124' M plain 'exec -a x git push origin main'
+Test-GateRow 'EDGE-001 row 125' M plain 'git update-ref refs/heads/main HEAD~1 && git push --force origin main'
+Test-GateRow 'EDGE-001 row 126' M plain 'gh pr checkout 5 && git push origin HEAD:main'
+Test-GateRow 'EDGE-001 row 127' BH none 'git push --force origin main'
+Test-GateRow 'EDGE-001 row 128' UP none 'git push' 'main vs upstream/main'
+Test-GateRow 'EDGE-001 row 129' PL norepo 'gh pr create -R owner/repo --head feat/x --base main --fill' 'gh pr create denied'
+Test-GateRow 'EDGE-001 row 130' X plain 'glab mr create --fill "unbalanced'
+
+# 131: about 5 KB of chained decoys (under the 64 KB cap) is a chain: not plain
+$r131 = ('false && git push origin x; ' * 150) + 'git push origin main'
+$sw = [Diagnostics.Stopwatch]::StartNew()
+Invoke-Gate 'r131' $script:GF.M $r131
+$sw.Stop(); $t131 = [int]$sw.ElapsedMilliseconds
+Assert-GateDeny "EDGE-001 row 131: 150 x 'false && git push origin x; ' then git push origin main: not plain, decided in $t131 ms (limit 15000)" @($script:GatePlain) ($t131 -lt 15000)
+$r132 = 'git push origin main "' + ('a' * 102400) + '"'
+$sw = [Diagnostics.Stopwatch]::StartNew()
+Invoke-Gate 'r132' $script:GF.M $r132
+$sw.Stop(); $t132 = [int]$sw.ElapsedMilliseconds
+Assert-GateDeny "EDGE-001 row 132: git push origin main then one 100 KB quoted word: size cap, decided in $t132 ms (limit 15000)" @('unresolvable', 'longer than 64 KB') ($t132 -lt 15000)
+Test-GateRow 'EDGE-001 row 133' M plain 'if false; then :; elif git push origin main; then :; fi'
+
+# rows 134-175
+$plW = $script:GF.PL
+$plFwd = $script:GF.PL.Replace('\', '/')
+$xFwd = $script:GF.X.Replace('\', '/')
+$headX1 = (git -C $script:GF.X rev-parse HEAD).Trim()
+$headBh = (git -C $script:GF.BH rev-parse HEAD).Trim()
+Test-GateRowPs 'EDGE-001 row 134' M plain 'if(1){git push origin main}'
+Test-GateRowPs 'EDGE-001 row 135' M plain 'try{git push origin main}catch{}'
+Test-GateRowPs 'EDGE-001 row 136' M plain '1|%{git push origin main }'
+Test-GateRowPs 'EDGE-001 row 137' M plain '<# x #> git push origin main'
+Test-GateRowPs 'EDGE-001 row 138' M plain ('$x = @"' + "`n" + 'a"' + "`n" + '"@; git push origin main # "')
+Test-GateRowPs 'EDGE-001 row 139' X plain "git push origin ('HEAD:main')"
+Test-GateRow 'EDGE-001 row 140' M plain 'f(){ git push origin main;}; f'
+Test-GateRow 'EDGE-001 row 141' M plain 'f()(git push origin main); f'
+Test-GateRow 'EDGE-001 row 142' M plain 'case a in a) git "push" origin main;; esac'
+Test-GateRow 'EDGE-001 row 143' X plain 'case a in a) git push origin HEAD:main;; esac'
+Test-GateRow 'EDGE-001 row 144' M plain "false && cd $plFwd; git push origin main"
+Test-GateRow 'EDGE-001 row 145' M plain "cd $plFwd && cd - && git push origin main"
+Test-GateRow 'EDGE-001 row 146' M plain "pushd $plFwd; popd; git push origin main"
+Test-GateRow 'EDGE-001 row 147' M loc "cd $plFwd; git push origin main"
+Test-GateRow 'EDGE-001 row 148' M plain 'git push origin ma[i]n'
+Test-GateRow 'EDGE-001 row 149' M plain 'git push origin mai?'
+$gfPc = Join-Path $workRoot 'gate-fx-1-pc'; Copy-Item -Recurse $script:GF.X $gfPc
+git -C $gfPc config remote.origin.push HEAD:refs/heads/main
+Test-GateRow 'EDGE-001 row 150' $gfPc none 'git push' 'feat/x vs origin/main'
+Test-GateRow 'EDGE-001 row 151' X plain "HOME=$plFwd git push origin"
+
+$r152 = ''; $dots = './'
+for ($n152 = 1; $n152 -le 31; $n152++) { $r152 += "git -C $xFwd/$dots push; "; $dots += './' }
+$r152 += "git -C $othFwd push origin main"
+$sw = [Diagnostics.Stopwatch]::StartNew()
+Invoke-Gate 'r152' $script:GF.M $r152
+$sw.Stop(); $t152 = [int]$sw.ElapsedMilliseconds
+Assert-GateDeny "EDGE-001 row 152: 31 x 'git -C <repo>/./ push' (distinct spellings) then git -C <other> push origin main: not plain, decided in $t152 ms (limit 8000)" @($script:GatePlain) ($t152 -lt 8000)
+
+Test-GateRow 'EDGE-001 row 153' M plain 'git $(printf push) origin main'
+Test-GateRow 'EDGE-001 row 154' M plain 'X=git; $X push origin main'
+Test-GateRow 'EDGE-001 row 155' M plain 'git pu${x}sh origin main'
+Set-GateMarker 'r156' 'APPROVED' $headX1 "feat/x vs main ($((git -C $script:GF.X rev-parse main).Trim())..$headX1); fallback: none"
+Test-GateRow 'EDGE-001 row 156' X stale 'gh pr create --base main --fill' 'not an ancestor of origin/main'
+# origin/feat/x one commit ahead of HEAD
+$gfRh = Join-Path $workRoot 'gate-fx-1-rh'; Copy-Item -Recurse $script:GF.X $gfRh
+git -C $gfRh checkout -q -b tmp157 2>$null; Add-GateCommit $gfRh 'c4'
+git -C $gfRh update-ref refs/remotes/origin/feat/x tmp157
+git -C $gfRh checkout -q feat/x 2>$null; git -C $gfRh branch -q -D tmp157
+Set-GateRealMarker 'r157' $gfRh 'feat/x vs main' 'refs/remotes/origin/main'
+Test-GateRow 'EDGE-001 row 157' $gfRh stale 'gh pr create --fill' 'origin/feat/x'
+Set-GateRealMarker 'r158' $script:GF.M 'main vs origin/main' 'refs/remotes/origin/main'
+Test-GateRow 'EDGE-001 row 158' M plain 'git fetch --update-head-ok . other:main && git push origin main'
+Test-GateRow 'EDGE-001 row 159' X plain ("git -C $othFwd push origin " + '"$(git branch --show-current)"')
+Test-GateRow 'EDGE-001 row 160' M plain 'git checkout . && git push'
+Test-GateRow 'EDGE-001 row 161' M plain 'git checkout README.md; git push'
+Test-GateRow 'EDGE-001 row 162' X plain 'git rebase feat/x main && git push'
+Test-GateRow 'EDGE-001 row 163' X plain 'git symbolic-ref HEAD refs/heads/main && git push'
+# MSYS drive form /<drive>/...
+$u2Fwd = $script:GF.U2.Replace('\', '/')
+$u2Msys = if ($u2Fwd -match '^([A-Za-z]):(.*)$') { '/' + $Matches[1].ToLowerInvariant() + $Matches[2] } else { $u2Fwd }
+Test-GateRow 'EDGE-001 row 164' M allow "cd $u2Msys && git push"
+Test-GateRow 'EDGE-001 row 165' X plain 'echo main | xargs git push origin'
+Set-GateMarker 'r166' 'APPROVED' $headBh "main vs origin/main ($headBh..$headBh); fallback: none"
+Test-GateRow 'EDGE-001 row 166' BH stale 'git push --force origin main' 'is empty'
+$r167Body = (@('a new line of text') * 3700) -join "`n"
+Invoke-Gate 'r167' $script:GF.M ("cat > out.txt <<'EOF'`n" + $r167Body + "`nEOF")
+Assert-GateAllow "EDGE-001 row 167: cat > out.txt <<'EOF' with a 70 KB body naming no push: oversize, allowed"
+Test-GateRowPs 'EDGE-001 row 168' X allow 'git push -u origin feat/x *>&1'
+Set-GateRealMarker 'r169' $script:GF.M 'main vs origin/main' 'refs/remotes/origin/main'
+Test-GateRow 'EDGE-001 row 169' M plain 'git branch -f main HEAD~1 && git push --force origin main'
+Set-GateRealMarker 'r170' $script:GF.M 'main vs origin/main' 'refs/remotes/origin/main'
+Test-GateRow 'EDGE-001 row 170' M plain 'glab mr checkout 3 && git push origin HEAD:main'
+Test-GateRow 'EDGE-001 row 171' X plain "export GIT_DIR=$othFwd/.git; git push origin main"
+Test-GateRowPs 'EDGE-001 row 172' X plain "`$env:GIT_DIR='$othW/.git'; git push origin main"
+Test-GateRowPs 'EDGE-001 row 173' M plain "Push-Location '$plW'; Pop-Location; git push origin main"
+Test-GateRowPs 'EDGE-001 row 174' X plain "chdir $othW; git push origin main"
+Test-GateRowPs 'EDGE-001 row 175' M plain "if (`$false) { Set-Location '$plW' }; git push origin main"
+
+# rows 176-201
+$gfDm = Join-Path $workRoot 'gate-fx-1-dm'; Copy-Item -Recurse $script:GF.X $gfDm   # main, dirty, feat/x differs
+git -C $gfDm checkout -q main 2>$null
+Add-Content -Path (Join-Path $gfDm 'f.txt') -Value 'dirty'
+$gfY = Join-Path $workRoot 'gate-fx-1-y'; Copy-Item -Recurse $script:GF.X $gfY       # feat/y tracking origin/main
+git -C $gfY checkout -q -b feat/y 2>$null
+git -C $gfY config branch.feat/y.remote origin
+git -C $gfY config branch.feat/y.merge refs/heads/main
+$gfY2 = Join-Path $workRoot 'gate-fx-1-y2'; Copy-Item -Recurse $gfY $gfY2            # same, push.default unset
+git -C $gfY config push.default upstream
+$gfYr = Join-Path $workRoot 'gate-fx-1-yr'; Copy-Item -Recurse $script:GF.X $gfYr
+git -C $gfYr checkout -q -b feat/y 2>$null
+git -C $gfYr config remote.origin.push refs/heads/feat/y:refs/heads/main
+$pl2W = Join-Path $workRoot 'gate-fx-1-plain2'; New-Item -ItemType Directory -Force -Path $pl2W | Out-Null
+$pl2Fwd = $pl2W.Replace('\', '/')
+Test-GateRow 'EDGE-001 row 176' $gfDm plain 'git checkout feat/x; git push'
+Test-GateRow 'EDGE-001 row 177' M plain 'git checkout -b feat/x; git push -u origin HEAD'
+Test-GateRow 'EDGE-001 row 178' X plain 'git checkout -Bmain && git push origin HEAD'
+Test-GateRow 'EDGE-001 row 179' X plain 'git switch --force-create=main && git push origin HEAD'
+Test-GateRow 'EDGE-001 row 180' $gfY none 'git push -u origin feat/y' 'feat/y vs origin/main'
+Test-GateRow 'EDGE-001 row 181' $gfY2 plain 'git -c push.default=upstream push origin feat/y'
+Test-GateRow 'EDGE-001 row 182' $gfYr none 'git push origin feat/y' 'feat/y vs origin/main'
+Test-GateRow 'EDGE-001 row 183' M plain "false &&`n cd $plFwd`ngit push origin main"
+Test-GateRow 'EDGE-001 row 184' M plain "echo x |`ncd $plFwd; git push origin main"
+Test-GateRow 'EDGE-001 row 185' M plain "pushd $plFwd; cd $pl2Fwd; popd; git push origin main"
+Test-GateRow 'EDGE-001 row 186' M plain "cd $plFwd; popd; git push origin main"
+Test-GateRow 'EDGE-001 row 187' X plain "eval `"cd $othFwd`"; git push origin main"
+Test-GateRow 'EDGE-001 row 188' M plain 'coproc git push origin main'
+Test-GateRow 'EDGE-001 row 189' M plain "cat <<EOF`n`$(git push origin main)`nEOF"
+Test-GateRow 'EDGE-001 row 190' M plain "git p\`nush origin main"
+Test-GateRow 'EDGE-001 row 191' M plain 'cmd=push; git $cmd origin main'
+Set-GateRealMarker 'r192' $script:GF.M 'main vs origin/main' 'refs/remotes/origin/main'
+Test-GateRow 'EDGE-001 row 192' M plain 'git stash list && git push origin HEAD:main'
+$savedSeconds = $env:SECONDS
+$env:SECONDS = '100'
+try { Invoke-Gate 'r193' $script:GF.U2 'git push' }
+finally { if ($null -ne $savedSeconds) { $env:SECONDS = $savedSeconds } else { Remove-Item Env:\SECONDS -ErrorAction SilentlyContinue } }
+Assert-GateAllow 'EDGE-001 row 193: git push (feat/x with upstream, SECONDS=100 in the hook environment)'
+Test-GateRow 'EDGE-001 row 194' X plain "GIT_DIR=$othFwd/.git gh pr create --fill"
+Test-GateRowPs 'EDGE-001 row 195' M plain 'git checkout -b feat/x; git push -u origin HEAD'
+Test-GateRowPs 'EDGE-001 row 196' M plain "git rev-parse --verify --quiet nope &&`n Set-Location '$plW'`ngit push origin main"
+Test-GateRowPs 'EDGE-001 row 197' M plain "Push-Location '$plW'; Set-Location '$pl2W'; Pop-Location; git push origin main"
+
+# 198: old git (< 2.31) rejects --end-of-options; the chain is denied before any git call.
+# 199: a git that takes 9 s per call; the plain push runs out of the 8 s budget.
+# The wrappers are git.ps1 scripts first on PATH (the hook resolves git through PATH).
+$realGit = (Get-Command git -CommandType Application | Select-Object -First 1).Source
+$oldGit = Join-Path $workRoot 'oldgit'; $slowGit = Join-Path $workRoot 'slowgit'
+New-Item -ItemType Directory -Force -Path $oldGit, $slowGit | Out-Null
+Set-Content -Path (Join-Path $oldGit 'git.ps1') -Value @(
+    "`$ia = [array]::IndexOf(`$args, 'rev-parse'); `$ie = [array]::IndexOf(`$args, '--end-of-options')"
+    "if (`$ia -ge 0 -and `$ie -gt `$ia) { [Console]::Error.WriteLine('usage: git rev-parse [<options>] <args>...'); exit 129 }"
+    "& '$realGit' @args; exit `$LASTEXITCODE")
+Set-Content -Path (Join-Path $slowGit 'git.ps1') -Value @(
+    'Start-Sleep -Seconds 9'
+    "& '$realGit' @args; exit `$LASTEXITCODE")
+$savedPath = $env:PATH
+try {
+    $env:PATH = $oldGit + [System.IO.Path]::PathSeparator + $savedPath
+    Invoke-Gate 'r198' $script:GF.X 'git checkout main && git push'
+    Assert-GateDeny 'EDGE-001 row 198: git checkout main && git push (git wrapper rejecting rev-parse --end-of-options)' @($script:GatePlain)
+    $env:PATH = $slowGit + [System.IO.Path]::PathSeparator + $savedPath
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    Invoke-Gate 'r199' $script:GF.M 'git push origin main'
+    $sw.Stop(); $t199 = [int]$sw.ElapsedMilliseconds
+    Assert-GateDeny "EDGE-001 row 199: git push origin main (git wrapper sleeping 9 s per call): decided in $t199 ms (limit 15000)" @('ran out of time') ($t199 -lt 15000)
+} finally { $env:PATH = $savedPath }
+Test-GateRow 'EDGE-001 row 200' M plain 'git switch --create feat/z && git push -u origin HEAD'
+# Row 201: a PowerShell backtick continuation before CRLF joins into "git push", so the
+# text is a candidate; the backtick and the newline make it not plain.
+Test-GateRowPs 'EDGE-001 row 201' M plain "git pu```r`nsh origin main"
+
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-REQ004] unlock rule and deny wordings"
+$script:GateState = Join-Path $workRoot 'gate-state-2'
+Build-GateFixtures (Join-Path $workRoot 'gate-fx-2')
+$GF = $script:GF
+$headX = (git -C $GF.X rev-parse HEAD).Trim()
+$otherSha = '0123456789abcdef0123456789abcdef01234567'
+
+Invoke-Gate 'rq1' $GF.X 'gh pr create --fill'
+Assert-GateDeny 'REQ-004 no marker: gh pr create denied with all five parts' @(
+    'gh pr create', 'feat/x vs main', 'Agent tool', 'subagent_type: code-review-gatekeeper',
+    'agentic-framework:code-review', 'VERDICT: APPROVED', 'AF_CODE_REVIEW_GATE=off', 'review is recorded')
+$shape = $null
+try { $shape = $script:GateRun.Out | ConvertFrom-Json } catch { }
+Assert 'REQ-004 deny JSON shape and key order' ($null -ne $shape -and
+    (($shape.PSObject.Properties.Name -join ',') -eq 'hookSpecificOutput') -and
+    (($shape.hookSpecificOutput.PSObject.Properties.Name -join ',') -eq 'hookEventName,permissionDecision,permissionDecisionReason') -and
+    $shape.hookSpecificOutput.hookEventName -ceq 'PreToolUse')
+Assert 'REQ-004 reason has no angle brackets or ampersands' ($script:GateRun.Out -notmatch '[<>&]')
+Assert 'REQ-004 output is ASCII' ($script:GateRun.Out -cnotmatch '[^\x20-\x7e]')
+
+Invoke-Gate 'rq1b' $GF.X 'git push origin HEAD:main'
+Assert-GateDeny 'REQ-004 no marker: push names target with commit count' @('git push', 'feat/x vs origin/main (2 commits ahead)')
+
+# a PR's reviewed range starts on the destination's remote-tracking ref (I-ter.8)
+Set-GateRealMarker 'rq2' $GF.X 'feat/x vs main' 'refs/remotes/origin/main'
+Invoke-Gate 'rq2' $GF.X 'gh pr create --fill'
+Assert-GateAllow 'REQ-004 APPROVED marker at HEAD, base matches: gh pr create allowed'
+
+Set-GateRealMarker 'rq3' $GF.X "PR #7 $headX vs origin/main" 'refs/remotes/origin/main'
+Invoke-Gate 'rq3' $GF.X 'git push origin HEAD:main'
+Assert-GateAllow "REQ-004 APPROVED 'PR #7 <sha> vs origin/main' marker: git push origin HEAD:main allowed"
+
+Set-GateRealMarker 'rq4' $GF.X 'feat/x vs main' 'refs/heads/main' 'APPROVED' $otherSha
+Invoke-Gate 'rq4' $GF.X 'gh pr create --fill'
+Assert-GateDeny 'REQ-004 marker head differs from HEAD: denied as stale' @('stale', $otherSha, $headX)
+
+Set-GateRealMarker 'rq5' $GF.X 'feat/x vs develop' 'refs/heads/main'
+Invoke-Gate 'rq5' $GF.X 'gh pr create --fill'
+Assert-GateDeny 'REQ-004 marker base differs from destination: denied naming both' @('Base mismatch', 'develop', 'main')
+
+$noCover = 'did not cover the branch against its destination'
+Set-GateMarker 'rq6a' 'APPROVED' $headX "uncommitted @ $headX (3 files)"
+Invoke-Gate 'rq6a' $GF.X 'gh pr create --fill'
+Assert-GateDeny "REQ-004 non-branch target 'uncommitted @': denied" @($noCover)
+Set-GateMarker 'rq6b' 'APPROVED' $headX "paths a.sh b.sh @ $headX"
+Invoke-Gate 'rq6b' $GF.X 'gh pr create --fill'
+Assert-GateDeny "REQ-004 non-branch target 'paths ... @': denied" @($noCover)
+Set-GateMarker 'rq6c' 'APPROVED' $headX "paths a.sh b.sh in PR #3 $headX"
+Invoke-Gate 'rq6c' $GF.X 'gh pr create --fill'
+Assert-GateDeny "REQ-004 non-branch target 'paths ... in PR': denied" @($noCover)
+Set-GateMarker 'rq6d' 'APPROVED' $headX '-'
+Invoke-Gate 'rq6d' $GF.X 'gh pr create --fill'
+Assert-GateDeny 'REQ-004 marker with no target line: denied' @($noCover)
+
+Set-GateRealMarker 'rq7' $GF.X 'feat/x vs main' 'refs/heads/main' 'CHANGES_REQUIRED'
+Invoke-Gate 'rq7' $GF.X 'gh pr create --fill'
+Assert-GateDeny 'REQ-004 CHANGES_REQUIRED at HEAD: wording asks to resolve findings and re-run' @('CHANGES_REQUIRED', 'Resolve every open finding', 're-run the review')
+
+Invoke-Gate 'rq8' $GF.X 'gh pr create --fill' 'off'
+Assert-GateAllow 'REQ-004 AF_CODE_REVIEW_GATE=off allows gh pr create'
+Invoke-Gate 'rq8' $GF.M 'git push origin main' ' OFF '
+Assert-GateAllow "REQ-004 AF_CODE_REVIEW_GATE=' OFF ' (trimmed, case-insensitive) allows git push origin main"
+Invoke-Gate 'rq8' $GF.X 'gh pr create --fill' 'on'
+Assert-GateDeny 'REQ-004 AF_CODE_REVIEW_GATE=on does not disable the gate' @('review is recorded')
+
+Invoke-Gate 'rq9' $GF.M 'AF_CODE_REVIEW_GATE=off git push'
+Assert-GateDeny 'REQ-004 inline AF_CODE_REVIEW_GATE=off git push on main still denied (not a plain command, decision S)' @($script:GatePlain)
+
+Invoke-GateRaw 'this is not json {'
+Assert-GateAllow 'REQ-004 malformed stdin: exit 0, empty output'
+Invoke-GateRaw (New-Payload @{ session_id = 'rq10'; cwd = $GF.X; tool_name = 'Bash'; tool_input = @{ description = 'x' } })
+Assert-GateAllow 'REQ-004 payload without tool_input.command: exit 0, empty output'
+
+# The multi-segment dangling-token cases (rq11a 'cd sub; git -C<LF>git push', rq11b
+# 'echo ...; gh pr create --head') are withdrawn with the segment parser (decision S):
+# chains are not plain. The plain dangling option stays.
+Set-GateRealMarker 'rq11b' $GF.X 'feat/x vs main' 'refs/remotes/origin/main'
+Invoke-Gate 'rq11b' $GF.X 'gh pr create --head'
+Assert-GateAllow "REQ-004 dangling 'gh pr create --head' reads an empty source"
+Invoke-Gate 'rq11c' $GF.M 'git -C'
+Assert-GateAllow "REQ-004 'git -C' alone names no push: not a candidate"
+Invoke-Gate 'rq11d' $GF.M 'git -C push'
+Assert-GateDeny "REQ-004 'git -C push' (dangling -C value, no push word after it): not plain" @($script:GatePlain)
+
+# S.2 quoted literal tokens: banned characters inside a clean quoted string are data
+Invoke-Gate 'rq12a' $GF.X 'gh pr create --title "fix (x)" --fill'
+Assert-GateDeny 'REQ-004 quoted title with parentheses is plain: no-marker deny' @('review is recorded')
+Invoke-Gate 'rq12b' $GF.X 'git push origin "main"'
+Assert-GateDeny 'REQ-004 quoted refspec is plain: source-not-HEAD deny' @('checked-out commit')
+Invoke-Gate 'rq12c' $GF.X 'gh pr create --title "x; git push origin main" --fill'
+Assert-GateDeny 'REQ-004 quoted title with ; and push text is data: no-marker deny' @('review is recorded')
+Invoke-Gate 'rq12d' $GF.X 'gh pr create --title "$T" --fill'
+Assert-GateDeny 'REQ-004 quoted title with a variable is not plain' @($script:GatePlain)
+Invoke-Gate 'rq12f' $GF.M 'git push origin "refs/heads/*:refs/heads/*"'
+Assert-GateDeny 'REQ-004 quoted wildcard refspec is not plain' @($script:GatePlain)
+Invoke-Gate 'rq12g' $GF.X 'git push origin "feat/x:main"'
+Assert-GateDeny 'REQ-004 quoted literal refspec stays plain: no-marker deny' @('review is recorded')
+Invoke-Gate 'rq12e' $GF.X "sh -c 'git push origin main'"
+Assert-GateDeny 'REQ-004 sh -c wrapper with quoted push is not plain' @($script:GatePlain)
+
+# W_PLAIN wording verbatim
+Invoke-Gate 'rq13' $GF.M 'git add -A && git commit -m x && git push'
+Assert-GateDeny 'REQ-004 W_PLAIN sentence verbatim' @('The command text is not a plain push or pull request command. The gate allows a push or a PR/MR creation only as its own command with literal names: git push REMOTE REFSPEC, gh pr create ..., glab mr create ..., optionally after one cd DIR (joined by a double ampersand or a semicolon) or as git -C DIR push. Split chained commands, variables, substitutions, wrappers and scripts into separate plain commands; pass a multi-line PR body with --body-file. If this command is not a push or a PR creation, its text still mentions one: reword it or move the text to a file.')
+
+# --- first review round of decision S (S.1 two spellings, S.3-bis a to l) ---
+# S.1: non-candidates pass with no git call
+Invoke-Gate 'rqa1' $GF.M 'git stash push -m wip'
+Assert-GateAllow "REQ-004 S.1 'git stash push -m wip' is not a candidate"
+Invoke-Gate 'rqa2' $GF.M 'git config push.default simple'
+Assert-GateAllow "REQ-004 S.1 'git config push.default simple' is not a candidate"
+Invoke-Gate 'rqa3' $GF.M 'gh issue create --title x'
+Assert-GateAllow "REQ-004 S.1 'gh issue create --title x' is not a candidate"
+# S.1: the second spelling (only ${ and } removed) and curly quotes / $' make candidates
+$gcases = @'
+${GIT:-git} push origin main
+git ${CMD:-push} origin main
+gh pr ${C:-create} --fill
+echo '${'; git push origin HEAD:main; echo '}'
+echo ${x:-$(git push origin HEAD:main)}
+git pu${x}sh origin main
+git pu$''sh origin main
+'@
+foreach ($gcase in ($gcases -split "`r?`n")) {
+    if (-not $gcase) { continue }
+    Invoke-Gate 'rqa4' $GF.M $gcase
+    Assert-GateDeny "REQ-004 S.1 candidate in a second spelling is not plain: $gcase" @($script:GatePlain)
+}
+Invoke-Gate 'rqa5' $GF.M ('git p' + [char]0x201C + [char]0x201D + 'ush origin main')
+Assert-GateDeny 'REQ-004 S.1 curly quotes inside the word push still make a candidate' @($script:GatePlain)
+
+# S.2 / S.3-bis: session id sanitised before the candidate and size tests
+$bigCmd = 'git push origin ' + ('a' * 70000)
+Invoke-Gate '' $GF.M $bigCmd
+Assert-GateAllow 'REQ-004 S.2 oversize candidate with an empty session id exits 0 silently'
+Invoke-Gate '!!!' $GF.M $bigCmd
+Assert-GateAllow "REQ-004 S.2 oversize candidate with session id '!!!' exits 0 silently"
+
+# S.3: ~user and a quoted tilde directory are not plain (Bash does not expand a quoted tilde)
+Invoke-Gate 'rqa6' $GF.M 'cd ~root && git push origin main'
+Assert-GateDeny 'REQ-004 S.3 cd ~user is not plain' @($script:GatePlain)
+Invoke-Gate 'rqa7' $GF.M 'cd "~/x" && git push origin main'
+Assert-GateDeny 'REQ-004 S.3 Bash quoted cd "~/x" is not plain' @($script:GatePlain)
+Invoke-Gate 'rqa7b' $GF.M "git -C '~/x' push origin main"
+Assert-GateDeny "REQ-004 S.3 Bash quoted git -C '~/x' is not plain" @($script:GatePlain)
+
+# S.3-bis b: an empty quoted value is one literal token
+Invoke-Gate 'rqa8' $GF.X 'gh pr create --title "x" --body ""'
+Assert-GateDeny 'REQ-004 S.3-bis empty double-quoted --body is plain: no-marker deny' @('review is recorded')
+Invoke-Gate 'rqa8b' $GF.X "gh pr create --title x --body ''"
+Assert-GateDeny 'REQ-004 S.3-bis empty single-quoted --body is plain: no-marker deny' @('review is recorded')
+
+# S.3-bis c: PowerShell option values and high bytes
+$nbsp = [string][char]0xA0
+Invoke-Gate 'rqa9' $GF.X "git push --force-with-lease=a${nbsp}b origin main" $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.3-bis PowerShell NBSP inside --force-with-lease= is not plain' @($script:GatePlain)
+Invoke-Gate 'rqa9b' $GF.X ('git push -o "a\ ' + $nbsp + 'b" origin main') $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.3-bis PowerShell NBSP inside an unclean quoted -o value is not plain' @($script:GatePlain)
+
+# S.3-bis d, l: short-option clusters, --dry-run=<value>
+Invoke-Gate 'rqa10' $GF.X 'gh pr create -fHother'
+Assert-GateDeny 'REQ-004 S.3-bis gh short-option cluster -fHother is not plain' @($script:GatePlain)
+Invoke-Gate 'rqa10b' $GF.X 'gh pr create -dB develop'
+Assert-GateDeny 'REQ-004 S.3-bis gh short-option cluster -dB is not plain' @($script:GatePlain)
+Invoke-Gate 'rqa11' $GF.X 'gh pr create --dry-run --dry-run=false'
+Assert-GateDeny 'REQ-004 S.3-bis gh --dry-run then --dry-run=false is not plain' @($script:GatePlain)
+Invoke-Gate 'rqa11b' $GF.X 'gh pr create --recover -B --fill'
+Assert-GateDeny "REQ-004 S.3-bis l,r --recover consumes '-B' as its value, so -B does not swallow --fill: target feat/x vs main" @('review is recorded', 'feat/x vs main')
+# round 3 (S.3-bis v): glab value-taking options that are not the branches
+Invoke-Gate 'rqa11c' $GF.X 'glab mr create -H -b --target-branch develop'
+Assert-GateDeny "REQ-004 S.3-bis v glab -H consumes '-b' as its value: target feat/x vs develop" @('review is recorded', 'feat/x vs develop')
+Invoke-Gate 'rqa11d' $GF.X 'glab mr create -i 12 --fill'
+Assert-GateDeny 'REQ-004 S.3-bis v glab -i takes an issue number, not a branch: target feat/x vs main' @('review is recorded', 'feat/x vs main')
+
+# S.3-bis f: map_ref follows query_refspecs (a colon-less remote.<r>.push entry is skipped)
+$gfCl = Join-Path $workRoot 'gate-cl'
+Copy-Item -Recurse $GF.X $gfCl
+git -C $gfCl checkout -q -b feat/y
+git -C $gfCl config branch.feat/y.remote origin
+git -C $gfCl config branch.feat/y.merge refs/heads/main
+git -C $gfCl config push.default upstream
+git -C $gfCl config remote.origin.push refs/heads/feat/y
+Invoke-Gate 'rqa12' $gfCl 'git push origin feat/y'
+Assert-GateDeny 'REQ-004 S.3-bis colon-less remote.origin.push entry is skipped: bare feat/y remaps through upstream to main' @('review is recorded', 'origin/main')
+
+# S.3-bis h: more than one colon in a refspec
+Invoke-Gate 'rqa13' $GF.X 'git push origin :/c3:main'
+Assert-GateDeny 'REQ-004 S.3-bis refspec with two colons is not plain' @($script:GatePlain)
+
+# S.3-bis i: a UNC directory is decided before any filesystem access
+$swUnc = [Diagnostics.Stopwatch]::StartNew()
+Invoke-Gate 'rqa14' $GF.X 'cd //192.0.2.7/x; git push origin HEAD:main'
+$swUnc.Stop(); $tUnc = [int]$swUnc.ElapsedMilliseconds
+Assert-GateDeny "REQ-004 S.3-bis UNC cd //host/x is not plain, decided in $tUnc ms (limit 2000)" @($script:GatePlain) ($tUnc -lt 2000)
+Invoke-Gate 'rqa14b' $GF.X 'git -C //192.0.2.7/x push origin HEAD:main'
+Assert-GateDeny 'REQ-004 S.3-bis UNC git -C //host/x is not plain' @($script:GatePlain)
+
+# S.3-bis j: repository state of the push fail-open
+$gfOr = Join-Path $workRoot 'gate-orph'
+Copy-Item -Recurse $GF.X $gfOr
+git -C $gfOr checkout -q --orphan orph
+Invoke-Gate 'rqa15' $gfOr 'git push origin feat/x:main'
+Assert-GateDeny 'REQ-004 S.3-bis unborn HEAD in a repository with refs: source-not-HEAD rule applies' @('checked-out commit')
+$gfEmpty = Join-Path $workRoot 'gate-empty'
+New-Item -ItemType Directory -Force -Path $gfEmpty | Out-Null
+git -C $gfEmpty init -q -b main
+Invoke-Gate 'rqa16' $gfEmpty 'git push origin feat/x:main'
+Assert-GateAllow 'REQ-004 S.3-bis repository with no refs at all stays fail-open'
+$gfBare = Join-Path $workRoot 'gate-bare.git'
+git init -q --bare -b main $gfBare
+Invoke-Gate 'rqa17' $gfBare 'git push origin HEAD:main'
+Assert-GateDeny 'REQ-004 S.3-bis bare repository cwd is gated: W_LOC' @('does not exist or is not a git work tree')
+Invoke-Gate 'rqa18' (Join-Path $GF.X '.git') 'git push origin HEAD:main'
+Assert-GateDeny 'REQ-004 S.3-bis cwd inside .git is gated: W_LOC' @('does not exist or is not a git work tree')
+
+# S.3-bis k: the deadline is checked inside the argument loops
+$qCmd = 'git push' + (' -q' * 21300)
+$swQ = [Diagnostics.Stopwatch]::StartNew()
+Invoke-Gate 'rqa19' $GF.X $qCmd
+$swQ.Stop(); $tQ = [int]$swQ.ElapsedMilliseconds
+if ($tQ -ge 15000) { Assert "REQ-004 S.3-bis git push + 21300 x -q: took $tQ ms (limit 15000)" $false }
+elseif (-not $script:GateRun.Out -and $script:GateRun.Code -eq 0) { Assert "REQ-004 S.3-bis git push + 21300 x -q: decided plain in $tQ ms (under the 8 s budget on this host; limit 15000)" $true }
+else { Assert-GateDeny "REQ-004 S.3-bis git push + 21300 x -q: W_TIME in $tQ ms (limit 15000)" @('ran out of time') }
+
+# --- second review round of decision S (S.3-bis i, j, m to u) ---
+# item 1: the stash exclusion needs both previous words to be exactly 'git stash'
+$gfSd = Join-Path $workRoot 'gate-sd'
+New-Item -ItemType Directory -Force -Path $gfSd | Out-Null
+Copy-Item -Recurse $GF.X (Join-Path $gfSd 'stash')
+Invoke-Gate 'rqb1' $gfSd 'git -C stash push origin main'
+Assert-GateDeny "REQ-004 S.1 'git -C stash push origin main' is a candidate (relative stash dir, judged: source-not-HEAD)" @('checked-out commit')
+$sdStash = (Join-Path $gfSd 'stash').Replace('\', '/')
+Invoke-Gate 'rqb1b' $GF.M "git -C $sdStash push origin main"
+Assert-GateDeny "REQ-004 S.1 'git -C <abs>/stash push origin main' is a candidate (judged: source-not-HEAD)" @('checked-out commit')
+Invoke-Gate 'rqb1c' $GF.M 'git -c a.b=stash push origin main'
+Assert-GateDeny "REQ-004 S.1 'git -c a.b=stash push origin main' is a candidate and not plain" @($script:GatePlain)
+Invoke-Gate 'rqb1d' $GF.M 'git stash push -m wip'
+Assert-GateAllow "REQ-004 S.1 'git stash push -m wip' stays a non-candidate"
+# round 3 (S.1): the stash exemption is anchored to the start of the text
+Invoke-Gate 'rqs1' $GF.M 'git -C git/stash push origin main'
+Assert-GateDeny "REQ-004 S.1 anchored: 'git -C git/stash push origin main' is a candidate (judged: W_LOC, no such dir)" @('does not exist or is not a git work tree')
+Invoke-Gate 'rqs2' $GF.M 'git stash push; git push origin main'
+Assert-GateDeny "REQ-004 S.1 anchored: 'git stash push; git push origin main' is not plain" @($script:GatePlain)
+Invoke-Gate 'rqs3' $GF.M 'cd x && git stash push'
+Assert-GateDeny "REQ-004 S.1 anchored: 'cd x && git stash push' is a candidate and not plain" @($script:GatePlain)
+Invoke-Gate 'rqs4' $GF.M 'echo; git stash push'
+Assert-GateDeny "REQ-004 S.1 anchored: 'echo; git stash push' is a candidate and not plain" @($script:GatePlain)
+Invoke-Gate 'rqs5' $GF.M 'git stash push;'
+Assert-GateAllow "REQ-004 S.1 anchored: 'git stash push;' begins with git stash push and is not a candidate"
+Invoke-Gate 'rqs6' $GF.M 'git stash push|cat'
+Assert-GateAllow "REQ-004 S.1 anchored: 'git stash push|cat' is not a candidate"
+Invoke-Gate 'rqs7' $GF.M 'git/stash push'
+Assert-GateAllow "REQ-004 S.1 anchored: 'git/stash push' is not a candidate (words are runs bounded by non-alphanumerics)"
+
+# item 2: the candidate test strips U+201A, U+201B and U+201E too
+$c201e = [string][char]0x201E; $c201a = [string][char]0x201A; $c201b = [string][char]0x201B
+Invoke-Gate 'rqb2' $GF.M "git pu$c201e${c201e}sh origin main" $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.1 PowerShell git pu<U+201E><U+201E>sh is a candidate (the tokenizer maps it to push: judged)' @('review is recorded')
+Invoke-Gate 'rqb2b' $GF.M "git pu$c201a${c201b}sh origin main" $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.1 PowerShell git pu<U+201A><U+201B>sh is a candidate (judged)' @('review is recorded')
+Invoke-Gate 'rqb2c' $GF.M "git pu$c201e${c201e}sh origin main"
+Assert-GateDeny 'REQ-004 S.1 Bash git pu<U+201E><U+201E>sh is a candidate and not plain' @($script:GatePlain)
+Invoke-Gate 'rqb2d' $GF.M "git pu$c201a${c201b}sh origin main"
+Assert-GateDeny 'REQ-004 S.1 Bash git pu<U+201A><U+201B>sh is a candidate and not plain' @($script:GatePlain)
+
+# item 3 (S.3-bis s): the candidate test is linear; 300 KB of short words ending in a push
+$big2 = ('ab c ' * 75000) + 'git push origin main'
+$swBig = [Diagnostics.Stopwatch]::StartNew()
+Invoke-Gate 'rqb3' $GF.M $big2
+$swBig.Stop(); $tBig = [int]$swBig.ElapsedMilliseconds
+Assert-GateDeny "REQ-004 S.3-bis s 300 KB of short words ending in git push: W_SIZE in $tBig ms (limit 5000)" @('longer than 64 KB') ($tBig -lt 5000)
+$big2 = $null
+$big3 = ('${x}a' * 60000) + ' git push origin main'
+$swBig3 = [Diagnostics.Stopwatch]::StartNew()
+Invoke-Gate 'rqb3b' $GF.M $big3
+$swBig3.Stop(); $tBig3 = [int]$swBig3.ElapsedMilliseconds
+Assert-GateDeny "REQ-004 S.3-bis s 300 KB of `${x}a ending in git push: W_SIZE in $tBig3 ms (limit 5000)" @('longer than 64 KB') ($tBig3 -lt 5000)
+$big3 = $null
+
+# item 4 (S.3-bis i): mixed-separator UNC directories are decided before any filesystem access
+$swUnc = [Diagnostics.Stopwatch]::StartNew()
+Invoke-Gate 'rqb4' $GF.X "cd '\/192.0.2.7/x'; git push origin HEAD:main"
+Assert-GateDeny "REQ-004 S.3-bis i Bash cd '\/host/x' is not plain" @($script:GatePlain)
+Invoke-Gate 'rqb4b' $GF.X "cd '/\192.0.2.7\x'; git push origin HEAD:main"
+Assert-GateDeny "REQ-004 S.3-bis i Bash cd '/\host\x' is not plain" @($script:GatePlain)
+Invoke-Gate 'rqb4c' $GF.X 'git -C \/192.0.2.7/x push origin HEAD:main' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.3-bis i PowerShell git -C \/host/x is not plain' @($script:GatePlain)
+Invoke-Gate 'rqb4d' $GF.X 'Set-Location /\192.0.2.7\x; git push origin HEAD:main' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.3-bis i PowerShell Set-Location /\host\x is not plain' @($script:GatePlain)
+$swUnc.Stop(); $tUnc2 = [int]$swUnc.ElapsedMilliseconds
+Assert "REQ-004 S.3-bis i four mixed-separator UNC rows decided in $tUnc2 ms (limit 8000)" ($tUnc2 -lt 8000)
+
+# item 5 (S.3-bis m): a leading slash is Bash-dialect only; ~\ is accepted like ~/
+Invoke-Gate 'rqb5' $GF.M 'cd / && git push origin HEAD:main'
+Assert-GateDeny 'REQ-004 S.3-bis m Bash cd / is plain and judged: W_LOC' @('does not exist or is not a git work tree')
+Invoke-Gate 'rqb5b' $GF.M 'cd /; git push origin HEAD:main' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.3-bis m PowerShell cd / is not plain' @($script:GatePlain)
+$script:GateHome = $script:GF.HOME
+Invoke-Gate 'rqb5c' $GF.M 'cd ~\other; git push origin HEAD:main' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.3-bis m PowerShell cd ~\other is accepted like ~/other: judged' @('review is recorded')
+$script:GateHome = $null
+
+# item 6 (S.3-bis n): a quote before the first unquoted slash stops the tilde expansion
+foreach ($tcase in @('cd ~"/x" && git push origin main', 'cd ""~/x && git push origin main', 'cd ~""/x && git push origin main')) {
+    Invoke-Gate 'rqb6' $GF.M $tcase
+    Assert-GateDeny "REQ-004 S.3-bis n Bash quoted tilde is not plain: $tcase" @($script:GatePlain)
+}
+$script:GateHome = $script:GF.HOME
+Invoke-Gate 'rqb6b' $GF.M 'cd ~/"other" && git push origin HEAD:main'
+Assert-GateDeny 'REQ-004 S.3-bis n Bash quote after the first slash keeps the tilde: judged' @('review is recorded')
+$script:GateHome = $null
+
+# item 7 (S.3-bis t): a PowerShell word that begins with a quoted string may not continue
+Invoke-Gate 'rqb7' $GF.X 'git push origin "feat"main' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.3-bis t PowerShell "feat"main is not plain' @($script:GatePlain)
+Invoke-Gate 'rqb7b' $GF.X "git push origin 'x'main" $null 'PowerShell'
+Assert-GateDeny "REQ-004 S.3-bis t PowerShell 'x'main is not plain" @($script:GatePlain)
+Invoke-Gate 'rqb7c' $GF.X 'git push origin "feat/x"' $null 'PowerShell'
+Assert-GateAllow 'REQ-004 S.3-bis t PowerShell a whole quoted word stays plain (feat/x is not gated)'
+
+# push_val (S.3-bis c, r): the push alphabet for option values in the PowerShell dialect
+Invoke-Gate 'rqb8' $GF.X 'git push -o "a b" origin feat/x' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 S.3-bis r PowerShell -o "a b" is not plain (push_val)' @($script:GatePlain)
+Invoke-Gate 'rqb8b' $GF.X "git push '--force-with-lease=a b' origin feat/x" $null 'PowerShell'
+Assert-GateDeny "REQ-004 S.3-bis r PowerShell '--force-with-lease=a b' is not plain (push_val)" @($script:GatePlain)
+Invoke-Gate 'rqb8c' $GF.X 'git push -o ab origin feat/x' $null 'PowerShell'
+Assert-GateAllow 'REQ-004 S.3-bis r PowerShell -o ab (inside the alphabet) stays plain: not gated'
+Invoke-Gate 'rqb8d' $GF.X 'git push -o "a b" origin feat/x'
+Assert-GateAllow 'REQ-004 S.3-bis r Bash -o "a b" is plain: not gated (push_val is PowerShell-only)'
+
+# item 8 (S.3-bis o, r): W_REFMAP
+$gfRm = Join-Path $workRoot 'gate-rm'
+Copy-Item -Recurse $GF.X $gfRm
+git -C $gfRm config remote.origin.push 'refs/heads/feat/x:refs/heads/main'
+git -C $gfRm config --add remote.origin.push '^refs/heads/zzz'
+Invoke-Gate 'rqb9' $gfRm 'git push origin feat/x'
+Assert-GateDeny 'REQ-004 S.3-bis o a ^ entry after a matching positive entry denies W_REFMAP' @('does not name a single destination branch')
+git -C $gfRm config --unset-all remote.origin.push
+git -C $gfRm config remote.origin.push '^refs/heads/zzz'
+Invoke-Gate 'rqb9b' $gfRm 'git push origin feat/x'
+Assert-GateDeny 'REQ-004 S.3-bis o a lone non-matching ^ entry denies W_REFMAP' @('does not name a single destination branch')
+git -C $gfRm config --unset-all remote.origin.push
+git -C $gfRm config remote.origin.push 'refs/heads/*:refs/heads/main'
+Invoke-Gate 'rqb9c' $gfRm 'git push origin feat/x'
+Assert-GateDeny 'REQ-004 S.3-bis r a pattern entry with an unresolvable destination denies W_REFMAP' @('does not name a single destination branch')
+git -C $gfRm config --unset-all remote.origin.push
+git -C $gfRm config remote.origin.push 'refs/heads/feat/x:refs/heads/main'
+Invoke-Gate 'rqb9d' $gfRm 'git push origin feat/x'
+Assert-GateDeny 'REQ-004 S.3-bis o a plain mapping entry still resolves (to main): no-marker deny' @('review is recorded', 'origin/main')
+
+# item 9 (S.3-bis j, u): an unborn HEAD in a repository with other refs
+Invoke-Gate 'rqb10' $gfOr 'git push origin HEAD:main'
+Assert-GateDeny 'REQ-004 S.3-bis j,x unborn HEAD: HEAD:main gets the source-not-HEAD wording with the no-commit clause' @('checked-out commit', 'is not HEAD (this branch has no commit yet). Check the source out first, then review and push.')
+Invoke-Gate 'rqb10b' $gfOr 'gh pr create --head feat --fill'
+Assert-GateDeny 'REQ-004 S.3-bis u unborn HEAD: gh pr create --head feat denies with the source-not-HEAD wording' @('checked-out commit', 'feat')
+Invoke-Gate 'rqb10c' $gfOr 'gh pr create --fill'
+Assert-GateDeny 'REQ-004 S.3-bis u unborn HEAD: gh pr create --fill denies with the source-not-HEAD wording' @('checked-out commit')
+Invoke-Gate 'rqb10d' $gfEmpty 'git push origin HEAD:main'
+Assert-GateAllow 'REQ-004 S.3-bis j repository with no refs at all: HEAD:main stays fail-open'
+Invoke-Gate 'rqb10e' $gfEmpty 'gh pr create --fill'
+Assert-GateDeny 'REQ-004 S.3-bis u repository with no refs at all: gh pr create denies W_NOREPO' @('not a git work tree', 'HEAD vs its destination')
+# round 3 (S.3-bis w): drive-relative and root-relative directories are not plain
+Invoke-Gate 'rqw1' $GF.M 'cd C:; git push origin main' $null 'PowerShell'
+Assert-GateDeny "REQ-004 S.3-bis w [PowerShell] 'cd C:; git push origin main' is not plain" @($script:GatePlain)
+Invoke-Gate 'rqw3' $GF.M 'git -C \repo push origin main' $null 'PowerShell'
+Assert-GateDeny "REQ-004 S.3-bis w [PowerShell] 'git -C \repo push origin main' is not plain" @($script:GatePlain)
+Invoke-Gate 'rqw4' $GF.M 'cd D:; git push origin main' $null 'PowerShell'
+Assert-GateDeny "REQ-004 S.3-bis w [PowerShell] 'cd D:; git push origin main' is not plain" @($script:GatePlain)
+Invoke-Gate 'rqw2' $GF.M 'cd C:repo && git push origin main'
+Assert-GateDeny "REQ-004 S.3-bis w 'cd C:repo && git push origin main' is not plain" @($script:GatePlain)
+$gmM = $GF.M.Replace('\', '/')
+Invoke-Gate 'rqw5' $GF.M "cd $gmM && git push origin HEAD:main"
+Assert-GateDeny "REQ-004 S.3-bis w positive control: 'cd <C:/repo> && git push origin HEAD:main' reaches the no-marker deny" @('review is recorded')
+
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE002] marker from an earlier HEAD"
+$script:GateState = Join-Path $workRoot 'gate-state-3'
+$e2 = Join-Path $workRoot 'gate-e2'
+Build-GateRepo $e2 'main'
+git -C $e2 checkout -q feat/x
+$oldHead = (git -C $e2 rev-parse HEAD).Trim()
+Set-GateRealMarker 'e2' $e2 'feat/x vs main' 'refs/remotes/origin/main'
+Invoke-Gate 'e2' $e2 'gh pr create --fill'
+Assert-GateAllow 'EDGE-002 control: marker at HEAD allows'
+Add-GateCommit $e2 'c-after-review'
+$newHead = (git -C $e2 rev-parse HEAD).Trim()
+Invoke-Gate 'e2' $e2 'gh pr create --fill'
+Assert-GateDeny 'EDGE-002 commit after the review: denied, reason says stale and names both shas' @('stale', $oldHead, $newHead)
+Invoke-Gate 'e2' $e2 'git push origin HEAD:main'
+Assert-GateDeny 'EDGE-002 same marker, push to main: denied as stale' @('stale', $oldHead, $newHead)
+# head= equals HEAD, but the reviewed range ends at the earlier commit
+Set-GateMarker 'e2r1' 'APPROVED' $newHead "feat/x vs main ($oldHead..$oldHead); fallback: none"
+Invoke-Gate 'e2r1' $e2 'gh pr create --fill'
+Assert-GateDeny 'EDGE-002 head= is HEAD but the range ends at an earlier sha: denied as stale' @('stale', $oldHead, $newHead)
+# a PR #<n> target whose head sha is not HEAD
+Set-GateMarker 'e2r2' 'APPROVED' $newHead "PR #9 $oldHead vs main ($oldHead..$oldHead); fallback: none"
+Invoke-Gate 'e2r2' $e2 'gh pr create --fill'
+Assert-GateDeny "EDGE-002 'PR #9 <sha>' target whose head sha is not HEAD: denied as stale" @('stale', $oldHead)
+# an empty range (x..x) while commits are ahead of the destination
+Set-GateMarker 'e2r3' 'APPROVED' $newHead "feat/x vs main ($newHead..$newHead); fallback: none"
+Invoke-Gate 'e2r3' $e2 'gh pr create --fill'
+Assert-GateDeny 'EDGE-002 empty range x..x while commits are ahead: denied as stale' @('stale', 'is empty')
+
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE003] marker from a non-branch review or another base"
+$script:GateState = Join-Path $workRoot 'gate-state-4'
+$e3 = Join-Path $workRoot 'gate-e3'
+Build-GateRepo $e3 'main'
+git -C $e3 checkout -q feat/x
+git -C $e3 update-ref refs/remotes/origin/master (git -C $e3 rev-parse 'main~1')
+$h = (git -C $e3 rev-parse HEAD).Trim()
+Set-GateMarker 'e3a' 'APPROVED' $h "uncommitted @ $h (2 files)"
+Invoke-Gate 'e3a' $e3 'git push origin HEAD:main'
+Assert-GateDeny "EDGE-003 'uncommitted @ <sha>' target: denied, branch not covered" @($noCover)
+Set-GateMarker 'e3b' 'APPROVED' $h "paths src/a.sh src/b.sh @ $h"
+Invoke-Gate 'e3b' $e3 'git push origin HEAD:main'
+Assert-GateDeny "EDGE-003 'paths <list> @ <sha>' target: denied, branch not covered" @($noCover)
+Set-GateMarker 'e3c' 'APPROVED' $h "paths src/a.sh in PR #4 $h"
+Invoke-Gate 'e3c' $e3 'git push origin HEAD:main'
+Assert-GateDeny "EDGE-003 'paths <list> in PR #<n> <sha>' target: denied, branch not covered" @($noCover)
+Set-GateMarker 'e3d' 'APPROVED' $h '-'
+Invoke-Gate 'e3d' $e3 'git push origin HEAD:main'
+Assert-GateDeny 'EDGE-003 no target line: denied, branch not covered' @($noCover)
+
+Set-GateRealMarker 'e3e' $e3 'feat/x vs origin/main' 'refs/remotes/origin/main'
+Invoke-Gate 'e3e' $e3 'git push origin HEAD:master'
+Assert-GateDeny "EDGE-003 'feat/x vs origin/main' marker does not unlock push to master: names both" @('Base mismatch', 'origin/main', 'master')
+Invoke-Gate 'e3e' $e3 'gh pr create --base develop'
+Assert-GateDeny "EDGE-003 'feat/x vs origin/main' marker does not unlock gh pr create --base develop: names both" @('Base mismatch', 'origin/main', 'develop')
+Invoke-Gate 'e3e' $e3 'git push origin HEAD:main'
+Assert-GateAllow "EDGE-003 control: 'feat/x vs origin/main' marker unlocks push to main (remote prefix removed)"
+
+git -C $e3 branch release/1.0 'main~1'
+# the PR's base must have a remote-tracking ref to start from (I-ter.8)
+git -C $e3 update-ref refs/remotes/origin/release/1.0 (git -C $e3 rev-parse 'main~1')
+Set-GateRealMarker 'e3f' $e3 'feat/x vs release/1.0' 'refs/remotes/origin/release/1.0'
+Invoke-Gate 'e3f' $e3 'gh pr create --base release/1.0'
+Assert-GateAllow "EDGE-003 'feat/x vs release/1.0' marker unlocks gh pr create --base release/1.0"
+
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE004] source is not the checked-out commit"
+$script:GateState = Join-Path $workRoot 'gate-state-5'
+Build-GateFixtures (Join-Path $workRoot 'gate-fx-5')
+$GF = $script:GF
+$srcMsg = 'checked-out commit'
+Invoke-Gate 'e4a' $GF.X 'git push origin feat/y:main'
+Assert-GateDeny 'EDGE-004 git push origin feat/y:main on feat/x: source not checked out' @($srcMsg, 'Check the source out first')
+Invoke-Gate 'e4b' $GF.X 'git push origin main'
+Assert-GateDeny 'EDGE-004 git push origin main on feat/x (different sha): source not checked out' @($srcMsg)
+Invoke-Gate 'e4b2' $GF.XS 'git push origin main'
+Assert-GateDeny "EDGE-004 git push origin main on feat/x at main's sha: source not checked out" @($srcMsg)
+Invoke-Gate 'e4c' $GF.X 'gh pr create --head other --fill'
+Assert-GateDeny 'EDGE-004 gh pr create --head other: source not checked out' @($srcMsg)
+Set-GateRealMarker 'e4d' $GF.X 'feat/x vs origin/main' 'refs/remotes/origin/main'
+Invoke-Gate 'e4d' $GF.X 'git push origin feat/x:main'
+Assert-GateAllow 'EDGE-004 clean feat/x:main with an APPROVED matching marker: allowed (source is HEAD)'
+Invoke-Gate 'e4e' $GF.DY 'git push origin feat/x:main'
+Assert-GateDeny 'EDGE-004 dirty feat/x:main, no marker: the no-marker denial (dirty tree irrelevant)' @('review is recorded')
+
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE005] nothing to push"
+$script:GateState = Join-Path $workRoot 'gate-state-6'
+$e5 = Join-Path $workRoot 'gate-e5'
+Build-GateRepo $e5 'main'
+git -C $e5 update-ref refs/remotes/origin/main (git -C $e5 rev-parse HEAD)
+Invoke-Gate 'e5a' $e5 'git push origin main'
+Assert-GateAllow 'EDGE-005 origin/main equals HEAD: git push origin main passes'
+Invoke-Gate 'e5b' $e5 'git push'
+Assert-GateAllow 'EDGE-005 origin/main equals HEAD: bare git push passes'
+Invoke-Gate 'e5c' $e5 'git push origin HEAD:main'
+Assert-GateAllow 'EDGE-005 origin/main equals HEAD: git push origin HEAD:main passes'
+Add-GateCommit $e5 'c3'
+Invoke-Gate 'e5d' $e5 'git push origin main'
+Assert-GateDeny 'EDGE-005 control: one commit ahead is gated again' @('review is recorded')
+# HEAD one commit behind origin/main: a force-push that rewinds the destination is gated
+$e5b = Join-Path $workRoot 'gate-e5b'
+Build-GateRepo $e5b 'main'
+git -C $e5b checkout -q feat/x
+Add-GateCommit $e5b 'c3'
+git -C $e5b checkout -q main
+git -C $e5b update-ref refs/remotes/origin/main (git -C $e5b rev-parse feat/x)
+Invoke-Gate 'e5f' $e5b 'git push --force origin main'
+Assert-GateDeny 'EDGE-005 HEAD one commit behind origin/main, --force: gated like one ahead' @('review is recorded')
+# an equal-sha range (HEAD..HEAD) unlocks nothing while HEAD is behind the remote tip (I-ter.8)
+$hB = (git -C $e5b rev-parse HEAD).Trim()
+Set-GateMarker 'e5g' 'APPROVED' $hB "main vs origin/main ($hB..$hB); fallback: none"
+Invoke-Gate 'e5g' $e5b 'git push --force origin main'
+Assert-GateDeny 'EDGE-005 HEAD behind origin/main with an APPROVED (HEAD..HEAD) marker, --force: denied, empty range' @('stale', 'is empty')
+
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE006] remote-tracking ref unknown or remote unconfigured"
+$script:GateState = Join-Path $workRoot 'gate-state-7'
+$e6 = Join-Path $workRoot 'gate-e6'
+Initialize-GateRepoBare $e6 'main'
+Add-GateCommit $e6 'c1'
+git -C $e6 remote add origin "$e6.nowhere"
+Invoke-Gate 'e6a' $e6 'git push origin main'
+Assert-GateDeny 'EDGE-006 no origin/main: denied naming git fetch origin main and the env var' @('git fetch origin main', 'AF_CODE_REVIEW_GATE=off', 'does not yet exist')
+Invoke-Gate 'e6b' $e6 'git push https://host/r.git main'
+Assert-GateDeny 'EDGE-006 URL remote: denied, asks for a configured remote' @('configured remote')
+Assert 'EDGE-006 unconfigured remote gives no fetch hint' (-not $script:GateRun.Out.Contains('git fetch'))
+Invoke-Gate 'e6c' $e6 'git push typo main'
+Assert-GateDeny 'EDGE-006 typo remote name: denied, asks for a configured remote' @('configured remote')
+
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE007] fail-open on anything the gate cannot read"
+$script:GateState = Join-Path $workRoot 'gate-state-8'
+$e7 = Join-Path $workRoot 'gate-e7'
+Build-GateRepo $e7 'main'
+$e7plain = Join-Path $workRoot 'gate-e7-plain'
+$e7empty = Join-Path $workRoot 'gate-e7-empty'
+New-Item -ItemType Directory -Force -Path $e7plain, $e7empty | Out-Null
+git -C $e7empty init -q -b main
+$cmd7 = 'git push origin main'
+Invoke-GateRaw 'not json at all'
+Assert-GateAllow 'EDGE-007 malformed JSON: exit 0, no output'
+Invoke-GateRaw (New-Payload @{ session_id = 'e7'; cwd = $e7; tool_input = $cmd7 })
+Assert-GateAllow 'EDGE-007 tool_input is a string, not an object'
+Invoke-GateRaw (New-Payload @{ session_id = 'e7'; cwd = $e7; tool_input = @(1, 2) })
+Assert-GateAllow 'EDGE-007 tool_input is an array'
+Invoke-GateRaw (New-Payload @{ session_id = 'e7'; cwd = $e7; tool_input = @{} })
+Assert-GateAllow 'EDGE-007 missing tool_input.command'
+Invoke-GateRaw (New-Payload @{ session_id = 'e7'; cwd = $e7; tool_input = @{ command = 42 } })
+Assert-GateAllow 'EDGE-007 non-string command (number)'
+Invoke-GateRaw (New-Payload @{ session_id = 'e7'; cwd = $e7; tool_input = @{ command = @('git', 'push') } })
+Assert-GateAllow 'EDGE-007 non-string command (array)'
+Invoke-Gate 'e7' $e7 $cmd7
+Assert-GateDeny 'EDGE-007 control: same repo and command with a session id is denied' @('review is recorded')
+Invoke-Gate '' $e7 $cmd7
+Assert-GateAllow 'EDGE-007 empty session_id'
+Invoke-Gate '../..' $e7 $cmd7
+Assert-GateAllow 'EDGE-007 session_id empty after sanitising'
+Invoke-GateRaw (New-Payload @{ cwd = $e7; tool_input = @{ command = $cmd7 } })
+Assert-GateAllow 'EDGE-007 missing session_id'
+Invoke-Gate 'e7' $e7plain $cmd7
+Assert-GateAllow 'EDGE-007 cwd is not a git work tree'
+Invoke-Gate 'e7' $e7empty $cmd7
+Assert-GateAllow 'EDGE-007 repository with no commits (unborn HEAD)'
+Invoke-GateRaw ''
+Assert-GateAllow 'EDGE-007 empty stdin'
+
+Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE008] sub-agent runs the push (agent_id in the payload)"
+$script:GateState = Join-Path $workRoot 'gate-state-9'
+$e8 = Join-Path $workRoot 'gate-e8'
+Build-GateRepo $e8 'main'
+git -C $e8 checkout -q feat/x
+function New-AgentPayload([string]$Sid, [string]$Cmd) {
+    New-Payload @{ session_id = $Sid; cwd = $e8; agent_id = 'a1b2c3'; agent_type = 'bash-expert'; tool_name = 'Bash'; tool_input = @{ command = $Cmd } }
+}
+Invoke-GateRaw (New-AgentPayload 'e8' 'git push origin HEAD:main')
+Assert-GateDeny 'EDGE-008 agent_id payload, no marker for the parent session: denied' @('review is recorded')
+Set-GateRealMarker 'e8' $e8 'feat/x vs origin/main' 'refs/remotes/origin/main'
+Invoke-GateRaw (New-AgentPayload 'e8' 'git push origin HEAD:main')
+Assert-GateAllow 'EDGE-008 agent_id payload, matching APPROVED marker of the parent session: allowed'
+Invoke-GateRaw (New-AgentPayload 'e8-other' 'gh pr create --fill')
+Assert-GateDeny 'EDGE-008 agent_id payload, another session id has no marker: denied' @('review is recorded')
+
+$script:GateState = $stateDir
 
 # ── Teardown ───────────────────────────────────────────────────────────────────
 Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue

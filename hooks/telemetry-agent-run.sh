@@ -28,7 +28,7 @@ clean() {
 fields=$(printf '%s' "$payload" | jq -r '
   (.agent_type // "" | tostring | sub("^agentic-framework:"; "")) as $an
   | (.tool_input | if type == "object" then . else {} end) as $ti
-  | @sh "sid_raw=\(.session_id // "" | tostring) event=\(.hook_event_name // "" | tostring) tool=\(.tool_name // "" | tostring) tuid_raw=\(.tool_use_id // "" | tostring) agent=\((($ti.subagent_type | strings | .[0:100]) // "")) requested=\((($ti.model | strings | .[0:100]) // "")) aid_raw=\(.agent_id // "" | tostring) atype=\(.agent_type // "" | tostring) tpath=\(.agent_transcript_path // "" | tostring) lam=\(if $an == "peer-review-critic" or $an == "spec-compliance-reviewer" then (.last_assistant_message // "" | tostring) else "" end)"') || exit 0
+  | @sh "sid_raw=\(.session_id // "" | tostring) event=\(.hook_event_name // "" | tostring) tool=\(.tool_name // "" | tostring) tuid_raw=\(.tool_use_id // "" | tostring) agent=\((($ti.subagent_type | strings | .[0:100]) // "")) requested=\((($ti.model | strings | .[0:100]) // "")) aid_raw=\(.agent_id // "" | tostring) atype=\(.agent_type // "" | tostring) tpath=\(.agent_transcript_path // "" | tostring) lam=\(if $an == "peer-review-critic" or $an == "spec-compliance-reviewer" or $an == "code-review-gatekeeper" then (.last_assistant_message // "" | tostring) else "" end)"') || exit 0
 eval "$fields"
 sid=$(clean "$(printf '%s' "${sid_raw:-}" | tr -d '\r')")
 [ -z "$sid" ] && exit 0
@@ -44,7 +44,7 @@ parse_verdict() {
   tr -d '\r' | grep -E '^[[:space:]]*VERDICT:[[:blank:]]*(APPROVED|CHANGES_REQUIRED)[[:blank:]]*$' \
     | tail -n 1 | sed -E 's/.*VERDICT:[[:blank:]]*([A-Z_]+).*/\1/'
 }
-is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer) return 0 ;; esac; return 1; }
+is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer|code-review-gatekeeper) return 0 ;; esac; return 1; }
 
 # Token totals + last model over a transcript file (read through a 16 MiB cap into $work/lines), as one
 # compact JSON object. Parsed line by line (a malformed line is skipped); usage is counted

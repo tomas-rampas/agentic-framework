@@ -650,6 +650,155 @@ EOF_PAYLOAD
   if [ "$ps022f_lower_count" = "1" ]; then _pass "[edge022f-case-variant-field] ps has exactly one lowercase model field"; else _fail "[edge022f-case-variant-field] ps lowercase model count" "got: $ps022f_lower_count in $ps022f_out"; fi
 }
 
+# --- CODE-REVIEW: gatekeeper marker + pretooluse-code-review-gate deny wordings
+section "[CODE-REVIEW] code-review marker through both recorders"
+{
+  workdir="$(make_work_dir)" || exit 2
+  testgit="$workdir/test_repo"
+  state_ps_msys="$workdir/state_ps"
+  state_sh_msys="$workdir/state_sh"
+  state_ps_win=$(cygpath -w "$state_ps_msys" 2>/dev/null || echo "$state_ps_msys")
+  testgit_win=$(cygpath -w "$testgit" 2>/dev/null || echo "$testgit")
+  mkdir -p "$testgit"
+  make_test_repo "$testgit"
+
+  report=$'Review done.\nTarget: feature/x vs origin/main (abc1234..def5678); fallback: none\nVERDICT: APPROVED'
+  payload_ps=$(jq -n --arg cwd "$testgit_win" --arg t "$report" '{session_id:"crm",hook_event_name:"PostToolUse",tool_use_id:"tool_1",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:$t,cwd:$cwd}')
+  payload_sh=$(jq -n --arg cwd "$testgit" --arg t "$report" '{session_id:"crm",hook_event_name:"PostToolUse",tool_use_id:"tool_1",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:$t,cwd:$cwd}')
+  printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_ps_win" pwsh -NoProfile -File "$SRC_REPO/hooks/record-subagent-run.ps1" >/dev/null 2>&1
+  printf '%s' "$payload_sh" | CLAUDE_STATE_DIR="$state_sh_msys" sh "$SRC_REPO/hooks/record-subagent-run.sh" >/dev/null 2>&1
+
+  if grep -q '^target=feature/x vs origin/main' "$state_sh_msys/code-review/crm" 2>/dev/null; then
+    _pass "code-review marker: sh marker carries the target line"
+  else
+    _fail "code-review marker: sh marker target line" "$(cat "$state_sh_msys/code-review/crm" 2>&1)"
+  fi
+  marker_compare "$state_ps_msys/code-review/crm" "$state_sh_msys/code-review/crm" "code-review marker"
+  sidecar_compare "$state_ps_msys/code-review/crm.verdict-sources" "$state_sh_msys/code-review/crm.verdict-sources" "code-review marker .verdict-sources"
+  rm -rf "$workdir"
+}
+
+# gate_equiv <label> <sid> <cwd-subdir> <command> <marker-kind> [marker-target]
+# Builds a fixture repo (origin remote, origin/main one commit behind main, feature/x
+# one commit ahead), writes a marker per <marker-kind>, runs both gates on the same
+# payload with the same CLAUDE_STATE_DIR and compares stdout byte-for-byte (CR stripped).
+gate_equiv() {
+  local label="$1" sid="$2" cmd="$3" mkind="$4" mtgt="${5:-feature/x vs origin/main (@MB@..@HEAD@); fallback: none}" tool="${6:-Bash}"
+  local wd repo repo_win state state_win head mb payload_ps payload_sh
+  local f_ps f_sh ps_rc sh_rc
+  wd="$(make_work_dir)" || exit 2
+  repo="$wd/repo"; state="$wd/state"
+  repo_win=$(cygpath -w "$repo" 2>/dev/null || echo "$repo")
+  state_win=$(cygpath -w "$state" 2>/dev/null || echo "$state")
+  mkdir -p "$repo" "$state/code-review"
+  make_test_repo "$repo"
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" remote add origin "$repo.nowhere"
+  git -C "$repo" update-ref refs/remotes/origin/main "$(git -C "$repo" rev-parse main)"
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  head=$(git -C "$repo" rev-parse HEAD)
+  # the marker's reviewed range is real, so it binds per REQ-004: <merge-base with origin/main>..<HEAD>
+  mb=$(git -C "$repo" merge-base refs/remotes/origin/main HEAD)
+  mtgt="${mtgt//@MB@/$mb}"; mtgt="${mtgt//@HEAD@/$head}"
+  case "$mkind" in
+    none) ;;
+    approved) printf '2026-10-21T00:00:00Z\nverdict=APPROVED\nhead=%s\ntarget=%s' "$head" "$mtgt" > "$state/code-review/$sid" ;;
+    stale) printf '2026-10-21T00:00:00Z\nverdict=APPROVED\nhead=%s\ntarget=%s' '0123456789abcdef0123456789abcdef01234567' "$mtgt" > "$state/code-review/$sid" ;;
+    changes) printf '2026-10-21T00:00:00Z\nverdict=CHANGES_REQUIRED\nhead=%s\ntarget=%s' "$head" "$mtgt" > "$state/code-review/$sid" ;;
+  esac
+  payload_ps=$(jq -cn --arg s "$sid" --arg c "$repo_win" --arg m "$cmd" --arg t "$tool" '{session_id:$s,cwd:$c,tool_name:$t,tool_input:{command:$m}}')
+  payload_sh=$(jq -cn --arg s "$sid" --arg c "$repo" --arg m "$cmd" --arg t "$tool" '{session_id:$s,cwd:$c,tool_name:$t,tool_input:{command:$m}}')
+  f_ps="$wd/out_ps"; f_sh="$wd/out_sh"
+  printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_win" pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-code-review-gate.ps1" 2>&1 | tr -d '\r' > "$f_ps"
+  ps_rc=${PIPESTATUS[1]}
+  printf '%s' "$payload_sh" | CLAUDE_STATE_DIR="$state" sh "$SRC_REPO/hooks/pretooluse-code-review-gate.sh" 2>&1 | tr -d '\r' > "$f_sh"
+  sh_rc=${PIPESTATUS[1]}
+  if [ "$ps_rc" -eq 0 ] && [ "$sh_rc" -eq 0 ]; then
+    if [ -s "$f_ps" ] && [ -s "$f_sh" ]; then
+      if cmp -s "$f_ps" "$f_sh"; then
+        _pass "$label: both exit 0, non-empty, byte-identical stdout"
+      else
+        _fail "$label" "stdout differs (ps=$(head -c 300 "$f_ps") | sh=$(head -c 300 "$f_sh"))"
+      fi
+    else
+      _fail "$label" "empty output (ps bytes=$(wc -c < "$f_ps"), sh bytes=$(wc -c < "$f_sh"))"
+    fi
+  else
+    _fail "$label" "exit codes ps=$ps_rc sh=$sh_rc"
+  fi
+  rm -rf "$wd"
+}
+
+section "[CODE-REVIEW-GATE] gate deny wordings through both implementations"
+gate_equiv "gate deny: no marker" ge1 'git push origin HEAD:main' none
+gate_equiv "gate deny: stale head" ge2 'git push origin HEAD:main' stale
+gate_equiv "gate deny: base mismatch" ge3 'git push origin HEAD:main' approved 'feature/x vs develop (@MB@..@HEAD@); fallback: none'
+gate_equiv "gate deny: non-branch review target" ge4 'git push origin HEAD:main' approved 'uncommitted @ 0123456789abcdef0123456789abcdef01234567 (3 files)'
+gate_equiv "gate deny: changes required" ge5 'git push origin HEAD:main' changes
+gate_equiv "gate deny: unknown remote ref" ge6 'git push origin HEAD:master' none
+gate_equiv "gate deny: unconfigured remote" ge7 'git push upstream HEAD:main' none
+gate_equiv "gate deny: source not checked out" ge8 'git push origin main:main' none
+gate_equiv "gate deny: not a plain command" ge9 'git commit --allow-empty -m x && git push origin HEAD:main' none
+gate_equiv "gate deny: unresolvable text" ge10 'git push origin "main' none
+gate_equiv "gate deny: drive-relative dir (PowerShell dialect)" ge11 'cd C:; git push origin main' none '' PowerShell
+
+# gate allow: an MSYS absolute path (/c/...) in a cd resolves in both implementations
+# (EDGE-001 row 164; I-ter.2): feat/x with upstream origin/feat/x, so a bare push is allowed.
+{
+  wd="$(make_work_dir)" || exit 2
+  repo="$wd/repo"; state="$wd/state"
+  repo_win=$(cygpath -w "$repo" 2>/dev/null || echo "$repo")
+  state_win=$(cygpath -w "$state" 2>/dev/null || echo "$state")
+  mkdir -p "$repo" "$state/code-review"
+  make_test_repo "$repo"
+  git -C "$repo" config commit.gpgsign false
+  git -C "$repo" remote add origin "$repo.nowhere"
+  git -C "$repo" update-ref refs/remotes/origin/main "$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" checkout -q -b feat/x
+  git -C "$repo" update-ref refs/remotes/origin/feat/x "$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" config branch.feat/x.remote origin
+  git -C "$repo" config branch.feat/x.merge refs/heads/feat/x
+  # MSYS drive form /<drive>/...: cygpath -u would map a temp dir back to its /tmp mount
+  repo_msys=$(cygpath -m "$repo" 2>/dev/null | sed -E 's#^([A-Za-z]):#/\L\1#')
+  [ -n "$repo_msys" ] || repo_msys="$repo"
+  m_cmd="cd $repo_msys && git push"
+  payload_ps=$(jq -cn --arg c "$repo_win" --arg m "$m_cmd" '{session_id:"gma",cwd:$c,tool_name:"Bash",tool_input:{command:$m}}')
+  payload_sh=$(jq -cn --arg c "$repo" --arg m "$m_cmd" '{session_id:"gma",cwd:$c,tool_name:"Bash",tool_input:{command:$m}}')
+  # Exit codes are captured per command (PIPESTATUS inside $(...) is not visible to the parent shell).
+  printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_win" pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-code-review-gate.ps1" > "$wd/out_ps" 2>&1; ps_rc=$?
+  printf '%s' "$payload_sh" | CLAUDE_STATE_DIR="$state" sh "$SRC_REPO/hooks/pretooluse-code-review-gate.sh" > "$wd/out_sh" 2>&1; sh_rc=$?
+  out_ps=$(tr -d '\r' < "$wd/out_ps"); out_sh=$(tr -d '\r' < "$wd/out_sh")
+  if [ "$ps_rc" -eq 0 ] && [ "$sh_rc" -eq 0 ] && [ -z "$out_ps" ] && [ -z "$out_sh" ]; then
+    _pass "gate allow: msys path: both exit 0 with empty output"
+  else
+    _fail "gate allow: msys path" "ps rc=$ps_rc out=$(printf '%s' "$out_ps" | head -c 200) | sh rc=$sh_rc out=$(printf '%s' "$out_sh" | head -c 200)"
+  fi
+  rm -rf "$wd"
+}
+
+# gate allow: a text that begins "git stash push" is not a candidate in either implementation
+# (decision S.1, anchored exemption): both stay silent on "git stash push;" whatever follows.
+{
+  wd="$(make_work_dir)" || exit 2
+  repo="$wd/repo"; state="$wd/state"
+  repo_win=$(cygpath -w "$repo" 2>/dev/null || echo "$repo")
+  state_win=$(cygpath -w "$state" 2>/dev/null || echo "$state")
+  mkdir -p "$repo" "$state/code-review"
+  make_test_repo "$repo"
+  s_cmd='git stash push;'
+  payload_ps=$(jq -cn --arg c "$repo_win" --arg m "$s_cmd" '{session_id:"gsp",cwd:$c,tool_name:"Bash",tool_input:{command:$m}}')
+  payload_sh=$(jq -cn --arg c "$repo" --arg m "$s_cmd" '{session_id:"gsp",cwd:$c,tool_name:"Bash",tool_input:{command:$m}}')
+  printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_win" pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-code-review-gate.ps1" > "$wd/out_ps" 2>&1; ps_rc=$?
+  printf '%s' "$payload_sh" | CLAUDE_STATE_DIR="$state" sh "$SRC_REPO/hooks/pretooluse-code-review-gate.sh" > "$wd/out_sh" 2>&1; sh_rc=$?
+  out_ps=$(tr -d '\r' < "$wd/out_ps"); out_sh=$(tr -d '\r' < "$wd/out_sh")
+  if [ "$ps_rc" -eq 0 ] && [ "$sh_rc" -eq 0 ] && [ -z "$out_ps" ] && [ -z "$out_sh" ]; then
+    _pass "gate allow: git stash push: both exit 0 with empty output"
+  else
+    _fail "gate allow: git stash push" "ps rc=$ps_rc out=$(printf '%s' "$out_ps" | head -c 200) | sh rc=$sh_rc out=$(printf '%s' "$out_sh" | head -c 200)"
+  fi
+  rm -rf "$wd"
+}
+
 # === Summary
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"
 printf 'RESULT: %d run, %d pass, %d fail\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"

@@ -389,6 +389,8 @@ section "[SESSION-START-CONTEXT] base-branch state on main"
   else
     _fail "main-branch output" "expected \"On 'main'\", got: $RUN_OUT"
   fi
+  assert_out_contains "main-branch message mentions the code-review gate" "code-review-gatekeeper"
+  assert_out_contains "main-branch message keeps the peer-review statement" "The peer-review Stop gate applies only to feature branches; a push to main/master"
 
   rm -rf "$workdir"
 }
@@ -1131,6 +1133,112 @@ section "[RECORD-SUBAGENT-RUN] SubagentStop path records verdict"
     fi
   fi
 
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+# --- code-review-gatekeeper recording (REQ-003) -----------------------------
+cr_run() { RUN_OUT="$(printf '%s' "$1" | sh "$SRC_REPO/hooks/record-subagent-run.sh" 2>&1)"; RUN_RC=$?; }
+
+section "[RECORD-SUBAGENT-RUN-CR-1] gatekeeper APPROVED with Target writes four-line code-review marker"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  mkdir -p "$workdir/repo"; make_test_repo "$workdir/repo"
+  headsha="$(git -C "$workdir/repo" rev-parse HEAD)"
+  tgt='feature/x vs origin/main (abc1234..def5678); fallback: none'
+  cr_run "$(jq -n --arg cwd "$workdir/repo" --arg t "Review.
+Target: $tgt
+VERDICT: APPROVED" '{session_id:"cr1",cwd:$cwd,hook_event_name:"PostToolUse",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:$t}')"
+  assert_rc_zero "exit 0"
+  m="$CLAUDE_STATE_DIR/code-review/cr1"
+  if [ -f "$m" ]; then _pass "code-review marker exists"; else _fail "code-review marker" "missing $m"; fi
+  if [ "$(sed -n 2p "$m" 2>/dev/null)" = "verdict=APPROVED" ]; then _pass "line 2 verdict=APPROVED"; else _fail "line 2" "$(cat "$m" 2>&1)"; fi
+  if [ "$(sed -n 3p "$m" 2>/dev/null)" = "head=$headsha" ]; then _pass "line 3 head=HEAD"; else _fail "line 3" "$(cat "$m" 2>&1)"; fi
+  if [ "$(sed -n 4p "$m" 2>/dev/null)" = "target=$tgt" ]; then _pass "line 4 target"; else _fail "line 4" "$(cat "$m" 2>&1)"; fi
+  if [ ! -e "$CLAUDE_STATE_DIR/peer-review/cr1" ]; then _pass "no peer-review marker"; else _fail "peer-review marker" "should not exist"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-CR-2] peer-review-critic run writes nothing under code-review/"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  cr_run "$(jq -n '{session_id:"cr2",hook_event_name:"PostToolUse",tool_name:"Agent",tool_input:{subagent_type:"peer-review-critic"},tool_response:"Target: x\nVERDICT: APPROVED"}')"
+  assert_rc_zero "exit 0"
+  if [ -f "$CLAUDE_STATE_DIR/peer-review/cr2" ]; then _pass "peer-review marker written"; else _fail "peer-review marker" "missing"; fi
+  if [ ! -e "$CLAUDE_STATE_DIR/code-review/cr2" ]; then _pass "no code-review marker"; else _fail "code-review marker" "should not exist"; fi
+  if grep -q '^target=' "$CLAUDE_STATE_DIR/peer-review/cr2"; then _fail "peer-review target" "target= must not appear"; else _pass "no target= in peer-review marker"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-CR-3] gatekeeper report without Target writes a three-line marker"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  mkdir -p "$workdir/repo"; make_test_repo "$workdir/repo"
+  cr_run "$(jq -n --arg cwd "$workdir/repo" '{session_id:"cr3",cwd:$cwd,hook_event_name:"PostToolUse",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:"No target here.\nVERDICT: CHANGES_REQUIRED"}')"
+  m="$CLAUDE_STATE_DIR/code-review/cr3"
+  assert_rc_zero "exit 0"
+  if [ "$(wc -l < "$m" | tr -d ' ')" = "2" ] && grep -q '^verdict=CHANGES_REQUIRED$' "$m" && grep -q '^head=' "$m" && ! grep -q '^target=' "$m"; then
+    _pass "three lines (timestamp, verdict, head), no target"
+  else _fail "three-line marker" "$(cat "$m" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-CR-4] instance dedupe suppresses a repeated gatekeeper instance at the same HEAD"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  mkdir -p "$workdir/repo"; make_test_repo "$workdir/repo"
+  cr_run "$(jq -n --arg cwd "$workdir/repo" '{session_id:"cr4",cwd:$cwd,tool_use_id:"toolu_X",hook_event_name:"PostToolUse",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:"VERDICT: CHANGES_REQUIRED"}')"
+  cr_run "$(jq -n --arg cwd "$workdir/repo" '{session_id:"cr4",cwd:$cwd,tool_use_id:"toolu_X",hook_event_name:"PostToolUse",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:"VERDICT: APPROVED"}')"
+  assert_rc_zero "exit 0"
+  m="$CLAUDE_STATE_DIR/code-review/cr4"; sup="$m.verdict-suppressed"
+  if grep -q '^verdict=CHANGES_REQUIRED$' "$m"; then _pass "marker still CHANGES_REQUIRED"; else _fail "marker" "$(cat "$m" 2>&1)"; fi
+  if [ -f "$sup" ] && [ "$(wc -l < "$sup" | tr -d ' ')" = "1" ] && grep -q 'guard=instance-dedupe' "$sup"; then _pass "one suppression line guard=instance-dedupe"; else _fail "suppressed sidecar" "$(cat "$sup" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-CR-5] scoped agentic-framework:code-review-gatekeeper on SubagentStop records target"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  cr_run "$(jq -n '{session_id:"cr5",hook_event_name:"SubagentStop",agent_type:"AgentiC-Framework:Code-Review-Gatekeeper",last_assistant_message:"Done.\nTarget:   main..HEAD  \nVERDICT: APPROVED"}')"
+  assert_rc_zero "exit 0"
+  m="$CLAUDE_STATE_DIR/code-review/cr5"
+  if grep -q '^verdict=APPROVED$' "$m" 2>/dev/null && grep -q '^target=main\.\.HEAD$' "$m"; then _pass "scoped SubagentStop records verdict and trimmed target"; else _fail "scoped SubagentStop" "$(cat "$m" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-CR-6] target line is sanitized: CR removed, non-ASCII dropped, capped at 200"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  long="$(printf 'a%.0s' $(seq 1 250))"
+  cr_run "$(jq -n --arg long "$long" '{session_id:"cr6",hook_event_name:"SubagentStop",agent_type:"code-review-gatekeeper",last_assistant_message:("Target: café-" + $long + "\r\nVERDICT: APPROVED")}')"
+  assert_rc_zero "exit 0"
+  m="$CLAUDE_STATE_DIR/code-review/cr6"
+  val="$(grep '^target=' "$m" 2>/dev/null | sed 's/^target=//')"
+  if [ "${#val}" = "200" ] && [ -z "$(printf '%s' "$val" | LC_ALL=C tr -d '\040-\176')" ] && [ "${val#caf-}" != "$val" ]; then _pass "target is 200 printable ASCII chars, CR and e-acute dropped"; else _fail "target sanitize" "len=${#val} val=$val"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-CR-7] Markdown-bold **Target:** label recorded; non-ASCII dropped before trimming"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  # U+00A0 (no-break space) around the value: dropped first, then the ASCII spaces are trimmed
+  cr_run "$(jq -n '{session_id:"cr7",hook_event_name:"SubagentStop",agent_type:"code-review-gatekeeper",last_assistant_message:"Done.\n**Target:**   feat/x vs origin/main (abc1234..def5678); fallback: none  \nVERDICT: APPROVED"}')"
+  assert_rc_zero "exit 0"
+  m="$CLAUDE_STATE_DIR/code-review/cr7"
+  if grep -qx 'target=feat/x vs origin/main (abc1234..def5678); fallback: none' "$m" 2>/dev/null; then _pass "bold label recorded, value trimmed after non-ASCII removal"; else _fail "bold Target label" "$(cat "$m" 2>&1)"; fi
   unset CLAUDE_STATE_DIR
   rm -rf "$workdir"
 }
@@ -2663,6 +2771,18 @@ section "[TELEMETRY-AGENT-001] PreToolUse: record shape, tier from claude.json, 
   rm -rf "$workdir"
 }
 
+section "[TELEMETRY-AGENT-RUN-CR-1] gatekeeper PostToolUse record carries verdict"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/agcr1/agents"
+  tel telemetry-agent-run "$(jq -n '{session_id:"agcr1",tool_use_id:"g1",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:"Target: x\nVERDICT: APPROVED\n"}')"
+  assert_rc_zero "post hook"
+  assert_jq "gatekeeper verdict parsed" "$d/g1.json" '.verdict=="APPROVED" and .agent_name=="code-review-gatekeeper"'
+  tel telemetry-agent-run "$(jq -n '{session_id:"agcr1",tool_use_id:"g2",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"agentic-framework:code-review-gatekeeper"},tool_response:"VERDICT: CHANGES_REQUIRED"}')"
+  assert_jq "scoped gatekeeper verdict parsed" "$d/g2.json" '.verdict=="CHANGES_REQUIRED"'
+  rm -rf "$workdir"
+}
+
 section "[TELEMETRY-AGENT-002] PostToolUse: duration, status, verdict parsing"
 {
   workdir="$(make_work_dir)" || exit 2
@@ -3040,6 +3160,1100 @@ section "[TELEMETRY-DISPATCH-002] MINGW arm without jq and without a .ps1 twin: 
   rm -rf "$workdir"
 }
 
+
+# ===========================================================================
+# pretooluse-code-review-gate (REQ-004, REQ-005, EDGE-001 .. EDGE-008)
+# ===========================================================================
+
+GATE="$SRC_REPO/hooks/pretooluse-code-review-gate.sh"
+GATE_STATE=""
+
+gate_commit() {
+  # gate_commit <dir> <message>: append a line to f.txt and commit it
+  printf '%s\n' "$2" >> "$1/f.txt"
+  git -C "$1" add -A
+  git -C "$1" commit -q -m "$2"
+}
+
+gate_mkrepo() {
+  # gate_mkrepo <dir> [branch]: repo with origin/<branch> one commit behind <branch>,
+  # origin/HEAD -> origin/<branch>, a feat/x branch at the tip. The remote URL points
+  # at a path that does not exist; nothing in these tests ever contacts it.
+  local d="$1" b="${2:-main}"
+  mkdir -p "$d"
+  git -C "$d" init -q -b "$b"
+  [ -d "$d/.git" ] || { printf 'gate_mkrepo: git init failed for %s\n' "$d" >&2; return 1; }
+  git -C "$d" config user.email 'test@test.local'
+  git -C "$d" config user.name 'hooks-test'
+  git -C "$d" config commit.gpgsign false
+  gate_commit "$d" c1
+  git -C "$d" remote add origin "$d.nowhere"
+  git -C "$d" update-ref "refs/remotes/origin/$b" "$(git -C "$d" rev-parse HEAD)"
+  git -C "$d" symbolic-ref refs/remotes/origin/HEAD "refs/remotes/origin/$b"
+  gate_commit "$d" c2
+  git -C "$d" branch feat/x
+}
+
+gate_build_fixtures() {
+  # gate_build_fixtures <root>: sets GF_* fixture paths (see EDGE-001 table)
+  local r="$1"
+  GF_M="$r/m";   gate_mkrepo "$GF_M" main                       # on main
+  GF_XS="$r/xs"; cp -R "$GF_M" "$GF_XS"; git -C "$GF_XS" checkout -q feat/x   # feat/x at main's sha
+  GF_X="$r/x";   cp -R "$GF_XS" "$GF_X"; gate_commit "$GF_X" c3                # feat/x one ahead of main
+  GF_U="$r/u";   cp -R "$GF_X" "$GF_U"                          # feat/x, upstream origin/main
+  git -C "$GF_U" config branch.feat/x.remote origin
+  git -C "$GF_U" config branch.feat/x.merge refs/heads/main
+  GF_U2="$r/u2"; cp -R "$GF_X" "$GF_U2"                         # feat/x, upstream origin/feat/x
+  git -C "$GF_U2" update-ref refs/remotes/origin/feat/x "$(git -C "$GF_U2" rev-parse main)"
+  git -C "$GF_U2" config branch.feat/x.remote origin
+  git -C "$GF_U2" config branch.feat/x.merge refs/heads/feat/x
+  GF_MATCH="$r/mt"; cp -R "$GF_X" "$GF_MATCH"; git -C "$GF_MATCH" config push.default matching
+  GF_DIRTY="$r/dy"; cp -R "$GF_X" "$GF_DIRTY"; printf 'dirty\n' >> "$GF_DIRTY/f.txt"
+  GF_SUB="$r/sb";   cp -R "$GF_X" "$GF_SUB"; gate_mkrepo "$GF_SUB/sub" main   # nested repo on main
+  GF_DET="$r/dt";   cp -R "$GF_M" "$GF_DET"; git -C "$GF_DET" checkout -q --detach
+  GF_EQ="$r/eq";    cp -R "$GF_X" "$GF_EQ"                      # main equal to origin/main
+  git -C "$GF_EQ" update-ref refs/remotes/origin/main "$(git -C "$GF_EQ" rev-parse main)"
+  GF_MASTER="$r/ms"; gate_mkrepo "$GF_MASTER" master            # on master
+  GF_HOME="$r/home"; GF_OTH="$GF_HOME/other"; gate_mkrepo "$GF_OTH" main   # <other>: on main, ahead
+  GF_BH="$r/bh";    cp -R "$GF_X" "$GF_BH"; git -C "$GF_BH" checkout -q main  # main one behind origin/main
+  git -C "$GF_BH" update-ref refs/remotes/origin/main "$(git -C "$GF_BH" rev-parse feat/x)"
+  GF_UP="$r/up";    cp -R "$GF_M" "$GF_UP"                      # branch.main.remote=upstream
+  git -C "$GF_UP" remote add upstream "$GF_UP.nowhere-up"
+  git -C "$GF_UP" update-ref refs/remotes/upstream/main "$(git -C "$GF_UP" rev-parse main~1)"
+  git -C "$GF_UP" update-ref refs/remotes/origin/main "$(git -C "$GF_UP" rev-parse main)"
+  git -C "$GF_UP" config branch.main.remote upstream
+  GF_PL="$r/plain"; mkdir -p "$GF_PL"                            # not a git work tree
+}
+
+gate_real_marker() {
+  # gate_real_marker <sid> <dir> <target prefix> <merge-base ref> [verdict] [head]: a marker whose
+  # target carries the real reviewed range (<merge-base>..<HEAD>) of <dir>
+  local h mb
+  h="$(git -C "$2" rev-parse HEAD)"
+  mb="$(git -C "$2" merge-base "$4" HEAD)"
+  gate_marker "$1" "${5:-APPROVED}" "${6:-$h}" "$3 ($mb..$h); fallback: none"
+}
+
+gate_now_ms() {
+  if [ -n "${EPOCHREALTIME:-}" ]; then local t="${EPOCHREALTIME/[.,]/}"; printf '%s\n' "$((t / 1000))"
+  else printf '%s000\n' "$(date +%s)"; fi
+}
+
+gate_mkbin() {
+  # gate_mkbin <dir> <tool>...: a PATH directory holding exec wrappers for exactly these tools
+  local dir="$1" tool p
+  shift
+  mkdir -p "$dir"
+  for tool in "$@"; do
+    p="$(command -v "$tool")" || { printf 'gate_mkbin: %s not found\n' "$tool" >&2; return 1; }
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$p" > "$dir/$tool"
+    chmod +x "$dir/$tool"
+  done
+}
+
+gate_marker() {
+  # gate_marker <sid> <verdict|-> <head|-> <target|->: write a code-review marker under GATE_STATE
+  mkdir -p "$GATE_STATE/code-review"
+  {
+    printf '2026-10-21T00:00:00Z'
+    [ "$2" != "-" ] && printf '\nverdict=%s' "$2"
+    [ "$3" != "-" ] && printf '\nhead=%s' "$3"
+    [ "$4" != "-" ] && printf '\ntarget=%s' "$4"
+    true
+  } > "$GATE_STATE/code-review/$1"
+}
+
+GATE_TOOL=Bash
+GATE_HOME=""
+gate_payload() { MSYS2_ARG_CONV_EXCL='*' jq -cn --arg s "$1" --arg c "$2" --arg m "$3" --arg t "$GATE_TOOL" '{session_id:$s,cwd:$c,tool_name:$t,tool_input:{command:$m}}'; }
+
+gate_run() {
+  # gate_run <sid> <cwd> <command>; GATE_TOOL sets tool_name, GATE_HOME (when set) sets HOME
+  RUN_OUT="$(gate_payload "$1" "$2" "$3" | HOME="${GATE_HOME:-$HOME}" CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"
+  RUN_RC=$?
+}
+
+gate_run_big() {
+  # gate_run_big <sid> <cwd> <command>: the command reaches jq on stdin (no argv length limit)
+  RUN_OUT="$(printf '%s' "$3" | MSYS2_ARG_CONV_EXCL='*' jq -Rsc --arg s "$1" --arg c "$2" '{session_id:$s,cwd:$c,tool_name:"Bash",tool_input:{command:.}}' \
+    | CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"
+  RUN_RC=$?
+}
+
+gate_run_raw() {
+  # gate_run_raw <raw stdin>
+  RUN_OUT="$(printf '%s' "$1" | CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"
+  RUN_RC=$?
+}
+
+gate_run_env() {
+  # gate_run_env <AF_CODE_REVIEW_GATE value> <sid> <cwd> <command>
+  RUN_OUT="$(gate_payload "$2" "$3" "$4" | AF_CODE_REVIEW_GATE="$1" CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"
+  RUN_RC=$?
+}
+
+gate_assert_allow() {
+  if [ "$RUN_RC" -eq 0 ] && [ -z "$RUN_OUT" ]; then _pass "$1"
+  else _fail "$1" "expected allow (exit 0, empty), got rc=$RUN_RC out=$RUN_OUT"; fi
+}
+
+gate_assert_deny() {
+  # gate_assert_deny <label> <needle>...: deny JSON whose reason contains every needle
+  local label="$1" reason dec n bad=""
+  shift
+  dec=$(printf '%s' "$RUN_OUT" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  reason=$(printf '%s' "$RUN_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  [ "$RUN_RC" -eq 0 ] || bad="rc=$RUN_RC"
+  [ "$dec" = "deny" ] || bad="$bad decision=[$dec]"
+  for n in "$@"; do
+    printf '%s' "$reason" | grep -qF -- "$n" || bad="$bad missing[$n]"
+  done
+  if [ -z "$bad" ]; then _pass "$label"; else _fail "$label" "$bad :: $RUN_OUT"; fi
+}
+
+gate_row() {
+  # gate_row <nn> <fixture> <allow|none|src|unconf|plain|loc|norepo|stale> <command> [extra needle]
+  local nn="$1" fix="$2" expect="$3" cmd="$4" extra="${5:-}" cwd label want
+  case "$fix" in
+    M) cwd="$GF_M" ;; X) cwd="$GF_X" ;; XS) cwd="$GF_XS" ;; U) cwd="$GF_U" ;; U2) cwd="$GF_U2" ;;
+    MT) cwd="$GF_MATCH" ;; DY) cwd="$GF_DIRTY" ;; SB) cwd="$GF_SUB" ;; DT) cwd="$GF_DET" ;;
+    EQ) cwd="$GF_EQ" ;; MS) cwd="$GF_MASTER" ;; BH) cwd="$GF_BH" ;; UP) cwd="$GF_UP" ;;
+    PL) cwd="$GF_PL" ;; /*) cwd="$fix" ;; *) cwd="$GF_M" ;;
+  esac
+  label="${cmd//$'\n'/\\n}"; label="${label//$'\r'/<CR>}"
+  label="EDGE-001 row $nn: $label"
+  [ "$GATE_TOOL" = PowerShell ] && label="$label [PowerShell]"
+  gate_run "r$nn" "$cwd" "$cmd"
+  case "$expect" in
+    allow) gate_assert_allow "$label" ;;
+    none) want='review is recorded' ;;
+    src) want='checked-out commit' ;;
+    unconf) want='configured remote' ;;
+    plain) want="$GATE_PLAIN" ;;
+    loc) want='does not exist or is not a git work tree' ;;
+    norepo) want='not a git work tree' ;;
+    stale) want='stale' ;;
+  esac
+  if [ "$expect" != "allow" ]; then
+    if [ -n "$extra" ]; then gate_assert_deny "$label" "$want" "$extra"; else gate_assert_deny "$label" "$want"; fi
+  fi
+}
+
+gate_row_ps() { GATE_TOOL=PowerShell; gate_row "$@"; GATE_TOOL=Bash; }
+
+# Decision S.5: a row whose command is a plain form (S.2) keeps its table decision;
+# every other row is denied as not plain, whatever the table column says.
+GATE_PLAIN='not a plain push or pull request command'
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE001] 201-row command decision table (decision S)"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  gate_build_fixtures "$workdir"
+  gate_real_marker r42 "$GF_M" 'main vs origin/main' refs/remotes/origin/main
+  gate_real_marker r125 "$GF_M" 'main vs origin/main' refs/remotes/origin/main
+  gate_real_marker r126 "$GF_M" 'main vs origin/main' refs/remotes/origin/main
+
+  gate_row 01 M none 'git push' 'main vs origin/main'
+  gate_row 02 X allow 'git push'
+  gate_row 03 U none 'git push' 'feat/x vs origin/main'
+  gate_row 04 U2 allow 'git push'
+  gate_row 05 MT src 'git push'
+  gate_row 06 X src 'git push origin main'
+  gate_row 07 XS src 'git push origin main'
+  gate_row 08 M none 'git push origin HEAD'
+  gate_row 09 M none 'git push origin HEAD:main'
+  gate_row 10 M none 'git push origin main:main'
+  gate_row 11 MS none 'git push origin HEAD:refs/heads/master' 'master vs origin/master'
+  gate_row 12 M none 'git push origin +HEAD:main'
+  gate_row 13 M none 'git push --force origin main'
+  gate_row 14 M none 'git push --force-with-lease origin +main'
+  gate_row 15 M plain 'git push --repo=origin HEAD:main'
+  gate_row 16 M none 'git push -o ci.skip origin main'
+  gate_row 17 X plain 'git push origin feat/x main'
+  gate_row 18 M none 'git push origin main --tags'
+  gate_row 19 DY none 'git push origin feat/x:main'
+  gate_row 20 M unconf 'git push https://host/r.git main'
+  gate_row 21 M plain 'git push origin main 2>&1 | tail'
+  gate_row 22 M none 'git push 2>&1'
+  gate_row 23 X allow 'git push -u origin feat/x'
+  gate_row 24 M allow 'git push origin HEAD:feat/x'
+  gate_row 25 M allow 'git push --tags'
+  gate_row 26 M allow 'git push origin v1.2.0'
+  gate_row 27 M allow 'git push --dry-run origin main'
+  gate_row 28 M allow 'git push -n origin main'
+  gate_row 29 X allow 'git push origin :main'
+  gate_row 30 X allow 'git push --delete origin main'
+  gate_row 31 X allow 'git push -d origin main'
+  gate_row 32 X plain 'git push --all origin'
+  gate_row 33 M plain 'git push --all origin'
+  gate_row 34 EQ plain 'git push --all origin'
+  gate_row 35 M plain 'git push --mirror origin'
+  gate_row 36 SB none 'git -C sub push origin main' 'main vs origin/main'
+  gate_row 37 SB none 'cd sub && git push' 'main vs origin/main'
+  gate_row 38 SB plain '(cd sub && git push origin main); git status'
+  gate_row 39 M plain 'cd "$(git rev-parse --show-toplevel)" && git push'
+  gate_row 40 M plain 'git add -A && git commit -m x && git push'
+  gate_row 41 X plain 'git add -A && git commit -m x && git push'
+  gate_row 42 M plain 'git commit --amend --no-edit && git push --force-with-lease origin main'
+  gate_row 43 X plain 'git checkout main && git push'
+  gate_row 44 M plain 'git merge feat/x && git push origin main'
+  gate_row 45 U2 plain 'git pull && git push'
+  gate_row 46 X plain 'git switch - && git push'
+  gate_row 47 M plain 'git push origin main && gh pr create --fill'
+  gate_row 48 M plain 'git commit -m "docs: gate git push to main"'
+  gate_row 49 M plain $'git commit -m "$(cat <<\'EOF\'\ngit push origin main\nEOF\n)"'
+  gate_row 50 X src 'git push origin "main"'
+  gate_row 51 M plain 'echo git push origin main'
+  gate_row 52 M plain 'FOO=1 git push'
+  gate_row 53 M plain 'AF_CODE_REVIEW_GATE=off git push'
+  gate_row 54 M plain 'sudo git push origin main'
+  gate_row 55 M plain 'sudo -u deploy git push origin main'
+  gate_row 56 M plain 'timeout 30 git push origin main'
+  gate_row 57 M plain 'git.exe push origin main'
+  gate_row 58 M plain '/usr/bin/git push origin main'
+  gate_row 59 M plain '& git push origin main'
+  gate_row 60 M plain "sh -c 'git push origin main'"
+  gate_row 61 M plain 'bash -c "git fetch && git push origin HEAD:main"'
+  gate_row 62 M plain 'eval "git push origin main"'
+  gate_row 63 M plain 'git push origin main "unbalanced'
+  gate_row 64 M allow 'git commit -m "unbalanced'
+  gate_row 65 DT src 'git push origin main'
+  gate_row 66 X none 'gh pr create --fill' 'gh pr create denied'
+  gate_row 67 X none 'gh pr create --draft --fill'
+  gate_row 68 X none 'gh pr create --web'
+  gate_row 69 X none 'gh pr create --base develop --fill' 'feat/x vs develop'
+  # changed in the first review round (S.3-bis d): a short-option cluster is not plain
+  gate_row 70 X plain 'gh pr create -Bdevelop --fill'
+  gate_row 71 X none 'gh pr create -b "text" --fill' 'feat/x vs main'
+  gate_row 72 X src 'gh pr create --head=other --fill'
+  gate_row 73 X src 'gh pr create --head owner:feat/x --fill'
+  gate_row 74 X allow 'gh pr create --dry-run'
+  gate_row 75 X allow 'gh pr view 12'
+  gate_row 76 X allow 'gh pr merge 12'
+  gate_row 77 X allow 'gh api repos/o/r/pulls -X POST'
+  gate_row 78 X none 'glab mr create --fill' 'glab mr create denied'
+  gate_row 79 X none 'glab mr new --fill'
+  gate_row 80 X none 'glab mr create --target-branch develop --fill' 'feat/x vs develop'
+  gate_row 81 X src 'glab mr create -s other --fill'
+  gate_row 82 X allow 'glab mr list'
+
+  # rows 83-96: PowerShell dialect (tool_name PowerShell)
+  oth_w="$(cygpath -w "$GF_OTH" 2>/dev/null || printf '%s' "$GF_OTH")"
+  gate_row_ps 83 M plain 'if ($?) { git push origin main }'
+  gate_row_ps 84 M plain 'try { git push origin main } catch { Write-Error $_ }'
+  gate_row_ps 85 M plain '$out = git push origin main 2>&1'
+  gate_row_ps 86 X plain '$url = gh pr create --fill'
+  gate_row_ps 87 M plain '$r = @(git push origin main)'
+  gate_row_ps 88 M plain 'foreach ($b in @("main")) { git push origin $b }'
+  gate_row_ps 89 M plain '. { git push origin main }'
+  gate_row_ps 90 M plain 'iex "git push origin main"'
+  gate_row_ps 91 X none "Set-Location '$oth_w'; git push origin main" 'main vs origin/main'
+  gate_row_ps 92 X none "cd $oth_w; git push origin main" 'main vs origin/main'
+  gate_row_ps 93 X none "git -C $oth_w push origin main" 'main vs origin/main'
+  gate_row_ps 94 M loc 'git -C C:\nope\x push origin main'
+  gate_row_ps 95 M plain $'echo hi\rgit push origin main'
+  gate_row_ps 96 M none 'git push origin “main”'
+
+  # rows 97-133: POSIX completeness, refspec forms, redirection, caps
+  r115=$(cat <<'EOF'
+echo $'\'' ; git push origin main ; echo \'
+EOF
+)
+  r118=$(cat <<'EOF'
+bash -c "bash -c 'git push origin main'"
+EOF
+)
+  r119=$(cat <<'EOF'
+git $'push' origin main
+EOF
+)
+  gate_row 97 M plain 'f() { git push origin main; }; f'
+  gate_row 98 M plain 'git push -u origin "$(git branch --show-current)"'
+  gate_row 99 X plain 'git push -u origin "$(git branch --show-current)"'
+  gate_row 100 M plain 'B=main; git push origin "$B"'
+  gate_row 101 X plain 'git push origin HEAD:"$B"'
+  gate_row 102 M none 'git push origin @'
+  gate_row 103 M none 'git push origin HEAD:heads/main'
+  gate_row 104 X plain 'git push origin :'
+  gate_row 105 M plain "git push origin 'refs/heads/*:refs/heads/*'"
+  gate_row 106 M plain 'git push --dry-run --no-dry-run origin main'
+  gate_row 107 M plain 'git push -d --no-delete origin main'
+  gate_row 108 X none 'gh pr new --fill'
+  gate_row 109 X plain 'git push --branches origin'
+  gate_row 110 X plain 'git -c push.default=matching push'
+  gate_row 111 X plain 'git -c remote.origin.push=HEAD:main push'
+  gate_row 112 X plain "GIT_DIR=$GF_OTH/.git git push"
+  gate_row 113 X plain "git --git-dir=$GF_OTH/.git push origin main"
+  GATE_HOME="$GF_HOME"
+  gate_row 114 X none 'cd ~/other && git push origin main' 'main vs origin/main'
+  GATE_HOME=""
+  gate_row 115 M plain "$r115"
+  gate_row 116 M plain $'echo $((1<<2))\ngit push origin main'
+  gate_row 117 M plain 'echo "$(case a in a) true ;; esac; git push origin main)"'
+  gate_row 118 M plain "$r118"
+  gate_row 119 M plain "$r119"
+  gate_row 120 M plain 'Git push origin main'
+  gate_row 121 M plain 'GIT.exe push origin main'
+  gate_row 122 M plain 'time -p git push origin main'
+  gate_row 123 M plain 'command -p git push origin main'
+  gate_row 124 M plain 'exec -a x git push origin main'
+  gate_row 125 M plain 'git update-ref refs/heads/main HEAD~1 && git push --force origin main'
+  gate_row 126 M plain 'gh pr checkout 5 && git push origin HEAD:main'
+  gate_row 127 BH none 'git push --force origin main'
+  gate_row 128 UP none 'git push' 'main vs upstream/main'
+  gate_row 129 PL norepo 'gh pr create -R owner/repo --head feat/x --base main --fill' 'gh pr create denied'
+  gate_row 130 X plain 'glab mr create --fill "unbalanced'
+
+  # 131: about 5 KB of chained decoys (under the 64 KB cap) is a chain: not plain
+  r131=""
+  for _i in $(seq 1 150); do r131="${r131}false && git push origin x; "; done
+  r131="${r131}git push origin main"
+  t0="$(gate_now_ms)"; gate_run r131 "$GF_M" "$r131"; t1="$(gate_now_ms)"; T131_MS=$((t1 - t0))
+  if [ "$T131_MS" -lt 15000 ]; then
+    gate_assert_deny "EDGE-001 row 131: 150 x 'false && git push origin x; ' then git push origin main: not plain, decided in ${T131_MS} ms (limit 15000)" "$GATE_PLAIN"
+  else
+    _fail "EDGE-001 row 131: 150 decoys then git push origin main" "took ${T131_MS} ms (limit 15000)"
+  fi
+  r132_word="$(head -c 102400 /dev/zero | tr '\0' a)"
+  t0="$(gate_now_ms)"; gate_run_big r132 "$GF_M" "git push origin main \"$r132_word\""; t1="$(gate_now_ms)"; T132_MS=$((t1 - t0))
+  if [ "$T132_MS" -lt 15000 ]; then
+    gate_assert_deny "EDGE-001 row 132: git push origin main then one 100 KB quoted word: size cap, decided in ${T132_MS} ms (limit 15000)" 'unresolvable' 'longer than 64 KB'
+  else
+    _fail "EDGE-001 row 132: git push origin main then a 100 KB word" "took ${T132_MS} ms (limit 15000)"
+  fi
+  gate_row 133 M plain 'if false; then :; elif git push origin main; then :; fi'
+
+  # rows 134-175
+  pl_w="$(cygpath -w "$GF_PL" 2>/dev/null || printf '%s' "$GF_PL")"
+  head_x="$(git -C "$GF_X" rev-parse HEAD)"
+  head_bh="$(git -C "$GF_BH" rev-parse HEAD)"
+  gate_row_ps 134 M plain 'if(1){git push origin main}'
+  gate_row_ps 135 M plain 'try{git push origin main}catch{}'
+  gate_row_ps 136 M plain '1|%{git push origin main }'
+  gate_row_ps 137 M plain '<# x #> git push origin main'
+  gate_row_ps 138 M plain $'$x = @"\na"\n"@; git push origin main # "'
+  gate_row_ps 139 X plain "git push origin ('HEAD:main')"
+  gate_row 140 M plain 'f(){ git push origin main;}; f'
+  gate_row 141 M plain 'f()(git push origin main); f'
+  gate_row 142 M plain 'case a in a) git "push" origin main;; esac'
+  gate_row 143 X plain 'case a in a) git push origin HEAD:main;; esac'
+  gate_row 144 M plain "false && cd $GF_PL; git push origin main"
+  gate_row 145 M plain "cd $GF_PL && cd - && git push origin main"
+  gate_row 146 M plain "pushd $GF_PL; popd; git push origin main"
+  gate_row 147 M loc "cd $GF_PL; git push origin main"
+  gate_row 148 M plain 'git push origin ma[i]n'
+  gate_row 149 M plain 'git push origin mai?'
+  GF_PC="$workdir/pc"; cp -R "$GF_X" "$GF_PC"; git -C "$GF_PC" config remote.origin.push HEAD:refs/heads/main
+  gate_row 150 "$GF_PC" none 'git push' 'feat/x vs origin/main'
+  gate_row 151 X plain "HOME=$GF_PL git push origin"
+
+  r152=""; dots="./"
+  for _i in $(seq 1 31); do r152="${r152}git -C $GF_X/$dots push; "; dots="$dots./"; done
+  r152="${r152}git -C $GF_OTH push origin main"
+  t0="$(gate_now_ms)"; gate_run r152 "$GF_M" "$r152"; t1="$(gate_now_ms)"; T152_MS=$((t1 - t0))
+  if [ "$T152_MS" -lt 8000 ]; then
+    gate_assert_deny "EDGE-001 row 152: 31 x 'git -C <repo>/./ push' (distinct spellings) then git -C <other> push origin main: not plain, decided in ${T152_MS} ms (limit 8000)" "$GATE_PLAIN"
+  else
+    _fail "EDGE-001 row 152: 31 chained -C pushes then git -C <other> push origin main" "took ${T152_MS} ms (limit 8000)"
+  fi
+
+  gate_row 153 M plain 'git $(printf push) origin main'
+  gate_row 154 M plain 'X=git; $X push origin main'
+  gate_row 155 M plain 'git pu${x}sh origin main'
+  gate_marker r156 APPROVED "$head_x" "feat/x vs main ($(git -C "$GF_X" rev-parse main)..$head_x); fallback: none"
+  gate_row 156 X stale 'gh pr create --base main --fill' 'not an ancestor of origin/main'
+  GF_RH="$workdir/rh"; cp -R "$GF_X" "$GF_RH"                     # origin/feat/x one commit ahead of HEAD
+  git -C "$GF_RH" checkout -q -b tmp157; gate_commit "$GF_RH" c4
+  git -C "$GF_RH" update-ref refs/remotes/origin/feat/x tmp157
+  git -C "$GF_RH" checkout -q feat/x; git -C "$GF_RH" branch -q -D tmp157
+  gate_real_marker r157 "$GF_RH" 'feat/x vs main' refs/remotes/origin/main
+  gate_row 157 "$GF_RH" stale 'gh pr create --fill' 'origin/feat/x'
+  gate_real_marker r158 "$GF_M" 'main vs origin/main' refs/remotes/origin/main
+  gate_row 158 M plain 'git fetch --update-head-ok . other:main && git push origin main'
+  gate_row 159 X plain "git -C $GF_OTH push origin "'"$(git branch --show-current)"'
+  gate_row 160 M plain 'git checkout . && git push'
+  gate_row 161 M plain 'git checkout README.md; git push'
+  gate_row 162 X plain 'git rebase feat/x main && git push'
+  gate_row 163 X plain 'git symbolic-ref HEAD refs/heads/main && git push'
+  # MSYS drive form /<drive>/...: cygpath -u would map a temp dir back to its /tmp mount
+  u2_msys="$(cygpath -m "$GF_U2" 2>/dev/null | sed -E 's#^([A-Za-z]):#/\L\1#')"
+  [ -n "$u2_msys" ] || u2_msys="$GF_U2"
+  gate_row 164 M allow "cd $u2_msys && git push"
+  gate_row 165 X plain 'echo main | xargs git push origin'
+  gate_marker r166 APPROVED "$head_bh" "main vs origin/main ($head_bh..$head_bh); fallback: none"
+  gate_row 166 BH stale 'git push --force origin main' 'is empty'
+  r167_body="$(yes 'a new line of text' | head -n 3700)"
+  gate_run_big r167 "$GF_M" "cat > out.txt <<'EOF'"$'\n'"$r167_body"$'\n'"EOF"
+  gate_assert_allow "EDGE-001 row 167: cat > out.txt <<'EOF' with a 70 KB body naming no push: oversize, allowed"
+  gate_row_ps 168 X allow 'git push -u origin feat/x *>&1'
+  gate_real_marker r169 "$GF_M" 'main vs origin/main' refs/remotes/origin/main
+  gate_row 169 M plain 'git branch -f main HEAD~1 && git push --force origin main'
+  gate_real_marker r170 "$GF_M" 'main vs origin/main' refs/remotes/origin/main
+  gate_row 170 M plain 'glab mr checkout 3 && git push origin HEAD:main'
+  gate_row 171 X plain "export GIT_DIR=$GF_OTH/.git; git push origin main"
+  gate_row_ps 172 X plain "\$env:GIT_DIR='$oth_w/.git'; git push origin main"
+  gate_row_ps 173 M plain "Push-Location '$pl_w'; Pop-Location; git push origin main"
+  gate_row_ps 174 X plain "chdir $oth_w; git push origin main"
+  gate_row_ps 175 M plain "if (\$false) { Set-Location '$pl_w' }; git push origin main"
+
+  # rows 176-201
+  GF_DM="$workdir/dm"; cp -R "$GF_X" "$GF_DM"; git -C "$GF_DM" checkout -q main   # main, dirty, feat/x differs
+  printf 'dirty\n' >> "$GF_DM/f.txt"
+  GF_Y="$workdir/y"; cp -R "$GF_X" "$GF_Y"; git -C "$GF_Y" checkout -q -b feat/y   # feat/y tracking origin/main
+  git -C "$GF_Y" config branch.feat/y.remote origin
+  git -C "$GF_Y" config branch.feat/y.merge refs/heads/main
+  GF_Y2="$workdir/y2"; cp -R "$GF_Y" "$GF_Y2"                                     # same, push.default unset
+  git -C "$GF_Y" config push.default upstream
+  GF_YR="$workdir/yr"; cp -R "$GF_X" "$GF_YR"; git -C "$GF_YR" checkout -q -b feat/y
+  git -C "$GF_YR" config remote.origin.push refs/heads/feat/y:refs/heads/main
+  GF_PL2="$workdir/plain2"; mkdir -p "$GF_PL2"
+  pl2_w="$(cygpath -w "$GF_PL2" 2>/dev/null || printf '%s' "$GF_PL2")"
+  gate_row 176 "$GF_DM" plain 'git checkout feat/x; git push'
+  gate_row 177 M plain 'git checkout -b feat/x; git push -u origin HEAD'
+  gate_row 178 X plain 'git checkout -Bmain && git push origin HEAD'
+  gate_row 179 X plain 'git switch --force-create=main && git push origin HEAD'
+  gate_row 180 "$GF_Y" none 'git push -u origin feat/y' 'feat/y vs origin/main'
+  gate_row 181 "$GF_Y2" plain 'git -c push.default=upstream push origin feat/y'
+  gate_row 182 "$GF_YR" none 'git push origin feat/y' 'feat/y vs origin/main'
+  gate_row 183 M plain $'false &&\n cd '"$GF_PL"$'\ngit push origin main'
+  gate_row 184 M plain $'echo x |\ncd '"$GF_PL"'; git push origin main'
+  gate_row 185 M plain "pushd $GF_PL; cd $GF_PL2; popd; git push origin main"
+  gate_row 186 M plain "cd $GF_PL; popd; git push origin main"
+  gate_row 187 X plain "eval \"cd $GF_OTH\"; git push origin main"
+  gate_row 188 M plain 'coproc git push origin main'
+  gate_row 189 M plain $'cat <<EOF\n$(git push origin main)\nEOF'
+  gate_row 190 M plain $'git p\\\nush origin main'
+  gate_row 191 M plain 'cmd=push; git $cmd origin main'
+  gate_real_marker r192 "$GF_M" 'main vs origin/main' refs/remotes/origin/main
+  gate_row 192 M plain 'git stash list && git push origin HEAD:main'
+  RUN_OUT="$(gate_payload r193 "$GF_U2" 'git push' | env SECONDS=100 CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"; RUN_RC=$?
+  gate_assert_allow "EDGE-001 row 193: git push (feat/x with upstream, SECONDS=100 in the hook environment)"
+  gate_row 194 X plain "GIT_DIR=$GF_OTH/.git gh pr create --fill"
+  gate_row_ps 195 M plain 'git checkout -b feat/x; git push -u origin HEAD'
+  gate_row_ps 196 M plain $'git rev-parse --verify --quiet nope &&\n Set-Location \''"$pl_w"$'\'\ngit push origin main'
+  gate_row_ps 197 M plain "Push-Location '$pl_w'; Set-Location '$pl2_w'; Pop-Location; git push origin main"
+
+  # 198: old git (< 2.31) rejects --end-of-options; the chain is denied before any git call.
+  # 199: a git that takes 9 s per call; the plain push runs out of the 8 s budget.
+  real_git="$(command -v git)"
+  if gate_mkbin "$workdir/oldgit" cat && gate_mkbin "$workdir/slowgit" cat; then
+    printf '#!/bin/sh\ncase " $* " in *" rev-parse "*" --end-of-options "*) echo "usage: git rev-parse [<options>] <args>..." >&2; exit 129 ;; esac\nexec "%s" "$@"\n' "$real_git" > "$workdir/oldgit/git"
+    printf '#!/bin/sh\nsleep 9\nexec "%s" "$@"\n' "$real_git" > "$workdir/slowgit/git"
+    chmod +x "$workdir/oldgit/git" "$workdir/slowgit/git"
+    RUN_OUT="$(gate_payload r198 "$GF_X" 'git checkout main && git push' | PATH="$workdir/oldgit:$PATH" CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"; RUN_RC=$?
+    gate_assert_deny "EDGE-001 row 198: git checkout main && git push (git wrapper rejecting rev-parse --end-of-options)" "$GATE_PLAIN"
+    t0="$(gate_now_ms)"
+    RUN_OUT="$(gate_payload r199 "$GF_M" 'git push origin main' | PATH="$workdir/slowgit:$PATH" CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"; RUN_RC=$?
+    t1="$(gate_now_ms)"; T199_MS=$((t1 - t0))
+    gate_assert_deny "EDGE-001 row 199: git push origin main (git wrapper sleeping 9 s per call): decided in ${T199_MS} ms" 'ran out of time'
+  else
+    _fail "EDGE-001 row 198: old-git wrapper fixture" "could not build the wrapper bin dir"
+    _fail "EDGE-001 row 199: slow-git wrapper fixture" "could not build the wrapper bin dir"
+  fi
+  gate_row 200 M plain 'git switch --create feat/z && git push -u origin HEAD'
+  # Row 201: a PowerShell backtick continuation before CRLF joins into "git push", so the
+  # text is a candidate; the backtick and the newline make it not plain.
+  gate_row_ps 201 M plain $'git pu`\r\nsh origin main'
+  rm -rf "$workdir"
+}
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-REQ004] unlock rule and deny wordings"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  gate_build_fixtures "$workdir"
+  head_x="$(git -C "$GF_X" rev-parse HEAD)"
+  other_sha='0123456789abcdef0123456789abcdef01234567'
+
+  gate_run rq1 "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 no marker: gh pr create denied with all five parts" \
+    'gh pr create' 'feat/x vs main' 'Agent tool' 'subagent_type: code-review-gatekeeper' \
+    'agentic-framework:code-review' 'VERDICT: APPROVED' 'AF_CODE_REVIEW_GATE=off' 'review is recorded'
+  dec_shape=$(printf '%s' "$RUN_OUT" | jq -c '[(.hookSpecificOutput|keys_unsorted), .hookSpecificOutput.hookEventName]' 2>/dev/null)
+  if [ "$dec_shape" = '[["hookEventName","permissionDecision","permissionDecisionReason"],"PreToolUse"]' ]; then _pass "REQ-004 deny JSON shape and key order"; else _fail "REQ-004 deny JSON shape" "$dec_shape"; fi
+  if printf '%s' "$RUN_OUT" | grep -q '[<>&]' ; then _fail "REQ-004 reason has no angle brackets or ampersands" "$RUN_OUT"; else _pass "REQ-004 reason has no angle brackets or ampersands"; fi
+  if printf '%s' "$RUN_OUT" | LC_ALL=C grep -q '[^ -~]'; then _fail "REQ-004 output is ASCII" "$RUN_OUT"; else _pass "REQ-004 output is ASCII"; fi
+
+  gate_run rq1b "$GF_X" 'git push origin HEAD:main'
+  gate_assert_deny "REQ-004 no marker: push names target with commit count" 'git push' 'feat/x vs origin/main (2 commits ahead)'
+
+  # a PR's reviewed range starts on the destination's remote-tracking ref (I-ter.8)
+  gate_real_marker rq2 "$GF_X" 'feat/x vs main' refs/remotes/origin/main
+  gate_run rq2 "$GF_X" 'gh pr create --fill'
+  gate_assert_allow "REQ-004 APPROVED marker at HEAD, base matches: gh pr create allowed"
+
+  gate_real_marker rq3 "$GF_X" "PR #7 $head_x vs origin/main" refs/remotes/origin/main
+  gate_run rq3 "$GF_X" 'git push origin HEAD:main'
+  gate_assert_allow "REQ-004 APPROVED 'PR #7 <sha> vs origin/main' marker: git push origin HEAD:main allowed"
+
+  gate_real_marker rq4 "$GF_X" 'feat/x vs main' refs/heads/main APPROVED "$other_sha"
+  gate_run rq4 "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 marker head differs from HEAD: denied as stale" 'stale' "$other_sha" "$head_x"
+
+  gate_real_marker rq5 "$GF_X" 'feat/x vs develop' refs/heads/main
+  gate_run rq5 "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 marker base differs from destination: denied naming both" 'Base mismatch' 'develop' 'main'
+
+  gate_marker rq6a APPROVED "$head_x" "uncommitted @ $head_x (3 files)"
+  gate_run rq6a "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 non-branch target 'uncommitted @': denied" 'did not cover the branch against its destination'
+  gate_marker rq6b APPROVED "$head_x" "paths a.sh b.sh @ $head_x"
+  gate_run rq6b "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 non-branch target 'paths ... @': denied" 'did not cover the branch against its destination'
+  gate_marker rq6c APPROVED "$head_x" "paths a.sh b.sh in PR #3 $head_x"
+  gate_run rq6c "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 non-branch target 'paths ... in PR': denied" 'did not cover the branch against its destination'
+  gate_marker rq6d APPROVED "$head_x" -
+  gate_run rq6d "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 marker with no target line: denied" 'did not cover the branch against its destination'
+
+  gate_real_marker rq7 "$GF_X" 'feat/x vs main' refs/heads/main CHANGES_REQUIRED
+  gate_run rq7 "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 CHANGES_REQUIRED at HEAD: wording asks to resolve findings and re-run" 'CHANGES_REQUIRED' 'Resolve every open finding' 're-run the review'
+
+  gate_run_env off rq8 "$GF_X" 'gh pr create --fill'
+  gate_assert_allow "REQ-004 AF_CODE_REVIEW_GATE=off allows gh pr create"
+  gate_run_env ' OFF ' rq8 "$GF_M" 'git push origin main'
+  gate_assert_allow "REQ-004 AF_CODE_REVIEW_GATE=' OFF ' (trimmed, case-insensitive) allows git push origin main"
+  gate_run_env on rq8 "$GF_X" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 AF_CODE_REVIEW_GATE=on does not disable the gate" 'review is recorded'
+
+  gate_run rq9 "$GF_M" 'AF_CODE_REVIEW_GATE=off git push'
+  gate_assert_deny "REQ-004 inline AF_CODE_REVIEW_GATE=off git push on main still denied (not a plain command, decision S)" "$GATE_PLAIN"
+
+  gate_run_raw 'this is not json {'
+  gate_assert_allow "REQ-004 malformed stdin: exit 0, empty output"
+  gate_run_raw "$(jq -cn --arg c "$GF_X" '{session_id:"rq10",cwd:$c,tool_name:"Bash",tool_input:{description:"x"}}')"
+  gate_assert_allow "REQ-004 payload without tool_input.command: exit 0, empty output"
+
+  # The multi-segment dangling-token cases (rq11a 'cd sub; git -C<LF>git push', rq11b
+  # 'echo ...; gh pr create --head') are withdrawn with the segment parser (decision S):
+  # chains are not plain. The plain dangling option stays.
+  gate_real_marker rq11b "$GF_X" 'feat/x vs main' refs/remotes/origin/main
+  gate_run rq11b "$GF_X" 'gh pr create --head'
+  gate_assert_allow "REQ-004 dangling 'gh pr create --head' reads an empty source"
+  gate_run rq11c "$GF_M" 'git -C'
+  gate_assert_allow "REQ-004 'git -C' alone names no push: not a candidate"
+  gate_run rq11d "$GF_M" 'git -C push'
+  gate_assert_deny "REQ-004 'git -C push' (dangling -C value, no push word after it): not plain" "$GATE_PLAIN"
+
+  # S.2 quoted literal tokens: banned characters inside a clean quoted string are data
+  gate_run rq12a "$GF_X" 'gh pr create --title "fix (x)" --fill'
+  gate_assert_deny "REQ-004 quoted title with parentheses is plain: no-marker deny" 'review is recorded'
+  gate_run rq12b "$GF_X" 'git push origin "main"'
+  gate_assert_deny "REQ-004 quoted refspec is plain: source-not-HEAD deny" 'checked-out commit'
+  gate_run rq12c "$GF_X" 'gh pr create --title "x; git push origin main" --fill'
+  gate_assert_deny "REQ-004 quoted title with ; and push text is data: no-marker deny" 'review is recorded'
+  gate_run rq12d "$GF_X" 'gh pr create --title "$T" --fill'
+  gate_assert_deny "REQ-004 quoted title with a variable is not plain" "$GATE_PLAIN"
+  gate_run rq12f "$GF_M" 'git push origin "refs/heads/*:refs/heads/*"'
+  gate_assert_deny "REQ-004 quoted wildcard refspec is not plain" "$GATE_PLAIN"
+  gate_run rq12g "$GF_X" 'git push origin "feat/x:main"'
+  gate_assert_deny "REQ-004 quoted literal refspec stays plain: no-marker deny" 'review is recorded'
+  gate_run rq12e "$GF_X" "sh -c 'git push origin main'"
+  gate_assert_deny "REQ-004 sh -c wrapper with quoted push is not plain" "$GATE_PLAIN"
+
+  # W_PLAIN wording verbatim
+  gate_run rq13 "$GF_M" 'git add -A && git commit -m x && git push'
+  gate_assert_deny "REQ-004 W_PLAIN sentence verbatim" \
+    'The command text is not a plain push or pull request command. The gate allows a push or a PR/MR creation only as its own command with literal names: git push REMOTE REFSPEC, gh pr create ..., glab mr create ..., optionally after one cd DIR (joined by a double ampersand or a semicolon) or as git -C DIR push. Split chained commands, variables, substitutions, wrappers and scripts into separate plain commands; pass a multi-line PR body with --body-file. If this command is not a push or a PR creation, its text still mentions one: reword it or move the text to a file.'
+
+  # --- first review round of decision S (S.1 two spellings, S.3-bis a to l) ---
+  # S.1: non-candidates pass with no git call
+  gate_run rqa1 "$GF_M" 'git stash push -m wip'
+  gate_assert_allow "REQ-004 S.1 'git stash push -m wip' is not a candidate"
+  gate_run rqa2 "$GF_M" 'git config push.default simple'
+  gate_assert_allow "REQ-004 S.1 'git config push.default simple' is not a candidate"
+  gate_run rqa3 "$GF_M" 'gh issue create --title x'
+  gate_assert_allow "REQ-004 S.1 'gh issue create --title x' is not a candidate"
+  # S.1: the second spelling (only ${ and } removed) and curly quotes / $' make candidates
+  while IFS= read -r gcase; do
+    [ -n "$gcase" ] || continue
+    gate_run rqa4 "$GF_M" "$gcase"
+    gate_assert_deny "REQ-004 S.1 candidate in a second spelling is not plain: $gcase" "$GATE_PLAIN"
+  done <<'GCASES'
+${GIT:-git} push origin main
+git ${CMD:-push} origin main
+gh pr ${C:-create} --fill
+echo '${'; git push origin HEAD:main; echo '}'
+echo ${x:-$(git push origin HEAD:main)}
+git pu${x}sh origin main
+git pu$''sh origin main
+GCASES
+  gate_run rqa5 "$GF_M" $'git p\xe2\x80\x9c\xe2\x80\x9dush origin main'
+  gate_assert_deny "REQ-004 S.1 curly quotes inside the word push still make a candidate" "$GATE_PLAIN"
+
+  # S.2 / S.3-bis: session id sanitised before the candidate and size tests
+  big_cmd="git push origin $(head -c 70000 /dev/zero | tr '\0' a)"
+  gate_run_big '' "$GF_M" "$big_cmd"
+  gate_assert_allow "REQ-004 S.2 oversize candidate with an empty session id exits 0 silently"
+  gate_run_big '!!!' "$GF_M" "$big_cmd"
+  gate_assert_allow "REQ-004 S.2 oversize candidate with session id '!!!' exits 0 silently"
+
+  # S.3: ~user and a quoted tilde directory are not plain (Bash does not expand a quoted tilde)
+  gate_run rqa6 "$GF_M" 'cd ~root && git push origin main'
+  gate_assert_deny "REQ-004 S.3 cd ~user is not plain" "$GATE_PLAIN"
+  gate_run rqa7 "$GF_M" 'cd "~/x" && git push origin main'
+  gate_assert_deny "REQ-004 S.3 Bash quoted cd \"~/x\" is not plain" "$GATE_PLAIN"
+  gate_run rqa7b "$GF_M" "git -C '~/x' push origin main"
+  gate_assert_deny "REQ-004 S.3 Bash quoted git -C '~/x' is not plain" "$GATE_PLAIN"
+
+  # S.3-bis b: an empty quoted value is one literal token
+  gate_run rqa8 "$GF_X" 'gh pr create --title "x" --body ""'
+  gate_assert_deny "REQ-004 S.3-bis empty double-quoted --body is plain: no-marker deny" 'review is recorded'
+  gate_run rqa8b "$GF_X" "gh pr create --title x --body ''"
+  gate_assert_deny "REQ-004 S.3-bis empty single-quoted --body is plain: no-marker deny" 'review is recorded'
+
+  # S.3-bis c: PowerShell option values and high bytes
+  GATE_TOOL=PowerShell
+  gate_run rqa9 "$GF_X" $'git push --force-with-lease=a\xc2\xa0b origin main'
+  gate_assert_deny "REQ-004 S.3-bis PowerShell NBSP inside --force-with-lease= is not plain" "$GATE_PLAIN"
+  gate_run rqa9b "$GF_X" $'git push -o "a\\ \xc2\xa0b" origin main'
+  gate_assert_deny "REQ-004 S.3-bis PowerShell NBSP inside an unclean quoted -o value is not plain" "$GATE_PLAIN"
+  GATE_TOOL=Bash
+
+  # S.3-bis d, l: short-option clusters, --dry-run=<value>
+  gate_run rqa10 "$GF_X" 'gh pr create -fHother'
+  gate_assert_deny "REQ-004 S.3-bis gh short-option cluster -fHother is not plain" "$GATE_PLAIN"
+  gate_run rqa10b "$GF_X" 'gh pr create -dB develop'
+  gate_assert_deny "REQ-004 S.3-bis gh short-option cluster -dB is not plain" "$GATE_PLAIN"
+  gate_run rqa11 "$GF_X" 'gh pr create --dry-run --dry-run=false'
+  gate_assert_deny "REQ-004 S.3-bis gh --dry-run then --dry-run=false is not plain" "$GATE_PLAIN"
+  gate_run rqa11b "$GF_X" 'gh pr create --recover -B --fill'
+  gate_assert_deny "REQ-004 S.3-bis l,r --recover consumes '-B' as its value, so -B does not swallow --fill: target feat/x vs main" 'review is recorded' 'feat/x vs main'
+  # round 3 (S.3-bis v): glab value-taking options that are not the branches
+  gate_run rqa11c "$GF_X" 'glab mr create -H -b --target-branch develop'
+  gate_assert_deny "REQ-004 S.3-bis v glab -H consumes '-b' as its value: target feat/x vs develop" 'review is recorded' 'feat/x vs develop'
+  gate_run rqa11d "$GF_X" 'glab mr create -i 12 --fill'
+  gate_assert_deny "REQ-004 S.3-bis v glab -i takes an issue number, not a branch: target feat/x vs main" 'review is recorded' 'feat/x vs main'
+
+  # S.3-bis f: map_ref follows query_refspecs (a colon-less remote.<r>.push entry is skipped)
+  GF_CL="$workdir/cl"; cp -R "$GF_X" "$GF_CL"
+  git -C "$GF_CL" checkout -q -b feat/y
+  git -C "$GF_CL" config branch.feat/y.remote origin
+  git -C "$GF_CL" config branch.feat/y.merge refs/heads/main
+  git -C "$GF_CL" config push.default upstream
+  git -C "$GF_CL" config remote.origin.push refs/heads/feat/y
+  gate_run rqa12 "$GF_CL" 'git push origin feat/y'
+  gate_assert_deny "REQ-004 S.3-bis colon-less remote.origin.push entry is skipped: bare feat/y remaps through upstream to main" 'review is recorded' 'origin/main'
+
+  # S.3-bis h: more than one colon in a refspec
+  gate_run rqa13 "$GF_X" 'git push origin :/c3:main'
+  gate_assert_deny "REQ-004 S.3-bis refspec with two colons is not plain" "$GATE_PLAIN"
+
+  # S.3-bis i: a UNC directory is decided before any filesystem access
+  t_unc0=$(gate_now_ms)
+  gate_run rqa14 "$GF_X" 'cd //192.0.2.7/x; git push origin HEAD:main'
+  t_unc=$(( $(gate_now_ms) - t_unc0 ))
+  if [ "$t_unc" -lt 3000 ]; then gate_assert_deny "REQ-004 S.3-bis UNC cd //host/x is not plain, decided in ${t_unc} ms (limit 3000)" "$GATE_PLAIN"
+  else _fail "REQ-004 S.3-bis UNC cd //host/x" "took ${t_unc} ms (limit 3000)"; fi
+  gate_run rqa14b "$GF_X" 'git -C //192.0.2.7/x push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis UNC git -C //host/x is not plain" "$GATE_PLAIN"
+
+  # S.3-bis j: repository state of the push fail-open
+  GF_OR="$workdir/orph"; cp -R "$GF_X" "$GF_OR"; git -C "$GF_OR" checkout -q --orphan orph
+  gate_run rqa15 "$GF_OR" 'git push origin feat/x:main'
+  gate_assert_deny "REQ-004 S.3-bis unborn HEAD in a repository with refs: source-not-HEAD rule applies" 'checked-out commit'
+  GF_EMPTY="$workdir/empty"; mkdir -p "$GF_EMPTY"; git -C "$GF_EMPTY" init -q -b main
+  gate_run rqa16 "$GF_EMPTY" 'git push origin feat/x:main'
+  gate_assert_allow "REQ-004 S.3-bis repository with no refs at all stays fail-open"
+  GF_BARE="$workdir/bare.git"; git init -q --bare -b main "$GF_BARE"
+  gate_run rqa17 "$GF_BARE" 'git push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis bare repository cwd is gated: W_LOC" 'does not exist or is not a git work tree'
+  gate_run rqa18 "$GF_X/.git" 'git push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis cwd inside .git is gated: W_LOC" 'does not exist or is not a git work tree'
+
+  # S.3-bis k: the deadline is checked inside the argument loops
+  q_cmd="git push$(i=0; while [ "$i" -lt 21300 ]; do printf ' -q'; i=$((i + 1)); done)"
+  tq0=$(gate_now_ms)
+  gate_run_big rqa19 "$GF_X" "$q_cmd"
+  tq=$(( $(gate_now_ms) - tq0 ))
+  if [ "$tq" -ge 15000 ]; then _fail "REQ-004 S.3-bis git push + 21300 x -q" "took ${tq} ms (limit 15000)"
+  elif [ -z "$RUN_OUT" ] && [ "$RUN_RC" -eq 0 ]; then _pass "REQ-004 S.3-bis git push + 21300 x -q: decided plain in ${tq} ms (under the 8 s budget on this host; limit 15000)"
+  else gate_assert_deny "REQ-004 S.3-bis git push + 21300 x -q: W_TIME in ${tq} ms (limit 15000)" 'ran out of time'; fi
+
+  # --- second review round of decision S (S.3-bis i, j, m to u) ---
+  # item 1: the stash exclusion needs both previous words to be exactly 'git stash'
+  mkdir -p "$workdir/sd"; cp -R "$GF_X" "$workdir/sd/stash"
+  gate_run rqb1 "$workdir/sd" 'git -C stash push origin main'
+  gate_assert_deny "REQ-004 S.1 'git -C stash push origin main' is a candidate (relative stash dir, judged: source-not-HEAD)" 'checked-out commit'
+  gate_run rqb1b "$GF_M" "git -C $workdir/sd/stash push origin main"
+  gate_assert_deny "REQ-004 S.1 'git -C <abs>/stash push origin main' is a candidate (judged: source-not-HEAD)" 'checked-out commit'
+  gate_run rqb1c "$GF_M" 'git -c a.b=stash push origin main'
+  gate_assert_deny "REQ-004 S.1 'git -c a.b=stash push origin main' is a candidate and not plain" "$GATE_PLAIN"
+  gate_run rqb1d "$GF_M" 'git stash push -m wip'
+  gate_assert_allow "REQ-004 S.1 'git stash push -m wip' stays a non-candidate"
+  # round 3 (S.1): the stash exemption is anchored to the start of the text
+  gate_run rqs1 "$GF_M" 'git -C git/stash push origin main'
+  gate_assert_deny "REQ-004 S.1 anchored: 'git -C git/stash push origin main' is a candidate (judged: W_LOC, no such dir)" 'does not exist or is not a git work tree'
+  gate_run rqs2 "$GF_M" 'git stash push; git push origin main'
+  gate_assert_deny "REQ-004 S.1 anchored: 'git stash push; git push origin main' is not plain" "$GATE_PLAIN"
+  gate_run rqs3 "$GF_M" 'cd x && git stash push'
+  gate_assert_deny "REQ-004 S.1 anchored: 'cd x && git stash push' is a candidate and not plain" "$GATE_PLAIN"
+  gate_run rqs4 "$GF_M" 'echo; git stash push'
+  gate_assert_deny "REQ-004 S.1 anchored: 'echo; git stash push' is a candidate and not plain" "$GATE_PLAIN"
+  gate_run rqs5 "$GF_M" 'git stash push;'
+  gate_assert_allow "REQ-004 S.1 anchored: 'git stash push;' begins with git stash push and is not a candidate"
+  gate_run rqs6 "$GF_M" 'git stash push|cat'
+  gate_assert_allow "REQ-004 S.1 anchored: 'git stash push|cat' is not a candidate"
+  gate_run rqs7 "$GF_M" 'git/stash push'
+  gate_assert_allow "REQ-004 S.1 anchored: 'git/stash push' is not a candidate (words are runs bounded by non-alphanumerics)"
+
+  # item 2: the candidate test strips U+201A, U+201B and U+201E too
+  GATE_TOOL=PowerShell
+  gate_run rqb2 "$GF_M" $'git pu\xe2\x80\x9e\xe2\x80\x9esh origin main'
+  gate_assert_deny "REQ-004 S.1 PowerShell git pu<U+201E><U+201E>sh is a candidate (the tokenizer maps it to push: judged)" 'review is recorded'
+  gate_run rqb2b "$GF_M" $'git pu\xe2\x80\x9a\xe2\x80\x9bsh origin main'
+  gate_assert_deny "REQ-004 S.1 PowerShell git pu<U+201A><U+201B>sh is a candidate (judged)" 'review is recorded'
+  GATE_TOOL=Bash
+  gate_run rqb2c "$GF_M" $'git pu\xe2\x80\x9e\xe2\x80\x9esh origin main'
+  gate_assert_deny "REQ-004 S.1 Bash git pu<U+201E><U+201E>sh is a candidate and not plain" "$GATE_PLAIN"
+  gate_run rqb2d "$GF_M" $'git pu\xe2\x80\x9a\xe2\x80\x9bsh origin main'
+  gate_assert_deny "REQ-004 S.1 Bash git pu<U+201A><U+201B>sh is a candidate and not plain" "$GATE_PLAIN"
+
+  # item 3 (S.3-bis s): the candidate test is linear; 300 KB of short words ending in a push
+  big2="$(awk 'BEGIN { for (i = 0; i < 75000; i++) printf "ab c "; printf "git push origin main" }')"
+  t_big0=$(gate_now_ms)
+  gate_run_big rqb3 "$GF_M" "$big2"
+  t_big=$(( $(gate_now_ms) - t_big0 ))
+  if [ "$t_big" -lt 5000 ]; then gate_assert_deny "REQ-004 S.3-bis s 300 KB of short words ending in git push: W_SIZE in ${t_big} ms (limit 5000)" 'longer than 64 KB'
+  else _fail "REQ-004 S.3-bis s 300 KB candidate" "took ${t_big} ms (limit 5000)"; fi
+  big2=""
+  # 300 KB of ${x}a ending in a push: the ${...} deletion must stay linear too (S.3-bis s)
+  big3="$(awk 'BEGIN { for (i = 0; i < 60000; i++) printf "${x}a"; printf " git push origin main" }')"
+  t_big0=$(gate_now_ms)
+  gate_run_big rqb3b "$GF_M" "$big3"
+  t_big=$(( $(gate_now_ms) - t_big0 ))
+  if [ "$t_big" -lt 5000 ]; then gate_assert_deny "REQ-004 S.3-bis s 300 KB of \${x}a ending in git push: W_SIZE in ${t_big} ms (limit 5000)" 'longer than 64 KB'
+  else _fail "REQ-004 S.3-bis s 300 KB brace candidate" "took ${t_big} ms (limit 5000)"; fi
+  big3=""
+
+  # item 4 (S.3-bis i): mixed-separator UNC directories are decided before any filesystem access
+  t_unc0=$(gate_now_ms)
+  gate_run rqb4 "$GF_X" "cd '\\/192.0.2.7/x'; git push origin HEAD:main"
+  gate_assert_deny "REQ-004 S.3-bis i Bash cd '\\/host/x' is not plain" "$GATE_PLAIN"
+  gate_run rqb4b "$GF_X" "cd '/\\192.0.2.7\\x'; git push origin HEAD:main"
+  gate_assert_deny "REQ-004 S.3-bis i Bash cd '/\\host\\x' is not plain" "$GATE_PLAIN"
+  GATE_TOOL=PowerShell
+  gate_run rqb4c "$GF_X" 'git -C \/192.0.2.7/x push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis i PowerShell git -C \\/host/x is not plain" "$GATE_PLAIN"
+  gate_run rqb4d "$GF_X" 'Set-Location /\192.0.2.7\x; git push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis i PowerShell Set-Location /\\host\\x is not plain" "$GATE_PLAIN"
+  GATE_TOOL=Bash
+  t_unc=$(( $(gate_now_ms) - t_unc0 ))
+  if [ "$t_unc" -lt 8000 ]; then _pass "REQ-004 S.3-bis i four mixed-separator UNC rows decided in ${t_unc} ms (limit 8000)"
+  else _fail "REQ-004 S.3-bis i mixed-separator UNC rows" "took ${t_unc} ms (limit 8000)"; fi
+
+  # item 5 (S.3-bis m): a leading slash is Bash-dialect only; ~\ is accepted like ~/
+  gate_run rqb5 "$GF_M" 'cd / && git push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis m Bash cd / is plain and judged: W_LOC" 'does not exist or is not a git work tree'
+  GATE_TOOL=PowerShell
+  gate_run rqb5b "$GF_M" 'cd /; git push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis m PowerShell cd / is not plain" "$GATE_PLAIN"
+  GATE_HOME="$GF_HOME"
+  gate_run rqb5c "$GF_M" 'cd ~\other; git push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis m PowerShell cd ~\\other is accepted like ~/other: judged" 'review is recorded'
+  GATE_HOME=""
+  GATE_TOOL=Bash
+
+  # item 6 (S.3-bis n): a quote before the first unquoted slash stops the tilde expansion
+  for tcase in 'cd ~"/x" && git push origin main' 'cd ""~/x && git push origin main' 'cd ~""/x && git push origin main'; do
+    gate_run rqb6 "$GF_M" "$tcase"
+    gate_assert_deny "REQ-004 S.3-bis n Bash quoted tilde is not plain: $tcase" "$GATE_PLAIN"
+  done
+  GATE_HOME="$GF_HOME"
+  gate_run rqb6b "$GF_M" 'cd ~/"other" && git push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis n Bash quote after the first slash keeps the tilde: judged" 'review is recorded'
+  GATE_HOME=""
+
+  # item 7 (S.3-bis t): a PowerShell word that begins with a quoted string may not continue
+  GATE_TOOL=PowerShell
+  gate_run rqb7 "$GF_X" 'git push origin "feat"main'
+  gate_assert_deny "REQ-004 S.3-bis t PowerShell \"feat\"main is not plain" "$GATE_PLAIN"
+  gate_run rqb7b "$GF_X" "git push origin 'x'main"
+  gate_assert_deny "REQ-004 S.3-bis t PowerShell 'x'main is not plain" "$GATE_PLAIN"
+  gate_run rqb7c "$GF_X" 'git push origin "feat/x"'
+  gate_assert_allow "REQ-004 S.3-bis t PowerShell a whole quoted word stays plain (feat/x is not gated)"
+  GATE_TOOL=Bash
+
+  # push_val (S.3-bis c, r): the push alphabet for option values in the PowerShell dialect;
+  # the value holds no high byte, so only push_val catches it
+  GATE_TOOL=PowerShell
+  gate_run rqb8 "$GF_X" 'git push -o "a b" origin feat/x'
+  gate_assert_deny "REQ-004 S.3-bis r PowerShell -o \"a b\" is not plain (push_val)" "$GATE_PLAIN"
+  gate_run rqb8b "$GF_X" "git push '--force-with-lease=a b' origin feat/x"
+  gate_assert_deny "REQ-004 S.3-bis r PowerShell '--force-with-lease=a b' is not plain (push_val)" "$GATE_PLAIN"
+  gate_run rqb8c "$GF_X" 'git push -o ab origin feat/x'
+  gate_assert_allow "REQ-004 S.3-bis r PowerShell -o ab (inside the alphabet) stays plain: not gated"
+  GATE_TOOL=Bash
+  gate_run rqb8d "$GF_X" 'git push -o "a b" origin feat/x'
+  gate_assert_allow "REQ-004 S.3-bis r Bash -o \"a b\" is plain: not gated (push_val is PowerShell-only)"
+
+  # item 8 (S.3-bis o, r): W_REFMAP
+  GF_RM="$workdir/rm"; cp -R "$GF_X" "$GF_RM"
+  git -C "$GF_RM" config remote.origin.push 'refs/heads/feat/x:refs/heads/main'
+  git -C "$GF_RM" config --add remote.origin.push '^refs/heads/zzz'
+  gate_run rqb9 "$GF_RM" 'git push origin feat/x'
+  gate_assert_deny "REQ-004 S.3-bis o a ^ entry after a matching positive entry denies W_REFMAP" 'does not name a single destination branch'
+  git -C "$GF_RM" config --unset-all remote.origin.push
+  git -C "$GF_RM" config remote.origin.push '^refs/heads/zzz'
+  gate_run rqb9b "$GF_RM" 'git push origin feat/x'
+  gate_assert_deny "REQ-004 S.3-bis o a lone non-matching ^ entry denies W_REFMAP" 'does not name a single destination branch'
+  git -C "$GF_RM" config --unset-all remote.origin.push
+  git -C "$GF_RM" config remote.origin.push 'refs/heads/*:refs/heads/main'
+  gate_run rqb9c "$GF_RM" 'git push origin feat/x'
+  gate_assert_deny "REQ-004 S.3-bis r a pattern entry with an unresolvable destination denies W_REFMAP" 'does not name a single destination branch'
+  git -C "$GF_RM" config --unset-all remote.origin.push
+  git -C "$GF_RM" config remote.origin.push 'refs/heads/feat/x:refs/heads/main'
+  gate_run rqb9d "$GF_RM" 'git push origin feat/x'
+  gate_assert_deny "REQ-004 S.3-bis o a plain mapping entry still resolves (to main): no-marker deny" 'review is recorded' 'origin/main'
+
+  # item 9 (S.3-bis j, u): an unborn HEAD in a repository with other refs
+  gate_run rqb10 "$GF_OR" 'git push origin HEAD:main'
+  gate_assert_deny "REQ-004 S.3-bis j,x unborn HEAD: HEAD:main gets the source-not-HEAD wording with the no-commit clause" 'checked-out commit' 'is not HEAD (this branch has no commit yet). Check the source out first, then review and push.'
+  gate_run rqb10b "$GF_OR" 'gh pr create --head feat --fill'
+  gate_assert_deny "REQ-004 S.3-bis u unborn HEAD: gh pr create --head feat denies with the source-not-HEAD wording" 'checked-out commit' 'feat'
+  gate_run rqb10c "$GF_OR" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 S.3-bis u unborn HEAD: gh pr create --fill denies with the source-not-HEAD wording" 'checked-out commit'
+  gate_run rqb10d "$GF_EMPTY" 'git push origin HEAD:main'
+  gate_assert_allow "REQ-004 S.3-bis j repository with no refs at all: HEAD:main stays fail-open"
+  gate_run rqb10e "$GF_EMPTY" 'gh pr create --fill'
+  gate_assert_deny "REQ-004 S.3-bis u repository with no refs at all: gh pr create denies W_NOREPO" 'not a git work tree' 'HEAD vs its destination'
+  # round 3 (S.3-bis w): drive-relative and root-relative directories are not plain
+  GATE_TOOL=PowerShell
+  gate_run rqw1 "$GF_M" 'cd C:; git push origin main'
+  gate_assert_deny "REQ-004 S.3-bis w [PowerShell] 'cd C:; git push origin main' is not plain" "$GATE_PLAIN"
+  gate_run rqw3 "$GF_M" 'git -C \repo push origin main'
+  gate_assert_deny "REQ-004 S.3-bis w [PowerShell] 'git -C \\repo push origin main' is not plain" "$GATE_PLAIN"
+  gate_run rqw4 "$GF_M" 'cd D:; git push origin main'
+  gate_assert_deny "REQ-004 S.3-bis w [PowerShell] 'cd D:; git push origin main' is not plain" "$GATE_PLAIN"
+  GATE_TOOL=Bash
+  gate_run rqw2 "$GF_M" 'cd C:repo && git push origin main'
+  gate_assert_deny "REQ-004 S.3-bis w 'cd C:repo && git push origin main' is not plain" "$GATE_PLAIN"
+  gm_m="$(cygpath -m "$GF_M" 2>/dev/null || printf '%s' "$GF_M")"
+  gate_run rqw5 "$GF_M" "cd $gm_m && git push origin HEAD:main"
+  gate_assert_deny "REQ-004 S.3-bis w positive control: 'cd <C:/repo> && git push origin HEAD:main' reaches the no-marker deny" 'review is recorded'
+  rm -rf "$workdir"
+}
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE002] marker from an earlier HEAD"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  gate_mkrepo "$workdir/r" main
+  git -C "$workdir/r" checkout -q feat/x
+  old_head="$(git -C "$workdir/r" rev-parse HEAD)"
+  gate_real_marker e2 "$workdir/r" 'feat/x vs main' refs/remotes/origin/main
+  gate_run e2 "$workdir/r" 'gh pr create --fill'
+  gate_assert_allow "EDGE-002 control: marker at HEAD allows"
+  gate_commit "$workdir/r" c-after-review
+  new_head="$(git -C "$workdir/r" rev-parse HEAD)"
+  gate_run e2 "$workdir/r" 'gh pr create --fill'
+  gate_assert_deny "EDGE-002 commit after the review: denied, reason says stale and names both shas" 'stale' "$old_head" "$new_head"
+  gate_run e2 "$workdir/r" 'git push origin HEAD:main'
+  gate_assert_deny "EDGE-002 same marker, push to main: denied as stale" 'stale' "$old_head" "$new_head"
+
+  # head= equals HEAD, but the reviewed range ends at the earlier commit (a background review
+  # that finished after a new commit)
+  gate_marker e2r1 APPROVED "$new_head" "feat/x vs main ($old_head..$old_head); fallback: none"
+  gate_run e2r1 "$workdir/r" 'gh pr create --fill'
+  gate_assert_deny "EDGE-002 head= is HEAD but the range ends at an earlier sha: denied as stale" 'stale' "$old_head" "$new_head"
+  # a PR #<n> target whose head sha is not HEAD
+  gate_marker e2r2 APPROVED "$new_head" "PR #9 $old_head vs main ($old_head..$old_head); fallback: none"
+  gate_run e2r2 "$workdir/r" 'gh pr create --fill'
+  gate_assert_deny "EDGE-002 'PR #9 <sha>' target whose head sha is not HEAD: denied as stale" 'stale' "$old_head"
+  # an empty range (x..x) while commits are ahead of the destination
+  gate_marker e2r3 APPROVED "$new_head" "feat/x vs main ($new_head..$new_head); fallback: none"
+  gate_run e2r3 "$workdir/r" 'gh pr create --fill'
+  gate_assert_deny "EDGE-002 empty range x..x while commits are ahead: denied as stale" 'stale' 'is empty'
+  rm -rf "$workdir"
+}
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE003] marker from a non-branch review or another base"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  gate_mkrepo "$workdir/r" main
+  git -C "$workdir/r" checkout -q feat/x
+  git -C "$workdir/r" update-ref refs/remotes/origin/master "$(git -C "$workdir/r" rev-parse main~1)"
+  h="$(git -C "$workdir/r" rev-parse HEAD)"
+  no_cover='did not cover the branch against its destination'
+  gate_marker e3a APPROVED "$h" "uncommitted @ $h (2 files)"
+  gate_run e3a "$workdir/r" 'git push origin HEAD:main'
+  gate_assert_deny "EDGE-003 'uncommitted @ <sha>' target: denied, branch not covered" "$no_cover"
+  gate_marker e3b APPROVED "$h" "paths src/a.sh src/b.sh @ $h"
+  gate_run e3b "$workdir/r" 'git push origin HEAD:main'
+  gate_assert_deny "EDGE-003 'paths <list> @ <sha>' target: denied, branch not covered" "$no_cover"
+  gate_marker e3c APPROVED "$h" "paths src/a.sh in PR #4 $h"
+  gate_run e3c "$workdir/r" 'git push origin HEAD:main'
+  gate_assert_deny "EDGE-003 'paths <list> in PR #<n> <sha>' target: denied, branch not covered" "$no_cover"
+  gate_marker e3d APPROVED "$h" -
+  gate_run e3d "$workdir/r" 'git push origin HEAD:main'
+  gate_assert_deny "EDGE-003 no target line: denied, branch not covered" "$no_cover"
+
+  gate_real_marker e3e "$workdir/r" 'feat/x vs origin/main' refs/remotes/origin/main
+  gate_run e3e "$workdir/r" 'git push origin HEAD:master'
+  gate_assert_deny "EDGE-003 'feat/x vs origin/main' marker does not unlock push to master: names both" 'Base mismatch' 'origin/main' 'master'
+  gate_run e3e "$workdir/r" 'gh pr create --base develop'
+  gate_assert_deny "EDGE-003 'feat/x vs origin/main' marker does not unlock gh pr create --base develop: names both" 'Base mismatch' 'origin/main' 'develop'
+  gate_run e3e "$workdir/r" 'git push origin HEAD:main'
+  gate_assert_allow "EDGE-003 control: 'feat/x vs origin/main' marker unlocks push to main (remote prefix removed)"
+
+  git -C "$workdir/r" branch release/1.0 main~1
+  # the PR's base must have a remote-tracking ref to start from (I-ter.8)
+  git -C "$workdir/r" update-ref refs/remotes/origin/release/1.0 "$(git -C "$workdir/r" rev-parse main~1)"
+  gate_real_marker e3f "$workdir/r" 'feat/x vs release/1.0' refs/remotes/origin/release/1.0
+  gate_run e3f "$workdir/r" 'gh pr create --base release/1.0'
+  gate_assert_allow "EDGE-003 'feat/x vs release/1.0' marker unlocks gh pr create --base release/1.0"
+  rm -rf "$workdir"
+}
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE004] source is not the checked-out commit"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  gate_build_fixtures "$workdir"
+  src_msg='checked-out commit'
+  gate_run e4a "$GF_X" 'git push origin feat/y:main'
+  gate_assert_deny "EDGE-004 git push origin feat/y:main on feat/x: source not checked out" "$src_msg" 'Check the source out first'
+  gate_run e4b "$GF_X" 'git push origin main'
+  gate_assert_deny "EDGE-004 git push origin main on feat/x (different sha): source not checked out" "$src_msg"
+  gate_run e4b2 "$GF_XS" 'git push origin main'
+  gate_assert_deny "EDGE-004 git push origin main on feat/x at main's sha: source not checked out" "$src_msg"
+  gate_run e4c "$GF_X" 'gh pr create --head other --fill'
+  gate_assert_deny "EDGE-004 gh pr create --head other: source not checked out" "$src_msg"
+
+  head_x="$(git -C "$GF_X" rev-parse HEAD)"
+  gate_real_marker e4d "$GF_X" 'feat/x vs origin/main' refs/remotes/origin/main
+  gate_run e4d "$GF_X" 'git push origin feat/x:main'
+  gate_assert_allow "EDGE-004 clean feat/x:main with an APPROVED matching marker: allowed (source is HEAD)"
+  gate_run e4e "$GF_DIRTY" 'git push origin feat/x:main'
+  gate_assert_deny "EDGE-004 dirty feat/x:main, no marker: the no-marker denial (dirty tree irrelevant)" 'review is recorded'
+  rm -rf "$workdir"
+}
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE005] nothing to push"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  gate_mkrepo "$workdir/r" main
+  git -C "$workdir/r" update-ref refs/remotes/origin/main "$(git -C "$workdir/r" rev-parse HEAD)"
+  gate_run e5a "$workdir/r" 'git push origin main'
+  gate_assert_allow "EDGE-005 origin/main equals HEAD: git push origin main passes"
+  gate_run e5b "$workdir/r" 'git push'
+  gate_assert_allow "EDGE-005 origin/main equals HEAD: bare git push passes"
+  gate_run e5c "$workdir/r" 'git push origin HEAD:main'
+  gate_assert_allow "EDGE-005 origin/main equals HEAD: git push origin HEAD:main passes"
+  gate_commit "$workdir/r" c3
+  gate_run e5d "$workdir/r" 'git push origin main'
+  gate_assert_deny "EDGE-005 control: one commit ahead is gated again" 'review is recorded'
+
+  # HEAD one commit behind origin/main: a force-push that rewinds the destination is gated
+  gate_mkrepo "$workdir/b" main
+  git -C "$workdir/b" checkout -q feat/x
+  gate_commit "$workdir/b" c3
+  git -C "$workdir/b" checkout -q main
+  git -C "$workdir/b" update-ref refs/remotes/origin/main "$(git -C "$workdir/b" rev-parse feat/x)"
+  gate_run e5f "$workdir/b" 'git push --force origin main'
+  gate_assert_deny "EDGE-005 HEAD one commit behind origin/main, --force: gated like one ahead" 'review is recorded'
+  # an equal-sha range (HEAD..HEAD) unlocks nothing while HEAD is behind the remote tip (I-ter.8)
+  h_b="$(git -C "$workdir/b" rev-parse HEAD)"
+  gate_marker e5g APPROVED "$h_b" "main vs origin/main ($h_b..$h_b); fallback: none"
+  gate_run e5g "$workdir/b" 'git push --force origin main'
+  gate_assert_deny "EDGE-005 HEAD behind origin/main with an APPROVED (HEAD..HEAD) marker, --force: denied, empty range" 'stale' 'is empty'
+  rm -rf "$workdir"
+}
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE006] remote-tracking ref unknown or remote unconfigured"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  mkdir -p "$workdir/r"
+  git -C "$workdir/r" init -q -b main
+  git -C "$workdir/r" config user.email 'test@test.local'
+  git -C "$workdir/r" config user.name 'hooks-test'
+  git -C "$workdir/r" config commit.gpgsign false
+  gate_commit "$workdir/r" c1
+  git -C "$workdir/r" remote add origin "$workdir/r.nowhere"
+  gate_run e6a "$workdir/r" 'git push origin main'
+  gate_assert_deny "EDGE-006 no origin/main: denied naming git fetch origin main and the env var" 'git fetch origin main' 'AF_CODE_REVIEW_GATE=off' 'does not yet exist'
+  gate_run e6b "$workdir/r" 'git push https://host/r.git main'
+  gate_assert_deny "EDGE-006 URL remote: denied, asks for a configured remote" 'configured remote'
+  if printf '%s' "$RUN_OUT" | grep -qF 'git fetch'; then _fail "EDGE-006 unconfigured remote gives no fetch hint" "$RUN_OUT"; else _pass "EDGE-006 unconfigured remote gives no fetch hint"; fi
+  gate_run e6c "$workdir/r" 'git push typo main'
+  gate_assert_deny "EDGE-006 typo remote name: denied, asks for a configured remote" 'configured remote'
+  rm -rf "$workdir"
+}
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE007] fail-open on anything the gate cannot read"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  gate_mkrepo "$workdir/r" main
+  mkdir -p "$workdir/plain" "$workdir/empty"
+  git -C "$workdir/empty" init -q -b main
+  cmd='git push origin main'
+
+  gate_run_raw 'not json at all'
+  gate_assert_allow "EDGE-007 malformed JSON: exit 0, no output"
+  gate_run_raw "$(jq -cn --arg c "$workdir/r" --arg m "$cmd" '{session_id:"e7",cwd:$c,tool_input:$m}')"
+  gate_assert_allow "EDGE-007 tool_input is a string, not an object"
+  gate_run_raw "$(jq -cn --arg c "$workdir/r" '{session_id:"e7",cwd:$c,tool_input:[1,2]}')"
+  gate_assert_allow "EDGE-007 tool_input is an array"
+  gate_run_raw "$(jq -cn --arg c "$workdir/r" '{session_id:"e7",cwd:$c,tool_input:{}}')"
+  gate_assert_allow "EDGE-007 missing tool_input.command"
+  gate_run_raw "$(jq -cn --arg c "$workdir/r" '{session_id:"e7",cwd:$c,tool_input:{command:42}}')"
+  gate_assert_allow "EDGE-007 non-string command (number)"
+  gate_run_raw "$(jq -cn --arg c "$workdir/r" '{session_id:"e7",cwd:$c,tool_input:{command:["git","push"]}}')"
+  gate_assert_allow "EDGE-007 non-string command (array)"
+  gate_run e7 "$workdir/r" "$cmd"
+  gate_assert_deny "EDGE-007 control: same repo and command with a session id is denied" 'review is recorded'
+  gate_run "" "$workdir/r" "$cmd"
+  gate_assert_allow "EDGE-007 empty session_id"
+  gate_run '../..' "$workdir/r" "$cmd"
+  gate_assert_allow "EDGE-007 session_id empty after sanitising"
+  gate_run_raw "$(jq -cn --arg c "$workdir/r" --arg m "$cmd" '{cwd:$c,tool_input:{command:$m}}')"
+  gate_assert_allow "EDGE-007 missing session_id"
+  gate_run e7 "$workdir/plain" "$cmd"
+  gate_assert_allow "EDGE-007 cwd is not a git work tree"
+  gate_run e7 "$workdir/empty" "$cmd"
+  gate_assert_allow "EDGE-007 repository with no commits (unborn HEAD)"
+
+  # jq absent: PATH holds wrappers for every other tool the gate runs, so only jq is missing;
+  # the control run adds jq to the same set and must deny.
+  real_sh="$(command -v sh)"
+  e7_payload="$(gate_payload e7 "$workdir/r" "$cmd")"
+  if gate_mkbin "$workdir/nojq" cat tr sed awk git && gate_mkbin "$workdir/withjq" cat tr sed awk git jq; then
+    RUN_OUT="$( (printf '%s' "$e7_payload" | PATH="$workdir/nojq" CLAUDE_STATE_DIR="$GATE_STATE" "$real_sh" "$GATE") 2>&1)"
+    RUN_RC=$?
+    gate_assert_allow "EDGE-007 jq absent from PATH (cat tr sed awk git present): exit 0, no output"
+    RUN_OUT="$( (printf '%s' "$e7_payload" | PATH="$workdir/withjq" CLAUDE_STATE_DIR="$GATE_STATE" "$real_sh" "$GATE") 2>&1)"
+    RUN_RC=$?
+    gate_assert_deny "EDGE-007 control: the same PATH plus jq denies" 'review is recorded'
+  else
+    _fail "EDGE-007 jq-absent PATH fixture" "could not build the wrapper bin dirs"
+  fi
+  rm -rf "$workdir"
+}
+
+section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE008] sub-agent runs the push (agent_id in the payload)"
+{
+  workdir="$(make_work_dir)" || exit 2
+  GATE_STATE="$workdir/state"
+  gate_mkrepo "$workdir/r" main
+  git -C "$workdir/r" checkout -q feat/x
+  h="$(git -C "$workdir/r" rev-parse HEAD)"
+  agent_payload() { jq -cn --arg s "$1" --arg c "$workdir/r" --arg m "$2" '{session_id:$s,cwd:$c,agent_id:"a1b2c3",agent_type:"bash-expert",tool_name:"Bash",tool_input:{command:$m}}'; }
+  gate_run_raw "$(agent_payload e8 'git push origin HEAD:main')"
+  gate_assert_deny "EDGE-008 agent_id payload, no marker for the parent session: denied" 'review is recorded'
+  gate_real_marker e8 "$workdir/r" 'feat/x vs origin/main' refs/remotes/origin/main
+  gate_run_raw "$(agent_payload e8 'git push origin HEAD:main')"
+  gate_assert_allow "EDGE-008 agent_id payload, matching APPROVED marker of the parent session: allowed"
+  gate_run_raw "$(agent_payload e8-other 'gh pr create --fill')"
+  gate_assert_deny "EDGE-008 agent_id payload, another session id has no marker: denied" 'review is recorded'
+  rm -rf "$workdir"
+}
 
 # ===========================================================================
 # Summary

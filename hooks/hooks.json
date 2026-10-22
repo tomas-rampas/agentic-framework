@@ -1,5 +1,5 @@
 {
-  "description": "Agentic-framework hooks: peer-review Stop gate, verdict recorder, session context, delegation hints, model-tier guard, and three silent sh-only telemetry hooks (session start/stop, agent runs). Gates and advisory hooks run a shell-form fallback chain: sh dispatch.sh routes to the native implementation (POSIX .sh on Unix; on Windows Git Bash the .sh also runs directly when jq is on PATH — skipping a pwsh cold start per fire — else pwsh runs .ps1, dispatched or via the || arm when sh is absent). Chain safety relies on CLAUDE_PLUGIN_ROOT never containing double-quotes, backticks, or $( — guaranteed today by this repo's CI-enforced kebab-case plugin/marketplace names, not by a platform contract.",
+  "description": "Agentic-framework hooks: peer-review Stop gate, verdict recorder, session context, delegation hints, model-tier guard, the code-review gate (blocks PR creation and pushes to main/master until a code-review-gatekeeper review is approved), and three silent sh-only telemetry hooks (session start/stop, agent runs). Gates and advisory hooks run a shell-form fallback chain: sh dispatch.sh routes to the native implementation (POSIX .sh on Unix; on Windows Git Bash the .sh also runs directly when jq is on PATH — skipping a pwsh cold start per fire — else pwsh runs .ps1, dispatched or via the || arm when sh is absent). Chain safety relies on CLAUDE_PLUGIN_ROOT never containing double-quotes, backticks, or $( — guaranteed today by this repo's CI-enforced kebab-case plugin/marketplace names, not by a platform contract.",
   "hooks": {
     "Stop": [
       { "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" stop-peer-review-gate || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-peer-review-gate.ps1\"", "timeout": 15 } ] },
@@ -23,6 +23,7 @@
     "PreToolUse": [
       { "matcher": "Write|Edit", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" pretooluse-delegation-hint || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-delegation-hint.ps1\"", "timeout": 10 } ] },
       { "matcher": "Task|Agent", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" pretooluse-model-guard || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-model-guard.ps1\"", "timeout": 10 } ] },
+      { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" pretooluse-code-review-gate || pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-code-review-gate.ps1\"", "timeout": 15 } ] },
       { "matcher": "Task|Agent", "hooks": [ { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh\" telemetry-agent-run || exit 0", "timeout": 10 } ] }
     ]
   }

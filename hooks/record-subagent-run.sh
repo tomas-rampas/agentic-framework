@@ -10,6 +10,9 @@
 #   line 2: verdict=APPROVED|CHANGES_REQUIRED — present only when the report text
 #           contains the standardized "VERDICT:" line (agents/peer-review-critic.md).
 #   line 3: head=<sha> (git HEAD at time of verdict record; enables HEAD-qualified guards).
+# code-review-gatekeeper (bare or agentic-framework:-scoped) is recorded the same way into
+# <state>/code-review/<session>, plus a last line target=<text> from the report's first
+# "Target:" line (CR removed, trimmed, printable ASCII only, max 200 chars).
 #
 # Stale-verdict hardening: instance dedupe, HEAD-qualified; id-less same-HEAD contradiction guard.
 # Silent and fail-open; also prunes markers older than 7 days.
@@ -31,6 +34,7 @@ payload=$(cat)
     # Determine event type and extract report text
     hook_event_name=$(printf '%s' "$payload" | jq -r '.hook_event_name // ""' 2>/dev/null) || exit 0
     report_text=""
+    review_sub="peer-review"
 
     if [ "$hook_event_name" = "SubagentStop" ]; then
         # SubagentStop path
@@ -38,7 +42,8 @@ payload=$(cat)
         # Case-insensitive match: ^(agentic-framework:)?peer-review-critic$
         agent_type_lower=$(printf '%s' "$agent_type" | tr '[:upper:]' '[:lower:]')
         case "$agent_type_lower" in
-            peer-review-critic|agentic-framework:peer-review-critic)
+            peer-review-critic|agentic-framework:peer-review-critic|code-review-gatekeeper|agentic-framework:code-review-gatekeeper)
+                case "$agent_type_lower" in *code-review-gatekeeper) review_sub="code-review" ;; esac
                 report_text=$(printf '%s' "$payload" | jq -r '.last_assistant_message // ""' 2>/dev/null) || exit 0
                 ;;
             *)
@@ -51,7 +56,8 @@ payload=$(cat)
         # Case-insensitive match
         subagent_type_lower=$(printf '%s' "$subagent_type" | tr '[:upper:]' '[:lower:]')
         case "$subagent_type_lower" in
-            peer-review-critic|agentic-framework:peer-review-critic)
+            peer-review-critic|agentic-framework:peer-review-critic|code-review-gatekeeper|agentic-framework:code-review-gatekeeper)
+                case "$subagent_type_lower" in *code-review-gatekeeper) review_sub="code-review" ;; esac
                 # Try tool_response first, fall back to tool_output, extracting text recursively
                 report_text=$(printf '%s' "$payload" | jq -r '
                   ([.tool_response, .tool_output] | map(select(.!=null and .!="")) | .[0]//"") |
@@ -85,7 +91,7 @@ payload=$(cat)
     if [ -z "$stateRoot" ]; then
         stateRoot="$HOME/.claude/.state"
     fi
-    review_dir="$stateRoot/peer-review"
+    review_dir="$stateRoot/$review_sub"
     mkdir -p "$review_dir" 2>/dev/null || true
     marker="$review_dir/$session_id"
 
@@ -211,12 +217,20 @@ payload=$(cat)
     # Always write at least the timestamp (records that reviewer ran); add verdict/head only if verdict was parsed
     timestamp=$(date -u +%Y-%m-%dT%H:%M:%S%z 2>/dev/null || printf '%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
 
+    # code-review marker only: first line beginning "Target:" (or Markdown-bold "**Target:**"),
+    # CR removed, non-ASCII dropped BEFORE trimming, trimmed, capped at 200
+    target=""
+    if [ "$review_sub" = "code-review" ] && [ -n "$report_text" ]; then
+        target=$(printf '%s' "$report_text" | tr -d '\r' | grep -m1 -E '^(\*\*Target:\*\*|Target:)' | sed -e 's/^\*\*Target:\*\*//' -e 's/^Target://' | LC_ALL=C tr -cd '\040-\176' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | cut -c1-200) || target=""
+    fi
+
     # Write marker atomically with temp file — build via printf for reliability
     tmp="$marker.tmp.$$"
     {
         printf '%s' "$timestamp"
         [ -n "$verdict" ] && printf '\nverdict=%s' "$verdict"
         [ -n "$current_head" ] && printf '\nhead=%s' "$current_head"
+        [ -n "$target" ] && printf '\ntarget=%s' "$target"
         true
     } > "$tmp" 2>/dev/null && mv -f "$tmp" "$marker" 2>/dev/null || exit 0
 
