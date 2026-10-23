@@ -1825,6 +1825,10 @@ Invoke-Gate 'rt11c2' $GF.X "git push --% origin main" $null 'PowerShell'
 Assert-GateDeny 'REQ-004 T.11c: PowerShell git push with --% is not plain' @($script:GatePlain)
 Invoke-Gate 'rt11c3' $GF.X $c11c
 Assert-GateDeny 'REQ-004 T.11c: Bash gh pr create --% is a literal word and stays plain (no-marker deny, base dev)' @('review is recorded', 'vs dev')
+Invoke-Gate 'rt11c4' $GF.X "gh pr create '--%' -t 'x --base main'" $null 'PowerShell'
+Assert-GateDeny "REQ-004 T.11c: PowerShell quoted stop-parsing token '--%' is not plain" @($script:GatePlain)
+Invoke-Gate 'rt11c5' $GF.X 'gh pr create "--%" -B dev -t ''x --base main''' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.11c: PowerShell quoted stop-parsing token "--%" is not plain' @($script:GatePlain)
 
 # T.11(d): a lone surrogate escape is decided on a copy with U+FFFD, never a fail-open
 $m11 = $GF.M.Replace('\', '/')
@@ -1832,8 +1836,8 @@ $sur = [string][char]92 + 'ud800'
 $pre11 = '{"session_id":"rt11d","cwd":"' + $m11 + '","tool_name":"Bash","tool_input":{'
 Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + $sur + '"}}')
 Assert-GateDeny 'REQ-004 T.11d: lone surrogate escape in the command is decided and not plain' @($script:GatePlain)
-Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + [string][char]92 + 'uDfFf"}}')
-Assert-GateDeny 'REQ-004 T.11d: lone low surrogate escape with mixed-case hex is decided and not plain' @($script:GatePlain)
+Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + [string][char]92 + 'uDbFf"}}')
+Assert-GateDeny 'REQ-004 T.11d: lone mixed-case high surrogate escape is decided and not plain' @($script:GatePlain)
 Invoke-GateRaw ($pre11 + '"description":"' + $sur + '","command":"git push origin main"}}')
 Assert-GateDeny 'REQ-004 T.11d: lone surrogate in tool_input.description still decides the command' @('review is recorded')
 Invoke-GateRaw ('{"session_id":"rt11d","x":"' + $sur + '","cwd":"' + $m11 + '","tool_name":"Bash","tool_input":{"command":"git push origin main"}}')
@@ -1842,6 +1846,12 @@ Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + $sur + '"}')
 Assert-GateAllow 'REQ-004 T.11d: a payload with a lone surrogate that is malformed for another reason still exits 0 silently'
 Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + [string][char]92 + 'ud83d' + [string][char]92 + 'ude00"}}')
 Assert-GateDeny 'REQ-004 T.11d: a valid surrogate pair parses normally and decides' @($script:GatePlain)
+
+# T.11(e): two CRs before the LF form no continuation pair, so the text is not a candidate
+Invoke-Gate 'rt11e1' $GF.X ("git pu``" + "`r`r`n" + "sh origin HEAD:main") $null 'PowerShell'
+Assert-GateAllow 'REQ-004 T.11e: PowerShell git pu, backtick, CR CR LF, sh origin HEAD:main exits 0 with no output'
+Invoke-Gate 'rt11e2' $GF.X ("git pu\" + "`r`r`n" + "sh origin HEAD:main") $null 'Bash'
+Assert-GateAllow 'REQ-004 T.11e: Bash git pu, backslash, CR CR LF, sh origin HEAD:main exits 0 with no output'
 
 Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE002] marker from an earlier HEAD"
 $script:GateState = Join-Path $workRoot 'gate-state-3'

@@ -4521,8 +4521,12 @@ GCASES
   gate_assert_deny "REQ-004 S.3-bis i PowerShell Set-Location /\\host\\x is not plain" "$GATE_PLAIN"
   GATE_TOOL=Bash
   t_unc=$(( $(gate_now_ms) - t_unc0 ))
-  if [ "$t_unc" -lt 8000 ]; then _pass "REQ-004 S.3-bis i four mixed-separator UNC rows decided in ${t_unc} ms (limit 8000)"
-  else _fail "REQ-004 S.3-bis i mixed-separator UNC rows" "took ${t_unc} ms (limit 8000)"; fi
+  # Budget: 3000 ms per row (12000 ms for the four), the same per-call limit as the single UNC
+  # rows above. A shared 8000 ms was measured at 7446 ms on Git Bash, where every gate call costs
+  # about 1.4-1.7 s of process spawn; a per-row limit keeps the "decided before any filesystem
+  # access" intent without flaking the Windows CI job.
+  if [ "$t_unc" -lt 12000 ]; then _pass "REQ-004 S.3-bis i four mixed-separator UNC rows decided in ${t_unc} ms (limit 12000, 3000 per row)"
+  else _fail "REQ-004 S.3-bis i mixed-separator UNC rows" "took ${t_unc} ms (limit 12000, 3000 per row)"; fi
 
   # item 5 (S.3-bis m): a leading slash is Bash-dialect only; ~\ is accepted like ~/
   gate_run rqb5 "$GF_M" 'cd / && git push origin HEAD:main'
@@ -4632,6 +4636,26 @@ GCASES
   gate_run rt11a5 "$GF_M" "git pu${bt}"$'\n'"sh origin main"
   gate_assert_deny 'REQ-004 T.11a: Bash git pu + backtick + LF + sh origin main (continuation inside a word) is not plain' "$GATE_PLAIN"
 
+  # T.11(e): CR CR LF is not a continuation pair, so no candidate; the .sh must see exactly the
+  # bytes the .ps1 sees (one CR too few turns these into W_PLAIN)
+  GATE_TOOL=PowerShell
+  gate_run rt11e1 "$GF_M" "git pu${bt}"$'\r\r\n'"sh origin HEAD:main"
+  gate_assert_allow 'REQ-004 T.11e: PowerShell git pu + backtick + CR CR LF + sh origin HEAD:main is not a candidate'
+  GATE_TOOL=Bash
+  gate_run rt11e2 "$GF_M" 'git pu\'$'\r\r\n''sh origin HEAD:main'
+  gate_assert_allow 'REQ-004 T.11e: Bash git pu + backslash + CR CR LF + sh origin HEAD:main is not a candidate'
+
+  # inherited GV_X_CD must not change the verdict (g_load unsets the selectors)
+  mkdir -p "$GF_M/sub" 2>/dev/null
+  gate_run rgv0 "$GF_M" 'cd sub && git push origin feat/x'
+  gv_base_out=$RUN_OUT
+  GV_X_CD=zz; export GV_X_CD
+  gate_run rgv1 "$GF_M" 'cd sub && git push origin feat/x'
+  gv_env_out=$RUN_OUT
+  unset GV_X_CD
+  if [ "$gv_base_out" = "$gv_env_out" ] && ! printf '%s' "$gv_env_out" | grep -q 'not a plain push'; then _pass 'REQ-004 T.11: an inherited GV_X_CD does not change the verdict'
+  else _fail 'REQ-004 T.11: an inherited GV_X_CD does not change the verdict' "with: ${gv_env_out} without: ${gv_base_out}"; fi
+
   # T.11(b): an expansion that is empty at run time inside a keyword
   for c11b in 'git pu$()sh origin main' 'git pu$(:)sh origin main' "git pu${bt}:${bt}sh origin main" \
     'git pu$1sh origin main' 'git pu$@sh origin main' 'git pu$!sh origin main' 'gi$*t push origin main' \
@@ -4654,14 +4678,20 @@ GCASES
   GATE_TOOL=Bash
   gate_run rt11c3 "$GF_X" "$c11c"
   gate_assert_deny 'REQ-004 T.11c: Bash gh pr create --% is a literal word and stays plain (no-marker deny, base dev)' 'review is recorded' 'vs dev'
+  GATE_TOOL=PowerShell
+  gate_run rt11c4 "$GF_X" "gh pr create '--%' -t 'x --base main'"
+  gate_assert_deny "REQ-004 T.11c: PowerShell quoted stop-parsing token '--%' is not plain" "$GATE_PLAIN"
+  gate_run rt11c5 "$GF_X" 'gh pr create "--%" -B dev -t '"'x --base main'"
+  gate_assert_deny 'REQ-004 T.11c: PowerShell quoted stop-parsing token "--%" is not plain' "$GATE_PLAIN"
+  GATE_TOOL=Bash
 
   # T.11(d): a lone surrogate escape is decided on a copy with U+FFFD, never a fail-open (raw JSON, no jq)
   sur='\ud800'
   pre11="{\"session_id\":\"rt11d\",\"cwd\":\"$GF_M\",\"tool_name\":\"Bash\",\"tool_input\":{"
   gate_run_raw "${pre11}\"command\":\"git push origin main #${sur}\"}}"
   gate_assert_deny 'REQ-004 T.11d: lone surrogate escape in the command is decided and not plain' "$GATE_PLAIN"
-  gate_run_raw "${pre11}\"command\":\"git push origin main #"'\uDfFf'"\"}}"
-  gate_assert_deny 'REQ-004 T.11d: lone low surrogate escape with mixed-case hex is decided and not plain' "$GATE_PLAIN"
+  gate_run_raw "${pre11}\"command\":\"git push origin main #"'\uDbFf'"\"}}"
+  gate_assert_deny 'REQ-004 T.11d: lone high surrogate escape with mixed-case hex is decided and not plain' "$GATE_PLAIN"
   gate_run_raw "${pre11}\"description\":\"${sur}\",\"command\":\"git push origin main\"}}"
   gate_assert_deny 'REQ-004 T.11d: lone surrogate in tool_input.description still decides the command' 'review is recorded'
   gate_run_raw "{\"session_id\":\"rt11d\",\"x\":\"${sur}\",\"cwd\":\"$GF_M\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"}}"

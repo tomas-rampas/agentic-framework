@@ -19,7 +19,8 @@ export LC_ALL
 # CLAUDE_STATE_DIR, else $HOME/.claude/.state.
 #
 # SECURITY: the command string is untrusted data. It is NEVER evaluated or
-# executed: no eval, no sh -c, no unquoted expansion into a command; jq gets it
+# executed: the command string never reaches eval (the only eval assigns grammar lines to
+# validated GV_<NAME> variables), no sh -c, no unquoted expansion into a command; jq gets it
 # through --arg only. The gate does not try to understand shell text. Three regex
 # stages, each a fixed number of tr, sed -E and grep -E passes over the command's
 # bytes (LC_ALL=C, exported above), no loop over characters or tokens:
@@ -33,7 +34,9 @@ export LC_ALL
 #     case-insensitive), one tr | sed -n | grep -c pipeline. A text with no g or G
 #     exits 0 with no fork; anything else that is not a candidate exits 0 with no
 #     git call (fast path). Over 64 KB (bytes) the same test decides: match
-#     denies (W_SIZE), else exit 0; a failing tool keeps that rule.
+#     denies (W_SIZE), else exit 0; a failing tool keeps that rule: a failing tr before the
+#     size test leaves the session id empty and exits 0 at any size (EDGE-007), a failing
+#     sed or grep only under the cap.
 #  2. (FORM, T.3) the text, with CR and LF as SOH and SOH as STX (PowerShell
 #     dialect: curly quotes mapped to ASCII quotes first), must be one plain form
 #     of the grammar block below (B_FORM for Bash, P_FORM for PowerShell), one
@@ -106,13 +109,21 @@ jq_prog='
   then ((.session_id // "" | one) + "\n" + (.cwd // "" | one) + "\n" + (.tool_name // "" | one)
         + "\n" + .tool_input.command)
   else empty end'
-if ! parsed=$(printf '%s' "$payload" | jq -j "$jq_prog" 2>/dev/null); then
+#
+# T.11(e) jq -b (binary output, jq 1.7+) stops the Windows CRLF translation of jq's output, so the
+# .sh sees exactly the bytes the .ps1 sees. Support is detected once; a jq without -b keeps the
+# detect-and-undo path further down.
+jq_b=
+if jq -b -n 1 >/dev/null 2>&1; then jq_b=-b; fi
+# shellcheck disable=SC2086
+if ! parsed=$(printf '%s' "$payload" | jq $jq_b -j "$jq_prog" 2>/dev/null); then
   # T.11(d): jq rejects the whole document over one lone surrogate escape (backslash-u D800
   # to DFFF); decide on a copy with each such escape replaced by U+FFFD (the fallback of
   # pretooluse-model-guard.sh). Any other parse failure keeps EDGE-007 (exit 0).
   sanitized=$(printf '%s' "$payload" | sed -E 's/\\u[dD][89a-fA-F][0-9a-fA-F]{2}/\\uFFFD/g' 2>/dev/null) || exit 0
   [ "$sanitized" != "$payload" ] || exit 0
-  parsed=$(printf '%s' "$sanitized" | jq -j "$jq_prog" 2>/dev/null) || exit 0
+  # shellcheck disable=SC2086
+  parsed=$(printf '%s' "$sanitized" | jq $jq_b -j "$jq_prog" 2>/dev/null) || exit 0
 fi
 [ -n "$parsed" ] || exit 0
 
@@ -128,9 +139,10 @@ esac
 case $cmd in *[Gg]*) ;; *) exit 0 ;; esac
 
 # Control bytes in one fork: SOH STX ETX TAB CR US, the markers (header K H J Z, lexer
-# A-E, token L R, push V VE F FE, PR S SV SE, D DV DE with D = CR, N NE X XE; the .ps1
-# keeps those header fields in variables and has no header markers, but the token and
-# lexer markers L R and A-E are shared bytes), then the raw bytes of <HI> and <CURLY>
+# A-E, token L R, push V VE F FE, PR S SV SE, D DV DE with D = CR, N NE X XE). All marker
+# bytes (A-E, L R, V VE F FE, S SV SE, DD DV DE, N NE X XE, US) are the same bytes in both
+# twins; only the header markers K H J Z are .sh-only (the .ps1 keeps those header fields
+# in variables). Then the raw bytes of <HI> and <CURLY>
 # and the curly quote ranges. The stages guarantee each marker absent from the text
 # they run on.
 IFS=' '
@@ -146,15 +158,21 @@ M_NE=$1; M_X=$2; M_XE=$3; HI0=$4; HI1=$5; CU0=$6; CU1=$7; CU4=$8; CU5=$9; shift 
 CU7=$1
 M_DD=$CR
 
-# T.11(e) exact undo of jq's CRLF output. jq on Windows writes every LF of its output as
-# CRLF, so a CR ends the tool_name field (detected here, then dropped) and every LF of the
-# command arrives as CR LF (a CR LF as CR CR LF). In that mode exactly one CR before each LF
-# of the command goes, restoring the bytes the .ps1 sees; the last line loses its CR too (jq
-# wrote its LF, then the substitution above removed it). Elsewhere nothing changes.
+# T.11(e) exact CRLF handling. jq on Windows writes every LF of its output as CRLF. Preferred
+# path: jq -b (above) writes binary, no CR is ever added, nothing to undo here. Fallback for a
+# jq without -b: a CR ends the tool_name field (detected here, then dropped) and every LF of the
+# command arrives as CR LF (a CR LF as CR CR LF); exactly one CR before each LF of the command
+# goes, restoring the bytes the .ps1 sees; the last line loses its CR too (jq wrote its LF, then
+# the substitution above removed it). The undo uses sed -b where sed accepts it: Git for Windows'
+# GNU sed reads a pipe in text mode and itself drops one CR before each LF, so plain sed would
+# remove two. Elsewhere nothing changes.
 crlf=0
 case $tool in *"$CR") crlf=1; tool=${tool%"$CR"} ;; esac
 if [ "$crlf" = 1 ]; then
-  cmd_u=$(printf '%s' "$cmd" | sed "s/$CR\$//" 2>/dev/null) && cmd=$cmd_u
+  sed_b=
+  if printf 'a' | sed -b 's/a/a/' >/dev/null 2>&1; then sed_b=-b; fi
+  # shellcheck disable=SC2086
+  cmd_u=$(printf '%s' "$cmd" | sed $sed_b "s/$CR\$//" 2>/dev/null) && cmd=$cmd_u
   [ -n "$cmd" ] || exit 0
 fi
 
@@ -309,6 +327,8 @@ g_tr() {
 # expanded, in block order (a reference sees earlier lines only);
 # 1 keeps only the S.1 lines (S1_*, W_*, which refer to no other line): the hot path.
 g_load() {
+  # an inherited GV_X_CD/GV_X_VF/GV_HL/GV_HS/GV_BL/GV_BS must never reach g_refs
+  unset GV_X_CD GV_X_VF GV_HL GV_HS GV_BL GV_BS
   gl_rest=$G_DEFS
   while [ -n "$gl_rest" ]; do
     gl_ln=${gl_rest%%"$NL"*}

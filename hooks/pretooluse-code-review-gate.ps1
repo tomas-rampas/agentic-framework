@@ -20,17 +20,18 @@
 # each a fixed number of passes over the command's UTF-8 bytes (one char per
 # byte), no loop over characters or tokens; every regex has CultureInvariant
 # and a match timeout equal to the remaining 8 s budget, and a timeout denies W_TIME:
-#  1. (S.1, T.2) candidate test: continuations joined, curly quotes and a $
-#     before a quote removed, then three spellings (${...} removed; ${ and }
-#     removed; ${NAME} and ${NAME<op> removed, then }), each without quotes,
-#     backslashes and backticks, the anchored git stash push exempted; then the
-#     words git+push or gh/glab+pr/mr+create/new (git, gh and glab
-#     case-insensitive). Anything else exits 0 with no git call (fast path).
-#     Every spelling is tested twice, with each continuation pair deleted and with
-#     each pair read as one space (T.11a: a backtick glued to a word). A fourth
-#     spelling removes $(...), a backtick substitution and $NAME / $1 / $@ style
-#     parameters before the quotes, so an expansion that is empty at run time inside
-#     a keyword (git pu$()sh, gi$*t push) is a candidate (T.11b).
+#  1. (S.1, T.2, T.11) candidate test: curly quotes and a $ before a quote
+#     removed, then four spellings (${...} removed; ${ and } removed; ${NAME}
+#     and ${NAME<op> removed, then }; ${...}, $(...), a backtick substitution
+#     and $NAME / $1 / $@ style parameters removed), each without quotes,
+#     backslashes and backticks, the anchored git stash PUSH exemption applied.
+#     Each spelling is tested in two join variants: the backslash and
+#     backtick-newline pairs deleted, and the pairs replaced by a space (T.11a: a
+#     backtick glued to a word). The fourth spelling makes an expansion that is
+#     empty at run time inside a keyword a candidate (git pu$()sh, gi$*t push; T.11b).
+#     The candidate test is then the words git+push or gh/glab+pr/mr+create/new
+#     (git, gh and glab case-insensitive). Anything else exits 0 with no git call
+#     (fast path).
 #     Over 64 KB (bytes) the same test decides: match denies (W_SIZE), else exit 0.
 #  2. (FORM, T.3) the text, with CR and LF as SOH and SOH as STX (PowerShell
 #     dialect: curly quotes mapped to ASCII quotes first), must be one plain form

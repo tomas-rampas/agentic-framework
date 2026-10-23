@@ -333,7 +333,7 @@ The six MCP servers are part of the plugin and connect at session start. To set 
 /agentic-framework:setup
 ```
 
-**Prerequisites:** Claude Code CLI, git, bash + jq (jq is a hard prerequisite of every POSIX hook: each one, the code-review push/PR gate included, parses its payload with it, and the gate matches its grammar with the base utilities `tr`, `sed -E` and `grep -E`, present on GNU, BSD and busybox; without jq, or with a failing `tr`/`sed`/`grep`, the gate is disarmed); PowerShell 7 (Windows only; Linux/macOS optional); Node/npx and uv, which the plugin's MCP servers need to start.
+**Prerequisites:** Claude Code CLI, git, bash + jq (jq is a hard prerequisite of every POSIX hook: each one, the code-review push/PR gate included, parses its payload with it, and the gate matches its grammar with the base utilities `tr`, `sed -E` and `grep -E`, present on GNU, BSD and busybox; without jq the gate is disarmed, a failing or missing `tr` disarms it at any size, and a failing or missing `sed` or `grep` disarms it for commands under its 64 KB size cap); PowerShell 7 (Windows only; Linux/macOS optional); Node/npx and uv, which the plugin's MCP servers need to start.
 
 **Legacy installation (pre-4.0, historical reference):**
 See [README.md Migration section](README.md#migration-existing-local-clones) if you have an existing local clone to migrate.

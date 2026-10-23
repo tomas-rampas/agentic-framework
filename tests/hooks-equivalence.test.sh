@@ -886,6 +886,8 @@ gate_equiv_allow() {
 }
 # shellcheck disable=SC2016
 gate_equiv_allow "gate allow: unclosed brace text" ga1 'echo git${a-push'
+# CR CR LF is not a continuation pair: one stripped CR too many or too few changes the verdict
+gate_equiv_allow "gate allow: CR CR LF continuation is not a pair" ga2 $'git pu`\r\r\nsh origin HEAD:main' PowerShell
 
 # decision T.1: the grammar block is byte-identical in the two hooks (the .ps1 is the
 # reference: a single-quoted here-string; the .sh: a single-quoted string)
