@@ -354,10 +354,11 @@ for s1_o in "gh prmr crnew" "gh crnew prmr" "prmr gh crnew" "prmr crnew gh" "crn
 done
 
 # Three spellings (h/g/p in one sed), then a sentinel line that always matches: a
-# count below 1 means a tool failed. CR stays a byte; LF becomes SOH; SOH and ETX
+# count below 1 means a tool failed. A CR run before SOH is cut to one CR (jq on
+# Windows writes every LF as CRLF, so a CRLF arrives as CR CR LF). CR stays a byte; LF becomes SOH; SOH and ETX
 # become STX (ETX is the any-byte class).
 n1=$({ printf '%s' "$cmd" | tr '\012\001\003' '\001\002\002'; printf '\n'; } | sed -n -E \
-  -e "s/$s1_join//g" -e "s/$s1_curly//g" -e "s/$s1_dq//g" -e h \
+  -e "s/$CR+$SOH/$CR$SOH/g" -e "s/$s1_join//g" -e "s/$s1_curly//g" -e "s/$s1_dq//g" -e h \
   -e "s/$s1_b1//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p -e g \
   -e "s/$s1_b2o//g" -e "s/$s1_b2c//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p -e g \
   -e "s/$s1_b3v//g" -e "s/$s1_b3o//g" -e "s/$s1_b2c//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p \
