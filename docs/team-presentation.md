@@ -175,13 +175,13 @@ The only component that can **say no**: gate and advisory hook scripts implement
 |---|---|---|
 | `stop-peer-review-gate` | `Stop` | **The session gate** — no session ends with committed, unreviewed work |
 | `pretooluse-code-review-gate` | `PreToolUse` (`Bash\|PowerShell`) | **The push/PR gate** — a PR/MR creation, or a push to main/master, is allowed only as a plain single command with literal names (every other command that mentions one is denied and must be split), and needs a code-review-gatekeeper review approved for that exact range |
-| `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic and code-review-gatekeeper runs and parses each review's `VERDICT:` line — `APPROVED` is what unlocks the Stop gate and the push/PR gate respectively |
+| `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic and code-review-gatekeeper runs and parses each review's `VERDICT:` line (from the stop payload or the sub-agent transcript's hand-back report) — `APPROVED` is what unlocks the Stop gate and the push/PR gate respectively |
 | `session-start-context` | `SessionStart` | Injects branch + review status into context at startup |
 | `pretooluse-delegation-hint` | `PreToolUse` | Suggests the matching specialist when a `.rs`/`.py`/`.cs`/… file is written |
 | `pretooluse-model-guard` | `PreToolUse` | **The model-tier ceiling, automatic** (nothing to configure; POSIX hosts need `jq`) — denies a sub-agent call whose `model` names the top tier (`fable`) and every `fork`; rewrites a built-in agent call with no `model` to `haiku` (`Explore`) or `sonnet` (the rest) |
 | `telemetry-session-start` (.sh only) | `SessionStart` | Silent — records session, project, branch, start time under `~/.claude/.state/telemetry/`; prunes after 30 days |
 | `telemetry-session-stop` (.sh only) | `Stop` + `SessionEnd` | Silent — end time, duration, turns, incremental transcript token totals |
-| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` + `SubagentStop` | Silent — per-invocation agent, tier, duration, reviewer verdict, sub-agent tokens; read by `/agentic-framework:metrics` |
+| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` + `SubagentStop` | Silent — per-invocation agent, tier, launch-to-stop duration, reviewer verdict, sub-agent tokens; read by `/agentic-framework:metrics` |
 
 The gate's lifecycle:
 
@@ -200,9 +200,10 @@ sequenceDiagram
     CC->>G: Stop event
     G-->>CC: 🚫 block — unreviewed commits
     CC->>PRC: launch final review
-    PRC-->>CC: report ending "VERDICT: APPROVED"
-    CC->>R: SubagentStop + PostToolUse events
-    R->>R: write marker with verdict=APPROVED
+    CC->>R: PostToolUse (launch acknowledgement) — nothing recorded
+    PRC-->>CC: hand-back report ending "VERDICT: APPROVED"
+    CC->>R: SubagentStop (agent_transcript_path)
+    R->>R: read the hand-back from the transcript, write marker verdict=APPROVED
     M->>CC: end session
     CC->>G: Stop event
     G-->>CC: ✅ allow (verdict APPROVED)

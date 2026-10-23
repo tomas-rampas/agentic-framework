@@ -1243,6 +1243,217 @@ section "[RECORD-SUBAGENT-RUN-CR-7] Markdown-bold **Target:** label recorded; no
   rm -rf "$workdir"
 }
 
+
+# --- hand-back report source (REQ-003 amendment 2026-10-23) -----------------
+# hb_transcript <file> <report> [final-text-only]: fixture sub-agent transcript. Default shape: user line,
+# assistant text block, assistant SubagentHandback tool_use carrying <report>, user tool_result line.
+# With a third argument the report goes into a final assistant TEXT block and no hand-back exists.
+hb_transcript() {
+  {
+    printf '%s\n' '{"type":"user","timestamp":"2026-10-22T17:30:00.100Z","agentId":"hb0000000000000001","isSidechain":true,"message":{"role":"user","content":[{"type":"text","text":"go"}]}}'
+    printf '%s%s\n' '{"type":"assistant","timestamp":"2026-10-22T17:31:00.200Z","agentId":"hb0000000000000001","isSidechain":true,"message":{"role":"assistant","model":"claude-opus-5-5","id":"msg_1","usage":{"input_tokens":5,"output_tokens":7},' \
+      '"content":[{"type":"text","text":"Reviewing..."}]}}'
+    if [ -n "${3:-}" ]; then
+      jq -nc --arg m "$2" '{type:"assistant",timestamp:"2026-10-22T17:42:25.300Z",agentId:"hb0000000000000001",isSidechain:true,message:{role:"assistant",model:"claude-opus-5-5",id:"msg_2",usage:{input_tokens:6,output_tokens:9},content:[{type:"text",text:$m}]}}'
+    else
+      jq -nc --arg m "$2" --arg tid "${HB_TUID:-toolu_hb1}" '{type:"assistant",timestamp:"2026-10-22T17:42:25.300Z",agentId:"hb0000000000000001",isSidechain:true,message:{role:"assistant",model:"claude-opus-5-5",id:"msg_2",usage:{input_tokens:6,output_tokens:9},content:[{type:"tool_use",id:$tid,name:"SubagentHandback",input:{message:$m}}]},wireToolInputs:{message:"ignored"}}'
+      printf '%s\n' '{"type":"user","timestamp":"2026-10-22T17:42:25.400Z","agentId":"hb0000000000000001","isSidechain":true,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_hb1","content":"{\"success\":true,\"message\":\"Report delivered to your caller.\"}"}]}}'
+    fi
+  } > "$1"
+}
+HB_REPORT='Target: feat/x vs origin/main (abc1234..def5678)
+Findings: none.
+VERDICT: APPROVED'
+
+section "[RECORD-SUBAGENT-RUN-HB-1] gatekeeper SubagentStop: empty last_assistant_message, verdict and Target from the hand-back"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  mkdir -p "$workdir/repo"; make_test_repo "$workdir/repo"
+  headsha="$(git -C "$workdir/repo" rev-parse HEAD)"
+  hb_transcript "$workdir/t.jsonl" "$HB_REPORT"
+  cr_run "$(jq -n --arg cwd "$workdir/repo" --arg t "$workdir/t.jsonl" '{session_id:"hb1",cwd:$cwd,hook_event_name:"SubagentStop",agent_id:"hb0000000000000001",agent_type:"agentic-framework:code-review-gatekeeper",last_assistant_message:"",agent_transcript_path:$t}')"
+  assert_rc_zero "exit 0"
+  m="$CLAUDE_STATE_DIR/code-review/hb1"
+  if [ "$(wc -l < "$m" 2>/dev/null | tr -d ' ')" = "3" ]; then _pass "four-line marker (three newlines)"; else _fail "marker shape" "$(cat "$m" 2>&1)"; fi
+  if [ "$(sed -n 2p "$m" 2>/dev/null)" = "verdict=APPROVED" ]; then _pass "line 2 verdict=APPROVED"; else _fail "line 2" "$(cat "$m" 2>&1)"; fi
+  if [ "$(sed -n 3p "$m" 2>/dev/null)" = "head=$headsha" ]; then _pass "line 3 head=HEAD"; else _fail "line 3" "$(cat "$m" 2>&1)"; fi
+  if [ "$(sed -n 4p "$m" 2>/dev/null)" = "target=feat/x vs origin/main (abc1234..def5678)" ]; then _pass "line 4 target from hand-back"; else _fail "line 4" "$(cat "$m" 2>&1)"; fi
+  if [ -z "$(find "$CLAUDE_STATE_DIR" -name '.hb.*' 2>/dev/null)" ]; then _pass "no .hb.* scratch file left"; else _fail "hb scratch left" "$(find "$CLAUDE_STATE_DIR" -name '.hb.*' 2>&1)"; fi
+  if [ ! -e "$CLAUDE_STATE_DIR/peer-review/hb1" ]; then _pass "nothing under peer-review/"; else _fail "peer-review marker" "should not exist"; fi
+  if [ "$(cat "$m.verdict-sources" 2>/dev/null)" = "hb0000000000000001-hb-toolu_hb1" ]; then _pass ".verdict-sources holds <agent_id>-hb-<SubagentHandback tool_use id>"; else _fail "verdict-sources" "$(cat "$m.verdict-sources" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-HB-2] peer-review-critic (bare and scoped) records the hand-back verdict"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  hb_transcript "$workdir/t.jsonl" "Review done.
+VERDICT: APPROVED"
+  for spelling in peer-review-critic agentic-framework:peer-review-critic; do
+    sid="hb2-$(printf '%s' "$spelling" | tr -cd 'a-z')"
+    cr_run "$(jq -n --arg sid "$sid" --arg ty "$spelling" --arg t "$workdir/t.jsonl" '{session_id:$sid,hook_event_name:"SubagentStop",agent_id:"hb0000000000000001",agent_type:$ty,agent_transcript_path:$t}')"
+    assert_rc_zero "exit 0 ($spelling)"
+    m="$CLAUDE_STATE_DIR/peer-review/$sid"
+    if grep -qx 'verdict=APPROVED' "$m" 2>/dev/null; then _pass "peer-review marker carries verdict=APPROVED ($spelling)"; else _fail "peer-review marker ($spelling)" "$(cat "$m" 2>&1)"; fi
+    if [ ! -e "$CLAUDE_STATE_DIR/code-review/$sid" ]; then _pass "nothing under code-review/ ($spelling)"; else _fail "code-review marker" "should not exist"; fi
+  done
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-HB-3] a verdict in last_assistant_message wins over the transcript"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  hb_transcript "$workdir/t.jsonl" "VERDICT: APPROVED"
+  cr_run "$(jq -n --arg t "$workdir/t.jsonl" '{session_id:"hb3",hook_event_name:"SubagentStop",agent_id:"hb0000000000000001",agent_type:"peer-review-critic",last_assistant_message:"Found a blocker.\nVERDICT: CHANGES_REQUIRED",agent_transcript_path:$t}')"
+  assert_rc_zero "exit 0"
+  if grep -qx 'verdict=CHANGES_REQUIRED' "$CLAUDE_STATE_DIR/peer-review/hb3" 2>/dev/null; then _pass "marker records CHANGES_REQUIRED (last_assistant_message wins)"; else _fail "lam precedence" "$(cat "$CLAUDE_STATE_DIR/peer-review/hb3" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-HB-4] no hand-back: the last assistant text block holds the verdict"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  hb_transcript "$workdir/t.jsonl" "Final words.
+VERDICT: APPROVED" textonly
+  cr_run "$(jq -n --arg t "$workdir/t.jsonl" '{session_id:"hb4",hook_event_name:"SubagentStop",agent_id:"hb0000000000000001",agent_type:"peer-review-critic",last_assistant_message:"",agent_transcript_path:$t}')"
+  assert_rc_zero "exit 0"
+  if grep -qx 'verdict=APPROVED' "$CLAUDE_STATE_DIR/peer-review/hb4" 2>/dev/null; then _pass "verdict read from the last assistant text block"; else _fail "text-block fallback" "$(cat "$CLAUDE_STATE_DIR/peer-review/hb4" 2>&1)"; fi
+  # a valid-JSON assistant line whose message is a string must not poison the read
+  hb_transcript "$workdir/t2.jsonl" "$HB_REPORT"
+  { head -n 1 "$workdir/t2.jsonl"; printf '%s\n' '{"type":"assistant","timestamp":"2026-10-22T17:45:00.000Z","message":"oops"}'; tail -n +2 "$workdir/t2.jsonl"; } > "$workdir/t3.jsonl"
+  cr_run "$(jq -n --arg t "$workdir/t3.jsonl" '{session_id:"hb4m",hook_event_name:"SubagentStop",agent_id:"hb0000000000000001",agent_type:"peer-review-critic",last_assistant_message:"",agent_transcript_path:$t}')"
+  if grep -qx 'verdict=APPROVED' "$CLAUDE_STATE_DIR/peer-review/hb4m" 2>/dev/null; then _pass "verdict recorded despite a non-object message line"; else _fail "malformed message line" "$(cat "$CLAUDE_STATE_DIR/peer-review/hb4m" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-HB-5] missing or unreadable transcript leaves the timestamp-only marker"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  mkdir -p "$workdir/adir"
+  cr_run "$(jq -n --arg t "$workdir/nope.jsonl" '{session_id:"hb5a",hook_event_name:"SubagentStop",agent_id:"hb5a",agent_type:"peer-review-critic",last_assistant_message:"",agent_transcript_path:$t}')"
+  assert_rc_zero "exit 0 (missing transcript)"
+  m="$CLAUDE_STATE_DIR/peer-review/hb5a"
+  if [ -f "$m" ] && [ "$(wc -l < "$m" | tr -d ' ')" = "0" ] && ! grep -q '^verdict=' "$m"; then _pass "missing transcript: timestamp-only marker"; else _fail "missing transcript" "$(cat "$m" 2>&1)"; fi
+  cr_run "$(jq -n --arg t "$workdir/adir" '{session_id:"hb5b",hook_event_name:"SubagentStop",agent_id:"hb5b",agent_type:"code-review-gatekeeper",last_assistant_message:"",agent_transcript_path:$t}')"
+  assert_rc_zero "exit 0 (directory as transcript)"
+  m="$CLAUDE_STATE_DIR/code-review/hb5b"
+  if [ -f "$m" ] && [ "$(wc -l < "$m" | tr -d ' ')" = "0" ] && ! grep -q '^verdict=' "$m"; then _pass "unreadable transcript: timestamp-only marker"; else _fail "unreadable transcript" "$(cat "$m" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-HB-6] PostToolUse launch acknowledgement writes nothing and leaves a recorded verdict untouched"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  ack='Async agent launched successfully. (This tool result is internal metadata)
+agentId: ab12cd34ef567890a (internal ID - do not mention to user.)
+The agent is working in the background.'
+  cr_run "$(jq -n --arg a "$ack" '{session_id:"hb6a",hook_event_name:"PostToolUse",tool_name:"Agent",tool_use_id:"toolu_L1",tool_input:{subagent_type:"peer-review-critic"},tool_response:[{type:"text",text:$a}]}')"
+  assert_rc_zero "exit 0 (content array)"
+  if [ ! -e "$CLAUDE_STATE_DIR/peer-review/hb6a" ]; then _pass "array ack: no peer-review marker"; else _fail "array ack marker" "$(cat "$CLAUDE_STATE_DIR/peer-review/hb6a" 2>&1)"; fi
+  cr_run "$(jq -n --arg a "
+$ack" '{session_id:"hb6b",hook_event_name:"PostToolUse",tool_name:"Agent",tool_use_id:"toolu_L2",tool_input:{subagent_type:"agentic-framework:code-review-gatekeeper"},tool_response:$a}')"
+  assert_rc_zero "exit 0 (plain string, leading blank line)"
+  if [ ! -e "$CLAUDE_STATE_DIR/code-review/hb6b" ] && [ ! -e "$CLAUDE_STATE_DIR/code-review/hb6b.verdict-sources" ]; then _pass "string ack: no code-review marker or sidecar"; else _fail "string ack marker" "$(ls "$CLAUDE_STATE_DIR/code-review" 2>&1)"; fi
+  # phrase on line 1 but no "agentId:" second line: an ordinary report, not a launch (timestamp-only marker, no verdict)
+  cr_run "$(jq -n --arg a 'Async agent launched successfully. (This tool result is internal metadata)
+The agent is working in the background.' '{session_id:"hb6e",hook_event_name:"PostToolUse",tool_name:"Agent",tool_use_id:"toolu_L6",tool_input:{subagent_type:"peer-review-critic"},tool_response:$a}')"
+  assert_rc_zero "exit 0 (phrase without agentId line)"
+  m6e="$CLAUDE_STATE_DIR/peer-review/hb6e"
+  if [ -f "$m6e" ] && [ "$(wc -l < "$m6e" | tr -d ' ')" = "0" ] && ! grep -q 'verdict=' "$m6e"; then _pass "phrase-only text is an ordinary report: timestamp-only marker"; else _fail "phrase without agentId" "$(cat "$m6e" 2>&1)"; fi
+  # existing recorded verdict: unchanged, no sidecar line added
+  hb_transcript "$workdir/t.jsonl" "VERDICT: CHANGES_REQUIRED"
+  cr_run "$(jq -n --arg t "$workdir/t.jsonl" '{session_id:"hb6c",hook_event_name:"SubagentStop",agent_id:"hb0000000000000001",agent_type:"peer-review-critic",agent_transcript_path:$t}')"
+  m="$CLAUDE_STATE_DIR/peer-review/hb6c"
+  before="$(cat "$m"; cat "$m.verdict-sources"; ls "$CLAUDE_STATE_DIR/peer-review" | sort)"
+  cr_run "$(jq -n --arg a "$ack" '{session_id:"hb6c",hook_event_name:"PostToolUse",tool_name:"Agent",tool_use_id:"toolu_L3",tool_input:{subagent_type:"peer-review-critic"},tool_response:[{type:"text",text:$a}]}')"
+  after="$(cat "$m"; cat "$m.verdict-sources"; ls "$CLAUDE_STATE_DIR/peer-review" | sort)"
+  if grep -qx 'verdict=CHANGES_REQUIRED' "$m" && [ "$before" = "$after" ]; then _pass "ack leaves the recorded verdict, sources and sidecars untouched"; else _fail "ack over recorded verdict" "$after"; fi
+  # object form (the payload's real tool_response): no marker change, no sidecar line
+  obj='{"agentId":"aa304bc86dde44d40","canContinueAgent":true,"canReadOutputFile":false,"description":"d","isAsync":true,"outputFile":"C:/x/tasks/aa304bc86dde44d40.output","prompt":"review it","resolvedModel":"claude-sonnet-5-5","status":"async_launched"}'
+  cr_run "$(jq -n --argjson o "$obj" '{session_id:"hb6c",hook_event_name:"PostToolUse",tool_name:"Agent",tool_use_id:"toolu_L4",tool_input:{subagent_type:"peer-review-critic"},tool_response:$o}')"
+  assert_rc_zero "exit 0 (object form over a recorded verdict)"
+  after2="$(cat "$m"; cat "$m.verdict-sources"; ls "$CLAUDE_STATE_DIR/peer-review" | sort)"
+  if grep -qx 'verdict=CHANGES_REQUIRED' "$m" && [ "$before" = "$after2" ]; then _pass "object ack leaves the recorded verdict, sources and sidecars untouched"; else _fail "object ack over recorded verdict" "$after2"; fi
+  cr_run "$(jq -n --argjson o "$obj" '{session_id:"hb6d",hook_event_name:"PostToolUse",tool_name:"Agent",tool_use_id:"toolu_L5",tool_input:{subagent_type:"peer-review-critic"},tool_response:$o}')"
+  if [ ! -e "$CLAUDE_STATE_DIR/peer-review/hb6d" ] && [ ! -e "$CLAUDE_STATE_DIR/peer-review/hb6d.verdict-sources" ]; then _pass "object ack: no marker, no sidecar"; else _fail "object ack marker" "$(ls "$CLAUDE_STATE_DIR/peer-review" 2>&1)"; fi
+  # isAsync only (no status): still a launch acknowledgement
+  cr_run "$(jq -n '{session_id:"hb6f",hook_event_name:"PostToolUse",tool_name:"Agent",tool_use_id:"toolu_L7",tool_input:{subagent_type:"peer-review-critic"},tool_response:{isAsync:true,agentId:"ab12cd34ef567890a"}}')"
+  if [ ! -e "$CLAUDE_STATE_DIR/peer-review/hb6f" ] && [ ! -e "$CLAUDE_STATE_DIR/peer-review/hb6f.verdict-sources" ]; then _pass "isAsync-only object: no marker, no sidecar"; else _fail "isAsync-only marker" "$(ls "$CLAUDE_STATE_DIR/peer-review" 2>&1)"; fi
+  # a non-launch object response is an ordinary report: its verdict is recorded
+  cr_run "$(jq -n '{session_id:"hb6g",hook_event_name:"PostToolUse",tool_name:"Agent",tool_use_id:"toolu_L8",tool_input:{subagent_type:"peer-review-critic"},tool_response:{status:"completed",content:[{type:"text",text:"Done.\nVERDICT: APPROVED"}]}}')"
+  if grep -qx 'verdict=APPROVED' "$CLAUDE_STATE_DIR/peer-review/hb6g" 2>/dev/null; then _pass "non-launch object response still records its verdict"; else _fail "non-launch object verdict" "$(cat "$CLAUDE_STATE_DIR/peer-review/hb6g" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+section "[RECORD-SUBAGENT-RUN-HB-8] a continued reviewer stopping without a new hand-back cannot re-record its old report; a new hand-back records"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  mkdir -p "$workdir/repo"; make_test_repo "$workdir/repo"
+  h1="$(git -C "$workdir/repo" rev-parse HEAD)"
+  m="$CLAUDE_STATE_DIR/code-review/hb8"
+  hb8_stop() { cr_run "$(jq -n --arg cwd "$workdir/repo" --arg t "$workdir/t.jsonl" '{session_id:"hb8",cwd:$cwd,hook_event_name:"SubagentStop",agent_id:"hb0000000000000001",agent_type:"code-review-gatekeeper",last_assistant_message:"",agent_transcript_path:$t}')"; }
+  hb_transcript "$workdir/t.jsonl" "$HB_REPORT"
+  hb8_stop
+  assert_rc_zero "exit 0 (first stop)"
+  if grep -qx 'verdict=APPROVED' "$m" && grep -qx "head=$h1" "$m"; then _pass "APPROVED recorded at H1"; else _fail "first record" "$(cat "$m" 2>&1)"; fi
+  # HEAD moves to H2
+  git -C "$workdir/repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m next
+  h2="$(git -C "$workdir/repo" rev-parse HEAD)"
+  [ "$h1" != "$h2" ] && _pass "HEAD moved H1 -> H2" || _fail "HEAD move" "$h1"
+  mbefore="$(cat "$m")"; sbefore="$(cat "$m.verdict-sources")"
+  hb8_stop
+  assert_rc_zero "exit 0 (same transcript again)"
+  if [ "$(cat "$m")" = "$mbefore" ] && grep -qx "head=$h1" "$m"; then _pass "marker unchanged (head=H1)"; else _fail "marker after stale stop" "$(cat "$m" 2>&1)"; fi
+  if [ "$(cat "$m.verdict-sources")" = "$sbefore" ]; then _pass ".verdict-sources unchanged"; else _fail "sources after stale stop" "$(cat "$m.verdict-sources" 2>&1)"; fi
+  if [ "$(wc -l < "$m.verdict-suppressed" 2>/dev/null | tr -d ' ')" = "1" ] && grep -q 'guard=instance-dedupe' "$m.verdict-suppressed"; then _pass "one .verdict-suppressed line with guard=instance-dedupe"; else _fail "suppressed" "$(cat "$m.verdict-suppressed" 2>&1)"; fi
+  # a continuation hands back again (new tool_use id, new verdict): recorded normally
+  HB_TUID=toolu_hb8b hb_transcript "$workdir/t.jsonl" "VERDICT: CHANGES_REQUIRED"
+  hb8_stop
+  assert_rc_zero "exit 0 (new hand-back)"
+  if grep -qx 'verdict=CHANGES_REQUIRED' "$m" && grep -qx "head=$h2" "$m"; then _pass "new hand-back recorded: CHANGES_REQUIRED at H2"; else _fail "new hand-back record" "$(cat "$m" 2>&1)"; fi
+  if [ "$(wc -l < "$m.verdict-sources" | tr -d ' ')" = "2" ] && grep -qxF 'hb0000000000000001-hb-toolu_hb8b' "$m.verdict-sources"; then _pass "second .verdict-sources line for the new hand-back"; else _fail "sources after new hand-back" "$(cat "$m.verdict-sources" 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
+# big_hb_transcript <file>: hb_transcript whose hand-back lies beyond the first 16 MiB (~17 MiB of filler between).
+big_hb_transcript() {
+  hb_transcript "$1.small" "$HB_REPORT"
+  _filler="$(printf '%4000s' '' | tr ' ' 'x')"
+  _fl="{\"type\":\"assistant\",\"timestamp\":\"2026-10-22T17:32:00.000Z\",\"isSidechain\":true,\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"$_filler\"}]}}"
+  { head -n 2 "$1.small"; yes "$_fl" | head -n 4300; tail -n +3 "$1.small"; } > "$1"
+  rm -f "$1.small"
+}
+
+section "[RECORD-SUBAGENT-RUN-HB-7] transcript larger than 16 MiB: the hand-back is read from the LAST 16 MiB"
+{
+  workdir="$(make_work_dir)" || exit 2
+  export CLAUDE_STATE_DIR="$workdir/state"
+  big_hb_transcript "$workdir/big.jsonl"
+  sz=$(wc -c < "$workdir/big.jsonl" | tr -d ' ')
+  if [ "$sz" -gt 16777216 ]; then _pass "fixture exceeds the cap ($sz bytes)"; else _fail "fixture size" "$sz"; fi
+  cr_run "$(jq -n --arg t "$workdir/big.jsonl" '{session_id:"hb7",hook_event_name:"SubagentStop",agent_id:"hb0000000000000001",agent_type:"code-review-gatekeeper",last_assistant_message:"",agent_transcript_path:$t}')"
+  assert_rc_zero "exit 0"
+  m="$CLAUDE_STATE_DIR/code-review/hb7"
+  if [ "$(wc -l < "$m" 2>/dev/null | tr -d ' ')" = "3" ] && grep -qx 'verdict=APPROVED' "$m" && grep -q '^target=' "$m"; then _pass "four-line marker (three newlines) with verdict=APPROVED and target="; else _fail "big transcript marker" "$(cat "$m" 2>&1)"; fi
+  if [ -z "$(find "$CLAUDE_STATE_DIR" -name '.hb.*' 2>/dev/null)" ]; then _pass "no .hb.* scratch file left"; else _fail "hb scratch left" "$(find "$CLAUDE_STATE_DIR" -name '.hb.*' 2>&1)"; fi
+  unset CLAUDE_STATE_DIR
+  rm -rf "$workdir"
+}
+
 section "[RECORD-SUBAGENT-RUN] SubagentStop ignores other agent types"
 {
   workdir="$(make_work_dir)" || exit 2
@@ -2808,9 +3019,12 @@ section "[TELEMETRY-AGENT-002] PostToolUse: duration, status, verdict parsing"
   assert_jq "non-reviewer agent gets no verdict" "$d/t5.json" 'has("verdict")|not'
   tel telemetry-agent-run '{"session_id":"ag2","tool_use_id":"bg1","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"rust-expert","run_in_background":true}}'
   tel telemetry-agent-run "$(post bg1 rust-expert '{"status":"async_launched"}' '{"tool_input":{"subagent_type":"rust-expert","run_in_background":true}}')"
-  assert_jq "background Pre+Post pair ends launched, ended_at and duration_s kept" "$d/bg1.json" '.background==true and .status=="launched" and (.ended_at|type)=="string" and (.duration_s|type)=="number"'
+  assert_jq "background Pre+Post pair: launch path, status launched, launched_at set, no duration_s or ended_at" "$d/bg1.json" '.background==true and .status=="launched" and (.launched_at|type)=="string" and (has("duration_s")|not) and (has("ended_at")|not)'
   tel telemetry-agent-run '{"session_id":"ag2","tool_use_id":"fg1","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"rust-expert"}}'
   tel telemetry-agent-run "$(post fg1 rust-expert '"done"')"
+  tel telemetry-agent-run '{"session_id":"ag2","tool_use_id":"bg2","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"rust-expert","run_in_background":true}}'
+  tel telemetry-agent-run "$(post bg2 rust-expert '"Launched in background"' '{"tool_input":{"subagent_type":"rust-expert","run_in_background":true}}')"
+  assert_jq "older-harness background (plain string response): launched with ended_at and duration_s, no agent_id" "$d/bg2.json" '.status == "launched" and (.ended_at | type) == "string" and (.duration_s | type) == "number" and (has("agent_id") | not)'
   assert_jq "foreground Pre+Post pair ends completed" "$d/fg1.json" '.background==false and .status=="completed"'
   rm -rf "$workdir"
 }
@@ -3139,8 +3353,161 @@ section "[TELEMETRY-AGENT-007] no .tmp.* left behind after Pre / Post / Subagent
   tel telemetry-agent-run '{"session_id":"ag7","tool_use_id":"t1","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"rust-expert"}}'
   tel telemetry-agent-run '{"session_id":"ag7","tool_use_id":"t1","tool_name":"Agent","hook_event_name":"PostToolUse","tool_input":{"subagent_type":"rust-expert"},"tool_response":"ok"}'
   tel telemetry-agent-run "$(jq -n --arg t "$tr_f" '{session_id:"ag7",agent_id:"a7",agent_type:"rust-expert",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
+  # launch -> hand-back completion path (REQ-303a)
+  tel telemetry-agent-run '{"session_id":"ag7","tool_use_id":"t2","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"peer-review-critic"}}'
+  tel telemetry-agent-run '{"session_id":"ag7","tool_use_id":"t2","tool_name":"Agent","hook_event_name":"PostToolUse","tool_input":{"subagent_type":"peer-review-critic"},"tool_response":"Async agent launched successfully.\nagentId: a7b"}'
+  tel telemetry-agent-run "$(jq -n --arg t "$tr_f" '{session_id:"ag7",agent_id:"a7b",agent_type:"peer-review-critic",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
   left=$(find "$TSTATE" -name '.tmp.*' | head -3)
-  if [ -z "$left" ] && [ -f "$d/t1.json" ] && [ -f "$d/subagent-a7.json" ]; then _pass "records written, no work dir left"; else _fail "leftover or missing record" "$left"; fi
+  if [ -z "$left" ] && [ -f "$d/t1.json" ] && [ -f "$d/subagent-a7.json" ] && [ -f "$d/subagent-a7b.json" ] && [ "$(jq -r .status "$d/t2.json")" = "completed" ]; then _pass "records written (incl. launch -> completion), no work dir left"; else _fail "leftover or missing record" "$left"; fi
+  rm -rf "$workdir"
+}
+
+
+# --- launch acknowledgement and hand-back (REQ-303a) ------------------------
+TEL_ACK='Async agent launched successfully. (This tool result is internal metadata)
+agentId: ab12cd34ef567890a (internal ID - do not mention to user.)
+The agent is working in the background.
+output_file: C:\Users\x\tasks\ab12cd34ef567890a.output'
+TEL_OBJ='{"agentId":"ab12cd34ef567890a","canContinueAgent":true,"canReadOutputFile":false,"description":"gate review","isAsync":true,"outputFile":"C:/x/tasks/ab12cd34ef567890a.output","prompt":"review the diff","resolvedModel":"claude-opus-5-5","status":"async_launched"}'
+tel_hb_tr() { # <file> <report>: hand-back transcript with fractional-second timestamps and a model
+  {
+    printf '%s\n' '{"type":"user","timestamp":"2026-10-22T17:44:49.753Z","isSidechain":true,"message":{"role":"user","content":[{"type":"text","text":"go"}]}}'
+    printf '%s%s\n' '{"type":"assistant","timestamp":"2026-10-22T17:50:00.000Z","isSidechain":true,"message":{"role":"assistant","model":"claude-opus-5-5","id":"m1","usage":{"input_tokens":3,"output_tokens":4,"cache_read_input_tokens":1,"cache_creation_input_tokens":2},' \
+      '"content":[{"type":"text","text":"Reviewing..."}]}}'
+    jq -nc --arg m "$2" '{type:"assistant",timestamp:"2026-10-22T17:57:14.100Z",isSidechain:true,message:{role:"assistant",model:"claude-opus-5-5",id:"m2",usage:{input_tokens:1,output_tokens:2,cache_read_input_tokens:0,cache_creation_input_tokens:0},
+      content:[{type:"tool_use",id:"toolu_z",name:"SubagentHandback",input:{message:$m}}]}}'
+    printf '%s\n' '{"type":"user","timestamp":"2026-10-22T17:57:14.200Z","isSidechain":true,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_z","content":"ok"}]}}'
+  } > "$1"
+}
+
+section "[TELEMETRY-AGENT-HB-1] PostToolUse launch acknowledgement: status launched, agent_id, launched_at, no duration"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/hb1/agents"
+  tel telemetry-agent-run '{"session_id":"hb1","tool_use_id":"toolu_L","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"agentic-framework:code-review-gatekeeper","model":"opus","description":"gate review"}}'
+  tel telemetry-agent-run "$(jq -n --argjson o "$TEL_OBJ" '{session_id:"hb1",tool_use_id:"toolu_L",tool_name:"Agent",hook_event_name:"PostToolUse",duration_ms:23,tool_input:{subagent_type:"agentic-framework:code-review-gatekeeper",model:"opus"},tool_response:$o}')"
+  assert_rc_zero "post ack"
+  assert_out_empty "post ack silent"
+  assert_jq "launched record: agent_id, launched_at, no ended_at/duration_s/verdict" "$d/toolu_L.json" '.status=="launched" and .agent_id=="ab12cd34ef567890a" and (.launched_at|test("^[0-9]{4}-")) and (has("duration_s")|not) and (has("ended_at")|not) and (has("verdict")|not)'
+  assert_jq "Pre fields preserved" "$d/toolu_L.json" '.description=="gate review" and .model_tier=="opus" and .agent_name=="code-review-gatekeeper" and (.started_at|test("^[0-9]{4}-"))'
+  # text form kept as a second launch-acknowledgement form
+  tel telemetry-agent-run "$(jq -n --arg a "$TEL_ACK" '{session_id:"hb1",tool_use_id:"toolu_T",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"rust-expert"},tool_response:[{type:"text",text:$a}]}')"
+  assert_jq "text-form ack: launched, agent_id from the text id line" "$d/toolu_T.json" '.status=="launched" and .agent_id=="ab12cd34ef567890a" and (has("duration_s")|not) and (.launched_at | test("^[0-9]{4}-")) and (has("ended_at") | not)'
+  # phrase without the agentId: second line is not a launch: completed path as before
+  tel telemetry-agent-run "$(jq -n --arg a 'Async agent launched successfully. (internal)
+The agent is working in the background.' '{session_id:"hb1",tool_use_id:"toolu_N",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"rust-expert"},tool_response:[{type:"text",text:$a}]}')"
+  assert_jq "text without agentId line: completed, not launched" "$d/toolu_N.json" '.status=="completed" and has("duration_s")'
+  # a 100-character agentId token is capped to 64
+  long="$(printf '%100s' '' | tr ' ' 'a')"
+  tel telemetry-agent-run "$(jq -n --arg a "Async agent launched successfully. (internal)
+agentId: $long (internal ID)" '{session_id:"hb1",tool_use_id:"toolu_C",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"rust-expert"},tool_response:[{type:"text",text:$a}]}')"
+  assert_jq "text-form agent_id capped at 64 characters" "$d/toolu_C.json" '.status=="launched" and (.agent_id|length)==64'
+  tel telemetry-agent-run "$(jq -n --arg l "$long" '{session_id:"hb1",tool_use_id:"toolu_C2",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"rust-expert"},tool_response:{status:"async_launched",agentId:$l}}')"
+  assert_jq "object-form agent_id capped at 64 characters" "$d/toolu_C2.json" '.status=="launched" and (.agent_id|length)==64'
+  # isAsync only (no status): still a launch
+  tel telemetry-agent-run "$(jq -n '{session_id:"hb1",tool_use_id:"toolu_IA",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"rust-expert"},tool_response:{isAsync:true,agentId:"ia1"}}')"
+  assert_jq "isAsync-only object: launched" "$d/toolu_IA.json" '.status=="launched" and .agent_id=="ia1"'
+  # a non-launch object response is an ordinary completed report with its verdict
+  tel telemetry-agent-run "$(jq -n '{session_id:"hb1",tool_use_id:"toolu_NL",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"peer-review-critic"},tool_response:{status:"completed",content:[{type:"text",text:"Done.\nVERDICT: APPROVED"}]}}')"
+  assert_jq "non-launch object: completed with verdict" "$d/toolu_NL.json" '.status=="completed" and .verdict=="APPROVED"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-HB-2] SubagentStop completes the launch record and links the subagent record"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/hb2/agents"
+  tel_hb_tr "$workdir/t.jsonl" "Target: x vs y (a..b)
+VERDICT: APPROVED"
+  tel telemetry-agent-run '{"session_id":"hb2","tool_use_id":"toolu_L","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"agentic-framework:code-review-gatekeeper","description":"gate review"}}'
+  tel telemetry-agent-run "$(jq -n --argjson o "$TEL_OBJ" '{session_id:"hb2",tool_use_id:"toolu_L",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"agentic-framework:code-review-gatekeeper"},tool_response:$o}')"
+  sleep 2
+  tel telemetry-agent-run "$(jq -n --arg t "$workdir/t.jsonl" '{session_id:"hb2",agent_id:"ab12cd34ef567890a",agent_type:"agentic-framework:code-review-gatekeeper",hook_event_name:"SubagentStop",last_assistant_message:"",agent_transcript_path:$t}')"
+  assert_rc_zero "subagent stop"
+  assert_out_empty "subagent stop silent"
+  assert_jq "launch record completed with verdict and model_actual" "$d/toolu_L.json" '.status=="completed" and .verdict=="APPROVED" and .model_actual=="claude-opus-5-5" and (.ended_at|test("^[0-9]{4}-")) and .agent_id=="ab12cd34ef567890a"'
+  assert_jq "duration_s = stop - started_at within 2 s (and at least the 2 s slept)" "$d/toolu_L.json" '((.duration_s - ((.ended_at|fromdateiso8601) - (.started_at|fromdateiso8601))) | fabs) <= 2 and .duration_s >= 2'
+  assert_jq "subagent record: tool_use_id, started_at, duration_s, tokens" "$d/subagent-ab12cd34ef567890a.json" '.tool_use_id=="toolu_L" and .started_at=="2026-10-22T17:44:49.753Z" and (.duration_s|type)=="number" and .verdict=="APPROVED" and .tokens=={input:4,output:6,cache_read:1,cache_creation:2}'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-HB-6] resumed agent: a second SubagentStop re-merges onto the same launch record and keeps the link"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/hb6/agents"
+  tel_hb_tr "$workdir/t.jsonl" "VERDICT: APPROVED"
+  tel telemetry-agent-run '{"session_id":"hb6","tool_use_id":"toolu_L","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"agentic-framework:code-review-gatekeeper"}}'
+  tel telemetry-agent-run "$(jq -n --argjson o "$TEL_OBJ" '{session_id:"hb6",tool_use_id:"toolu_L",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"agentic-framework:code-review-gatekeeper"},tool_response:$o}')"
+  stop_ev="$(jq -n --arg t "$workdir/t.jsonl" '{session_id:"hb6",agent_id:"ab12cd34ef567890a",agent_type:"agentic-framework:code-review-gatekeeper",hook_event_name:"SubagentStop",last_assistant_message:"",agent_transcript_path:$t}')"
+  tel telemetry-agent-run "$stop_ev"
+  end1="$(jq -r .ended_at "$d/toolu_L.json")"
+  sleep 1
+  printf '%s\n' '{"type":"assistant","timestamp":"2026-10-22T18:10:00.000Z","isSidechain":true,"message":{"role":"assistant","model":"claude-opus-5-5","id":"m3","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0},"content":[{"type":"text","text":"resumed"}]}}' >> "$workdir/t.jsonl"
+  tel telemetry-agent-run "$stop_ev"
+  assert_rc_zero "second stop"
+  assert_jq "same record re-merged: completed, ended_at moved on, agent_id kept" "$d/toolu_L.json" ".status==\"completed\" and .agent_id==\"ab12cd34ef567890a\" and .ended_at > \"$end1\" and .tool_use_id==\"toolu_L\""
+  assert_jq "subagent record keeps tool_use_id after the second stop" "$d/subagent-ab12cd34ef567890a.json" '.tool_use_id=="toolu_L" and .tokens.output==7'
+  n=$(find "$d" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')
+  if [ "$n" = 2 ]; then _pass "no extra record created (2 files)"; else _fail "record count" "$n"; fi
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-HB-7] state directory containing a space: the launch link still completes"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state dir"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/hb7/agents"
+  tel_hb_tr "$workdir/t.jsonl" "VERDICT: APPROVED"
+  tel telemetry-agent-run '{"session_id":"hb7","tool_use_id":"toolu_L","tool_name":"Agent","hook_event_name":"PreToolUse","tool_input":{"subagent_type":"agentic-framework:code-review-gatekeeper"}}'
+  tel telemetry-agent-run "$(jq -n --argjson o "$TEL_OBJ" '{session_id:"hb7",tool_use_id:"toolu_L",tool_name:"Agent",hook_event_name:"PostToolUse",tool_input:{subagent_type:"agentic-framework:code-review-gatekeeper"},tool_response:$o}')"
+  tel telemetry-agent-run "$(jq -n --arg t "$workdir/t.jsonl" '{session_id:"hb7",agent_id:"ab12cd34ef567890a",agent_type:"agentic-framework:code-review-gatekeeper",hook_event_name:"SubagentStop",last_assistant_message:"",agent_transcript_path:$t}')"
+  assert_jq "launch record completed in a state path with a space" "$d/toolu_L.json" '.status=="completed" and .verdict=="APPROVED" and .agent_id=="ab12cd34ef567890a"'
+  assert_jq "subagent record linked (tool_use_id set)" "$d/subagent-ab12cd34ef567890a.json" '.tool_use_id=="toolu_L"'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-HB-3] SubagentStop without a launch record: subagent record only, transcript span, fractional seconds stripped"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/hb3/agents"
+  tel_hb_tr "$workdir/t.jsonl" "VERDICT: CHANGES_REQUIRED"
+  tel telemetry-agent-run "$(jq -n --arg t "$workdir/t.jsonl" '{session_id:"hb3",agent_id:"zz99",agent_type:"peer-review-critic",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
+  assert_rc_zero "subagent stop"
+  n=$(find "$d" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')
+  if [ "$n" = "1" ] && [ -f "$d/subagent-zz99.json" ]; then _pass "only the subagent record written"; else _fail "files" "$(ls -A "$d" 2>&1)"; fi
+  tel_hb_tr "$workdir/t2.jsonl" "VERDICT: CHANGES_REQUIRED"
+  { head -n 1 "$workdir/t2.jsonl"; printf '%s\n' '{"type":"assistant","timestamp":"2026-10-22T17:45:00.000Z","message":"oops"}'; tail -n +2 "$workdir/t2.jsonl"; } > "$workdir/t3.jsonl"
+  tel telemetry-agent-run "$(jq -n --arg t "$workdir/t3.jsonl" '{session_id:"hb3",agent_id:"zz98",agent_type:"peer-review-critic",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
+  assert_jq "non-object message line: verdict still parsed from the hand-back" "$d/subagent-zz98.json" '.verdict=="CHANGES_REQUIRED"'
+  assert_jq "tool_use_id null, started_at is the first timestamp, verdict from hand-back" "$d/subagent-zz99.json" '.tool_use_id==null and .started_at=="2026-10-22T17:44:49.753Z" and .verdict=="CHANGES_REQUIRED"'
+  assert_jq "duration_s = ended_at - first timestamp (fractional part stripped)" "$d/subagent-zz99.json" '.duration_s == ((.ended_at|fromdateiso8601) - (.started_at|sub("\\.[0-9]+";"")|fromdateiso8601))'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-HB-4] untyped SubagentStop without a transcript writes nothing; a typed one still does"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/hb4/agents"
+  mkdir -p "$d"; : > "$d/keep.json"
+  before=$(find "$TSTATE" -type f | wc -l | tr -d ' ')
+  tel telemetry-agent-run '{"session_id":"hb4","agent_id":"u1","agent_type":"","hook_event_name":"SubagentStop","agent_transcript_path":"/nonexistent/x.jsonl"}'
+  tel telemetry-agent-run '{"session_id":"hb4","agent_id":"u2","hook_event_name":"SubagentStop"}'
+  after=$(find "$TSTATE" -type f | wc -l | tr -d ' ')
+  assert_rc_zero "untyped stop"
+  if [ "$before" = "$after" ]; then _pass "no file written for untyped events ($before files)"; else _fail "untyped wrote files" "$before -> $after"; fi
+  tel telemetry-agent-run '{"session_id":"hb4","agent_id":"t1","agent_type":"rust-expert","hook_event_name":"SubagentStop","agent_transcript_path":"/nonexistent/x.jsonl"}'
+  assert_jq "typed stop without transcript still writes the subagent record" "$d/subagent-t1.json" '.agent_name=="rust-expert" and .tool_use_id==null and .started_at==null and .duration_s==null'
+  rm -rf "$workdir"
+}
+
+section "[TELEMETRY-AGENT-HB-5] transcript larger than 16 MiB: verdict from the tail, tokens and started_at from the head"
+{
+  workdir="$(make_work_dir)" || exit 2
+  TSTATE="$workdir/state"; TEL_PLUGIN_ROOT=""; d="$TSTATE/telemetry/sessions/hb5/agents"
+  big_hb_transcript "$workdir/big.jsonl"
+  tel telemetry-agent-run "$(jq -n --arg t "$workdir/big.jsonl" '{session_id:"hb5",agent_id:"big1",agent_type:"agentic-framework:code-review-gatekeeper",hook_event_name:"SubagentStop",last_assistant_message:"",agent_transcript_path:$t}')"
+  assert_rc_zero "subagent stop"
+  assert_out_empty "subagent stop silent"
+  assert_jq "verdict APPROVED, tokens present, started_at = first line" "$d/subagent-big1.json" '.verdict=="APPROVED" and (.tokens|type)=="object" and .tokens.input>0 and .started_at=="2026-10-22T17:30:00.100Z"'
   rm -rf "$workdir"
 }
 

@@ -678,6 +678,105 @@ section "[CODE-REVIEW] code-review marker through both recorders"
   rm -rf "$workdir"
 }
 
+# --- HAND-BACK: report delivered through the SubagentHandback tool call (transcript), launch ack skipped
+section "[HAND-BACK] hand-back report through both recorders"
+{
+  workdir="$(make_work_dir)" || exit 2
+  testgit="$workdir/test_repo"
+  state_ps_msys="$workdir/state_ps"
+  state_sh_msys="$workdir/state_sh"
+  state_ps_win=$(cygpath -w "$state_ps_msys" 2>/dev/null || echo "$state_ps_msys")
+  testgit_win=$(cygpath -w "$testgit" 2>/dev/null || echo "$testgit")
+  mkdir -p "$testgit"
+  make_test_repo "$testgit"
+
+  transcript="$workdir/agent-transcript.jsonl"
+  transcript_win=$(cygpath -w "$transcript" 2>/dev/null || echo "$transcript")
+  hb_msg=$'Review done.\nTarget: feat/x vs origin/main (abc1234..def5678); fallback: none\nVERDICT: APPROVED'
+  {
+    jq -c -n '{type:"user",timestamp:"2026-10-22T17:44:40.100Z",message:{role:"user",content:[{type:"text",text:"Review the branch."}]}}'
+    jq -c -n '{type:"assistant",timestamp:"2026-10-22T17:44:45.200Z",message:{role:"assistant",content:[{type:"text",text:"Reviewing..."}]}}'
+    jq -c -n --arg m "$hb_msg" '{type:"assistant",timestamp:"2026-10-22T17:44:49.753Z",message:{role:"assistant",content:[{type:"tool_use",id:"toolu_01HB",name:"SubagentHandback",input:{message:$m},caller:{type:"direct"}}]},wireToolInputs:{message:$m}}'
+    jq -c -n '{type:"user",timestamp:"2026-10-22T17:44:50.300Z",message:{role:"user",content:[{type:"tool_result",tool_use_id:"toolu_01HB",content:"{\"success\":true,\"message\":\"Report delivered to your caller.\"}"}]}}'
+  } > "$transcript"
+
+  payload_ps=$(jq -n --arg cwd "$testgit_win" --arg tp "$transcript_win" '{session_id:"hbm",hook_event_name:"SubagentStop",agent_type:"code-review-gatekeeper",agent_id:"hb1agent",last_assistant_message:"",agent_transcript_path:$tp,cwd:$cwd}')
+  payload_sh=$(jq -n --arg cwd "$testgit" --arg tp "$transcript" '{session_id:"hbm",hook_event_name:"SubagentStop",agent_type:"code-review-gatekeeper",agent_id:"hb1agent",last_assistant_message:"",agent_transcript_path:$tp,cwd:$cwd}')
+  printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_ps_win" pwsh -NoProfile -File "$SRC_REPO/hooks/record-subagent-run.ps1" >/dev/null 2>&1
+  printf '%s' "$payload_sh" | CLAUDE_STATE_DIR="$state_sh_msys" sh "$SRC_REPO/hooks/record-subagent-run.sh" >/dev/null 2>&1
+
+  if grep -q '^verdict=APPROVED$' "$state_sh_msys/code-review/hbm" 2>/dev/null && grep -q '^target=feat/x vs origin/main' "$state_sh_msys/code-review/hbm" 2>/dev/null; then
+    _pass "hand-back marker: sh marker carries verdict and target from the transcript"
+  else
+    _fail "hand-back marker: sh marker verdict/target" "$(cat "$state_sh_msys/code-review/hbm" 2>&1)"
+  fi
+  marker_compare "$state_ps_msys/code-review/hbm" "$state_sh_msys/code-review/hbm" "hand-back marker"
+  sidecar_compare "$state_ps_msys/code-review/hbm.verdict-sources" "$state_sh_msys/code-review/hbm.verdict-sources" "hand-back marker .verdict-sources"
+
+  # Continuation: the same hand-back seen again after HEAD moved is suppressed by both recorders
+  hb_head1=$(git -C "$testgit" rev-parse HEAD)
+  git -C "$testgit" commit -q --allow-empty -m "hand-back continuation moves HEAD"
+  [ "$(git -C "$testgit" rev-parse HEAD)" != "$hb_head1" ] || _fail "hand-back continuation" "HEAD did not move"
+  printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_ps_win" pwsh -NoProfile -File "$SRC_REPO/hooks/record-subagent-run.ps1" >/dev/null 2>&1
+  printf '%s' "$payload_sh" | CLAUDE_STATE_DIR="$state_sh_msys" sh "$SRC_REPO/hooks/record-subagent-run.sh" >/dev/null 2>&1
+  if grep -q "^head=$hb_head1\$" "$state_ps_msys/code-review/hbm" 2>/dev/null && grep -q "^head=$hb_head1\$" "$state_sh_msys/code-review/hbm" 2>/dev/null; then
+    _pass "hand-back continuation: both markers still carry the first HEAD"
+  else
+    _fail "hand-back continuation: markers moved to the new HEAD" "ps: $(cat "$state_ps_msys/code-review/hbm" 2>&1); sh: $(cat "$state_sh_msys/code-review/hbm" 2>&1)"
+  fi
+  if grep -q 'guard=instance-dedupe' "$state_ps_msys/code-review/hbm.verdict-suppressed" 2>/dev/null && grep -q 'guard=instance-dedupe' "$state_sh_msys/code-review/hbm.verdict-suppressed" 2>/dev/null; then
+    _pass "hand-back continuation: both recorders log guard=instance-dedupe"
+  else
+    _fail "hand-back continuation: instance-dedupe audit line missing" "ps: $(cat "$state_ps_msys/code-review/hbm.verdict-suppressed" 2>&1); sh: $(cat "$state_sh_msys/code-review/hbm.verdict-suppressed" 2>&1)"
+  fi
+
+  # PostToolUse launch acknowledgement: neither side writes anything
+  ack=$'Async agent launched successfully. (This tool result is internal metadata \xe2\x80\x94 never quote or paste any part of it, including the agentId below, into a user-facing reply.)\nagentId: 0123456789abcdef0 (internal ID - do not mention to user.)\nThe agent works in the background.'
+  ack_ps=$(jq -n --arg cwd "$testgit_win" --arg t "$ack" '{session_id:"hback",hook_event_name:"PostToolUse",tool_use_id:"toolu_ack",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:[{type:"text",text:$t}],cwd:$cwd}')
+  ack_sh=$(jq -n --arg cwd "$testgit" --arg t "$ack" '{session_id:"hback",hook_event_name:"PostToolUse",tool_use_id:"toolu_ack",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:[{type:"text",text:$t}],cwd:$cwd}')
+  printf '%s' "$ack_ps" | CLAUDE_STATE_DIR="$state_ps_win" pwsh -NoProfile -File "$SRC_REPO/hooks/record-subagent-run.ps1" >/dev/null 2>&1
+  printf '%s' "$ack_sh" | CLAUDE_STATE_DIR="$state_sh_msys" sh "$SRC_REPO/hooks/record-subagent-run.sh" >/dev/null 2>&1
+  if [ ! -e "$state_ps_msys/code-review/hback" ] && [ ! -e "$state_sh_msys/code-review/hback" ]; then
+    _pass "hand-back launch acknowledgement: neither recorder writes a marker"
+  else
+    _fail "hand-back launch acknowledgement" "ps marker: $([ -e "$state_ps_msys/code-review/hback" ] && echo yes || echo no); sh marker: $([ -e "$state_sh_msys/code-review/hback" ] && echo yes || echo no)"
+  fi
+
+  # PostToolUse launch acknowledgement, object form (the payload shape): neither side writes anything
+  ackobj_ps=$(jq -n --arg cwd "$testgit_win" '{session_id:"hbobj",hook_event_name:"PostToolUse",tool_use_id:"toolu_ackobj",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:{agentId:"aa304bc86dde44d40",canContinueAgent:true,canReadOutputFile:false,description:"x",isAsync:true,outputFile:"C:/t/a.output",prompt:"short",resolvedModel:"claude-sonnet-5-5",status:"async_launched"},cwd:$cwd}')
+  ackobj_sh=$(jq -n --arg cwd "$testgit" '{session_id:"hbobj",hook_event_name:"PostToolUse",tool_use_id:"toolu_ackobj",tool_name:"Agent",tool_input:{subagent_type:"code-review-gatekeeper"},tool_response:{agentId:"aa304bc86dde44d40",canContinueAgent:true,canReadOutputFile:false,description:"x",isAsync:true,outputFile:"C:/t/a.output",prompt:"short",resolvedModel:"claude-sonnet-5-5",status:"async_launched"},cwd:$cwd}')
+  [ -n "$ackobj_sh" ] && [ -n "$ackobj_ps" ] || _fail "object-form fixture" "jq produced no payload"
+  printf '%s' "$ackobj_ps" | CLAUDE_STATE_DIR="$state_ps_win" pwsh -NoProfile -File "$SRC_REPO/hooks/record-subagent-run.ps1" >/dev/null 2>&1
+  printf '%s' "$ackobj_sh" | CLAUDE_STATE_DIR="$state_sh_msys" sh "$SRC_REPO/hooks/record-subagent-run.sh" >/dev/null 2>&1
+  if [ ! -e "$state_ps_msys/code-review/hbobj" ] && [ ! -e "$state_sh_msys/code-review/hbobj" ]; then
+    _pass "hand-back launch acknowledgement (object form): neither recorder writes a marker"
+  else
+    _fail "hand-back launch acknowledgement (object form)" "ps marker: $([ -e "$state_ps_msys/code-review/hbobj" ] && echo yes || echo no); sh marker: $([ -e "$state_sh_msys/code-review/hbobj" ] && echo yes || echo no)"
+  fi
+
+  # Transcript above 16 MiB with the hand-back beyond its first 16 MiB: both read the tail
+  big="$workdir/big-transcript.jsonl"
+  big_win=$(cygpath -w "$big" 2>/dev/null || echo "$big")
+  filler=$(jq -c -n --arg t "$(head -c 4000 /dev/zero | tr '\0' x)" '{type:"assistant",timestamp:"2026-10-22T17:44:42.000Z",message:{role:"assistant",content:[{type:"text",text:$t}]}}')
+  {
+    head -n 2 "$transcript"
+    yes "$filler" | head -n 4300
+    tail -n 2 "$transcript"
+  } > "$big"
+  payload_ps=$(jq -n --arg cwd "$testgit_win" --arg tp "$big_win" '{session_id:"hbbig",hook_event_name:"SubagentStop",agent_type:"code-review-gatekeeper",agent_id:"hbbigagent",last_assistant_message:"",agent_transcript_path:$tp,cwd:$cwd}')
+  payload_sh=$(jq -n --arg cwd "$testgit" --arg tp "$big" '{session_id:"hbbig",hook_event_name:"SubagentStop",agent_type:"code-review-gatekeeper",agent_id:"hbbigagent",last_assistant_message:"",agent_transcript_path:$tp,cwd:$cwd}')
+  printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_ps_win" pwsh -NoProfile -File "$SRC_REPO/hooks/record-subagent-run.ps1" >/dev/null 2>&1
+  printf '%s' "$payload_sh" | CLAUDE_STATE_DIR="$state_sh_msys" sh "$SRC_REPO/hooks/record-subagent-run.sh" >/dev/null 2>&1
+  if [ "$(wc -c < "$big")" -gt 16777216 ] && grep -q '^verdict=APPROVED$' "$state_sh_msys/code-review/hbbig" 2>/dev/null; then
+    _pass "hand-back beyond the cap: sh marker carries the verdict from a transcript over 16 MiB"
+  else
+    _fail "hand-back beyond the cap: sh marker verdict" "$(cat "$state_sh_msys/code-review/hbbig" 2>&1)"
+  fi
+  marker_compare "$state_ps_msys/code-review/hbbig" "$state_sh_msys/code-review/hbbig" "hand-back beyond the cap"
+  rm -f "$big"
+  rm -rf "$workdir"
+}
+
 # gate_equiv <label> <sid> <cwd-subdir> <command> <marker-kind> [marker-target]
 # Builds a fixture repo (origin remote, origin/main one commit behind main, feature/x
 # one commit ahead), writes a marker per <marker-kind>, runs both gates on the same

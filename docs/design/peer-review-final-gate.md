@@ -31,8 +31,10 @@ agent definition requires as the last line of its report (`VERDICT: APPROVED` or
 quoted mention cannot spoof it. Each qualifying run overwrites the marker (stale
 re-emissions excepted; see Stale-verdict protection below) — the latest review is the one
 that counts, which is what a fix → re-review loop needs. The `SubagentStop` source
-(`agent_type` + `last_assistant_message`) also covers background subagent launches, whose
-`PostToolUse` fires before any report text exists.
+(`agent_type` plus `last_assistant_message`, or the hand-back message in the transcript at
+`agent_transcript_path` when Claude Code (observed on 2.1.303 to 2.1.308) delivers the report through the
+`SubagentHandback` tool) is the one that carries the report: the Agent tool now returns at
+launch, so `PostToolUse` sees only a launch acknowledgement, which the recorder ignores.
 
 ## Stale-verdict protection
 

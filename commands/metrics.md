@@ -54,8 +54,8 @@ esac
 | Source | Path under `$S` | Fields used |
 |--------|-----------------|-------------|
 | Session file | `telemetry/sessions/<session>.json` | `session_id`, `started_at`, `duration_s?`, `model?`, `tokens{input,output,cache_read,cache_creation}` |
-| Agent record | `telemetry/sessions/<session>/agents/<tool_use_id>.json` | `agent_name`, `model_tier`, `background`, `started_at`, `duration_s?`, `status?`, `verdict?` |
-| Subagent record | `telemetry/sessions/<session>/agents/subagent-<agent_id>.json` | `agent_name`, `model_actual?`, `tokens?`, `verdict?` (not counted as invocations; the pre/post record is) |
+| Agent record | `telemetry/sessions/<session>/agents/<tool_use_id>.json` | `agent_name`, `model_tier`, `background`, `started_at`, `duration_s?`, `status?` (`launched` or `completed`), `agent_id?`, `launched_at?`, `model_actual?`, `verdict?` |
+| Subagent record | `telemetry/sessions/<session>/agents/subagent-<agent_id>.json` | `agent_name`, `agent_type`, `tool_use_id?`, `started_at?`, `duration_s?`, `model_actual?`, `tokens?`, `verdict?` (not counted as invocations; the pre/post record is) |
 | Review marker (fallback) | `peer-review/<session-id>` | line 1 = ISO timestamp; optional `verdict=APPROVED\|CHANGES_REQUIRED`; optional `head=<sha>` |
 | Marker sources (fallback) | `peer-review/<session-id>.verdict-sources` | one line per recorded reviewer instance |
 
@@ -117,37 +117,38 @@ Cache creation is billed at 1.25 x input. The model id has its leading `claude-`
 
 ```bash
 find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec cat {} + | jq -s --arg cutoff "$CUT" '
-  [.[] | select(.tool_use_id and ((.started_at // .ended_at // "") >= $cutoff))] as $a
+  [.[] | select(.tool_use_id and (has("agent_type") | not) and ((.started_at // .launched_at // .ended_at // "") >= $cutoff))] as $a
   | {invocations: ($a | length),
      pending: ([$a[] | select(.status == null)] | length),
      tiers: ($a | group_by(.model_tier // "unknown")
        | map({tier: (.[0].model_tier // "unknown"), n: length}) | sort_by(-.n)),
      agents: ($a | group_by(.agent_name // "general-purpose")
-       | map(([.[] | select(.status == "completed" and (.background | not) and .duration_s != null) | .duration_s]) as $d
+       | map(([.[] | select(.status == "completed" and .duration_s != null) | .duration_s]) as $d
          | {agent: (.[0].agent_name // "general-purpose"), n: length,
             background: ([.[] | select(.background)] | length),
+            launched: ([.[] | select(.status == "launched")] | length),
             completed: ($d | length),
             avg_s: (if ($d | length) > 0 then ($d | add / length) else null end)})
        | sort_by(-.n) | .[:10])}'
 ```
 
-Only records with a `tool_use_id` count as invocations; a record created by PostToolUse alone (hook installed mid-session) has no `started_at` and is placed by its `ended_at`; a call with no `subagent_type` is reported as `general-purpose`. `pending` counts records with no `status`: launches that never completed because the model guard denied them, the user rejected them, or they are still running (the PreToolUse hook cannot see a later denial or the guard's model rewrite, so such a record may also carry a null tier). Duration averages use completed foreground records only; an agent with `completed: 0` shows `-`. A background launch is recorded with `status: "launched"` and the launch latency as its duration, so it is excluded from the average and its count is flagged in the table.
+Only agent records (those with a `tool_use_id` and no `agent_type`; a `subagent-*.json` record also carries a `tool_use_id` once linked) count as invocations; a record created by PostToolUse alone (hook installed mid-session) has no `started_at` and is placed by its `launched_at`, else `ended_at`; a call with no `subagent_type` is reported as `general-purpose`. `pending` counts records with no `status`: launches that never completed because the model guard denied them, the user rejected them, or they are still running (the PreToolUse hook cannot see a later denial or the guard's model rewrite, so such a record may also carry a null tier). Duration averages use `completed` records with a `duration_s`, whose duration runs from the PreToolUse start to the SubagentStop (the Agent tool returns at launch, so the PostToolUse event only marks the launch); an agent with `completed: 0` shows `-`. `launched` records (in flight, or never reported) are excluded from the average and shown in Notes as `n launched` alongside `n background`.
 
 ### 4. Review metrics
 
-Primary source is the agent records. Reviewers are `peer-review-critic` and `spec-compliance-reviewer`; a session counts only when at least one of its reviewer records carries a verdict (a launch that was denied, is pending, or ran in the background without a parsed report does not count as a non-approval), and its outcome is the verdict of its last such record; `cycles` counts only verdict-bearing records, the same unit as the marker fallback's `.verdict-sources` lines.
+Primary source is the agent records; the verdict is parsed from the sub-agent's hand-back report in its transcript (or from `last_assistant_message` on older builds) and merged onto the launch record at SubagentStop. Reviewers are `peer-review-critic` and `spec-compliance-reviewer`; a session counts only when at least one of its reviewer records carries a verdict (a launch that was denied, is pending, or ran in the background without a parsed report does not count as a non-approval), and its outcome is the verdict of its last such record; `cycles` counts only verdict-bearing records, the same unit as the marker fallback's `.verdict-sources` lines.
 
 ```bash
 find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec jq -c '. + {file: input_filename}' {} + \
  | jq -s --arg cutoff "$CUT" '
-  [.[] | select(.tool_use_id
+  [.[] | select(.tool_use_id and (has("agent_type") | not)
         and (.agent_name == "peer-review-critic" or .agent_name == "spec-compliance-reviewer")
-        and ((.started_at // .ended_at // "") >= $cutoff))
+        and ((.started_at // .launched_at // .ended_at // "") >= $cutoff))
       | . + {session: (.file | split("/") | .[-3])}] as $r
   | ($r | group_by(.session)
       | map(select(any(.[]; .verdict != null)))
       | map({session: .[0].session, cycles: ([.[] | select(.verdict)] | length),
-             last: ([.[] | select(.verdict)] | sort_by(.started_at // .ended_at) | last | .verdict)})) as $s
+             last: ([.[] | select(.verdict)] | sort_by(.started_at // .launched_at // .ended_at) | last | .verdict)})) as $s
   | {source: "agent-records", sessions: ($s | length),
      approved: ([$s[] | select(.last == "APPROVED")] | length),
      approval_rate: (if ($s | length) > 0
@@ -203,7 +204,7 @@ Print the period and the date range first, then three Markdown tables from the J
 | Agent               | Invocations | Avg duration | Notes            |
 |---------------------|-------------|--------------|------------------|
 | peer-review-critic  | 6           | 142 s        |                  |
-| rust-expert         | 4           | 96 s         | 1 background     |
+| rust-expert         | 4           | 96 s         | 1 launched, 1 background |
 Tier distribution: opus 8, sonnet 31, haiku 9, unknown 1
 
 ## Review metrics  (source: agent-records)

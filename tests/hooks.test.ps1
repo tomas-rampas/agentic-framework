@@ -394,6 +394,137 @@ $r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'cr7'; h
 $m = if (Test-Path (Join-Path $crDir 'cr7')) { Get-Content (Join-Path $crDir 'cr7') -Raw } else { '' }
 $val = ((($m -split "`n") | Where-Object { $_.StartsWith('target=', [System.StringComparison]::Ordinal) } | Select-Object -First 1) -replace '^target=', '')
 Assert '[RECORD-SUBAGENT-RUN-CR-7] bold **Target:** label recorded, value trimmed after non-ASCII removal' ($r.Code -eq 0 -and [string]::Equals($val, $cr7v))
+Write-Host "[RECORD-SUBAGENT-RUN-HB] record-subagent-run.ps1 — hand-back report from the sub-agent transcript"
+
+$hbDir = Join-Path $workRoot 'hb'
+New-Item -ItemType Directory -Force -Path $hbDir | Out-Null
+function Format-TranscriptLine([string]$Type, [string]$Ts, $Content) {
+    [ordered]@{ type = $Type; timestamp = $Ts; message = [ordered]@{ role = $Type; content = @($Content) } } | ConvertTo-Json -Compress -Depth 8
+}
+# Transcript fixture: user, assistant text, [assistant SubagentHandback tool_use], final user tool_result.
+function Write-TranscriptFile([string]$Name, [string]$HandBack, [string]$LastText, [string]$ToolUseId = 'toolu_01HB') {
+    $rows = @(
+        (Format-TranscriptLine 'user' '2026-10-22T17:44:40.100Z' @{ type = 'text'; text = 'Review the branch.' }),
+        (Format-TranscriptLine 'assistant' '2026-10-22T17:44:45.200Z' @{ type = 'text'; text = $LastText })
+    )
+    if ($HandBack) {
+        $rows += (Format-TranscriptLine 'assistant' '2026-10-22T17:44:49.753Z' ([ordered]@{ type = 'tool_use'; id = $ToolUseId; name = 'SubagentHandback'; input = [ordered]@{ message = $HandBack }; caller = @{ type = 'direct' } }))
+    }
+    $rows += (Format-TranscriptLine 'user' '2026-10-22T17:44:50.300Z' @{ type = 'tool_result'; tool_use_id = $ToolUseId; content = '{"success":true,"message":"Report delivered to your caller."}' })
+    $p = Join-Path $hbDir $Name
+    [IO.File]::WriteAllText($p, (($rows -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+    $p
+}
+function Get-Text([string]$Path) { if (Test-Path $Path) { Get-Content $Path -Raw } else { '' } }
+
+$hbTgt = 'feat/x vs origin/main (abc1234..def5678)'
+$hbReport = "Target: $hbTgt`n...`nVERDICT: APPROVED"
+$hbT = Write-TranscriptFile 'ok.jsonl' $hbReport 'Reviewing...'
+
+# HB-1: gatekeeper, empty last_assistant_message, report only in the transcript
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb1'; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = 'code-review-gatekeeper'; agent_id = 'hb1agent'; last_assistant_message = ''; agent_transcript_path = $hbT })
+$ln = Get-Lines (Join-Path $crDir 'hb1')
+Assert '[RECORD-SUBAGENT-RUN-HB-1] four-line code-review marker from the transcript hand-back' ($r.Code -eq 0 -and $ln.Count -eq 4 -and $ln[1] -eq 'verdict=APPROVED' -and $ln[2] -eq "head=$headSha" -and $ln[3] -eq "target=$hbTgt")
+Assert '[RECORD-SUBAGENT-RUN-HB-1] no peer-review marker' (-not (Test-Path (Join-Path $prDir 'hb1')))
+Assert '[RECORD-SUBAGENT-RUN-HB-1] .verdict-sources holds <agent_id>-hb-<hand-back tool_use id>' ((Get-Text (Join-Path $crDir 'hb1.verdict-sources')).Trim() -ceq 'hb1agent-hb-toolu_01HB')
+
+# HB-2: peer-review-critic, bare and plugin-scoped
+foreach ($at in @('peer-review-critic', 'agentic-framework:peer-review-critic')) {
+    $sid = 'hb2-' + ($at -replace '[^\w]', '')
+    $r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = $sid; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = $at; agent_id = "a$sid"; last_assistant_message = ''; agent_transcript_path = $hbT })
+    Assert "[RECORD-SUBAGENT-RUN-HB-2] $at marker carries verdict=APPROVED" ($r.Code -eq 0 -and (Get-Text (Join-Path $prDir $sid)) -match '(?m)^verdict=APPROVED$' -and -not (Test-Path (Join-Path $crDir $sid)))
+}
+
+# HB-3: a verdict in last_assistant_message wins over the transcript
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb3'; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'hb3agent'; last_assistant_message = "Findings.`nVERDICT: CHANGES_REQUIRED"; agent_transcript_path = $hbT })
+Assert '[RECORD-SUBAGENT-RUN-HB-3] last_assistant_message verdict wins over the transcript' ($r.Code -eq 0 -and (Get-Text (Join-Path $prDir 'hb3')) -match '(?m)^verdict=CHANGES_REQUIRED$')
+
+# HB-4: no hand-back, the last assistant text block ends with the verdict
+$hbT4 = Write-TranscriptFile 'text.jsonl' '' "All good.`nVERDICT: APPROVED"
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb4'; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'hb4agent'; last_assistant_message = ''; agent_transcript_path = $hbT4 })
+Assert '[RECORD-SUBAGENT-RUN-HB-4] verdict taken from the last assistant text block' ($r.Code -eq 0 -and (Get-Text (Join-Path $prDir 'hb4')) -match '(?m)^verdict=APPROVED$')
+
+# HB-5: missing transcript path, directory path -> timestamp-only marker
+$n = 0
+foreach ($bad in @((Join-Path $hbDir 'does-not-exist.jsonl'), $hbDir)) {
+    $n++
+    $sid = "hb5-$n"
+    $r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = $sid; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = "a$sid"; last_assistant_message = ''; agent_transcript_path = $bad })
+    $ln = Get-Lines (Join-Path $prDir $sid)
+    Assert "[RECORD-SUBAGENT-RUN-HB-5] unreadable transcript path #$n -> exit 0, timestamp-only marker" ($r.Code -eq 0 -and $ln.Count -eq 1 -and (Get-Text (Join-Path $prDir $sid)) -notmatch 'verdict=')
+}
+
+# HB-6: PostToolUse launch acknowledgement writes nothing (array and string forms)
+$ack = "Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it, including the agentId below, into a user-facing reply.)`nagentId: 0123456789abcdef0 (internal ID - do not mention to user.)`nThe agent works in the background."
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6a'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack1'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = @(@{ type = 'text'; text = $ack }) })
+Assert '[RECORD-SUBAGENT-RUN-HB-6] launch ack as content array writes no marker' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $prDir 'hb6a')))
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6b'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack2'; tool_input = @{ subagent_type = 'code-review-gatekeeper' }; tool_response = $ack })
+Assert '[RECORD-SUBAGENT-RUN-HB-6] launch ack as plain string writes no marker' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $crDir 'hb6b')))
+$null = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6c'; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'hb6cagent'; last_assistant_message = 'VERDICT: CHANGES_REQUIRED' })
+$before = Get-Text (Join-Path $prDir 'hb6c'); $srcBefore = Get-Text (Join-Path $prDir 'hb6c.verdict-sources')
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6c'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack3'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = @(@{ type = 'text'; text = $ack }) })
+Assert '[RECORD-SUBAGENT-RUN-HB-6] launch ack leaves an existing CHANGES_REQUIRED marker and sources unchanged' ($r.Code -eq 0 -and $before -match 'verdict=CHANGES_REQUIRED' -and (Get-Text (Join-Path $prDir 'hb6c')) -ceq $before -and (Get-Text (Join-Path $prDir 'hb6c.verdict-sources')) -ceq $srcBefore)
+
+# HB-6 text form, first line is the phrase but the next non-blank line is not agentId: -> an ordinary report (timestamp-only marker)
+$ackBad = "Async agent launched successfully. A reviewer note, not an acknowledgement.`nThe agent works in the background."
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6f'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack6'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = $ackBad })
+$ln = Get-Lines (Join-Path $prDir 'hb6f')
+Assert '[RECORD-SUBAGENT-RUN-HB-6] phrase without an agentId: second line is an ordinary report (timestamp-only marker)' ($r.Code -eq 0 -and $ln.Count -eq 1 -and (Get-Text (Join-Path $prDir 'hb6f')) -notmatch 'verdict=')
+
+# HB-6 object form: the payload shape (tool_response is the tool data object)
+$ackObj = @{ agentId = 'aa304bc86dde44d40'; canContinueAgent = $true; canReadOutputFile = $false; description = 'x'; isAsync = $true; outputFile = 'C:\t\a.output'; prompt = 'short'; resolvedModel = 'claude-sonnet-5-5'; status = 'async_launched' }
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6d'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack4'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = $ackObj })
+Assert '[RECORD-SUBAGENT-RUN-HB-6] launch ack as object (async_launched) writes no marker' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $prDir 'hb6d')))
+$null = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6e'; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = 'peer-review-critic'; agent_id = 'hb6eagent'; last_assistant_message = 'VERDICT: CHANGES_REQUIRED' })
+$before = Get-Text (Join-Path $prDir 'hb6e'); $srcBefore = Get-Text (Join-Path $prDir 'hb6e.verdict-sources')
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6e'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack5'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = $ackObj })
+Assert '[RECORD-SUBAGENT-RUN-HB-6] launch ack as object leaves an existing CHANGES_REQUIRED marker and sources unchanged' ($r.Code -eq 0 -and $before -match 'verdict=CHANGES_REQUIRED' -and (Get-Text (Join-Path $prDir 'hb6e')) -ceq $before -and (Get-Text (Join-Path $prDir 'hb6e.verdict-sources')) -ceq $srcBefore)
+
+# HB-6 off-spec objects: isAsync:true alone (no status) counts as a launch (the .sh compares isAsync == true); a completed object is an ordinary report
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6g'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack7'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = @{ isAsync = $true } })
+Assert '[RECORD-SUBAGENT-RUN-HB-6] object with only isAsync:true (no status) writes no marker' ($r.Code -eq 0 -and -not (Test-Path (Join-Path $prDir 'hb6g')))
+$doneObj = @{ status = 'completed'; content = @(@{ type = 'text'; text = "Done.`nVERDICT: APPROVED" }) }
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6h'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack8'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = $doneObj })
+Assert '[RECORD-SUBAGENT-RUN-HB-6] non-launch object (status completed) still records the verdict' ($r.Code -eq 0 -and (Get-Text (Join-Path $prDir 'hb6h')) -match '(?m)^verdict=APPROVED$')
+$arrObj = @{ status = @('async_launched'); content = @(@{ type = 'text'; text = "Done.`nVERDICT: APPROVED" }) }
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb6i'; cwd = $scratch; hook_event_name = 'PostToolUse'; tool_name = 'Agent'; tool_use_id = 'toolu_ack9'; tool_input = @{ subagent_type = 'peer-review-critic' }; tool_response = $arrObj })
+Assert '[RECORD-SUBAGENT-RUN-HB-6] status as array is not a launch; verdict recorded' ($r.Code -eq 0 -and (Get-Text (Join-Path $prDir 'hb6i')) -match '(?m)^verdict=APPROVED$')
+
+# HB-7: transcript larger than 16 MiB, hand-back beyond its first 16 MiB (the report is read from the tail)
+$hb7 = Join-Path $hbDir 'big.jsonl'
+$filler = Format-TranscriptLine 'assistant' '2026-10-22T17:44:42.000Z' @{ type = 'text'; text = ('x' * 4000) }
+$sw = [IO.StreamWriter]::new($hb7, $false, [Text.UTF8Encoding]::new($false))
+try {
+    $sw.NewLine = "`n"
+    $sw.WriteLine((Format-TranscriptLine 'user' '2026-10-22T17:44:40.100Z' @{ type = 'text'; text = 'Review the branch.' }))
+    for ($i = 0; $i -lt 4300; $i++) { $sw.WriteLine($filler) }
+    $sw.WriteLine((Format-TranscriptLine 'assistant' '2026-10-22T17:44:49.753Z' ([ordered]@{ type = 'tool_use'; id = 'toolu_hb7'; name = 'SubagentHandback'; input = [ordered]@{ message = $hbReport }; caller = @{ type = 'direct' } })))
+    $sw.WriteLine((Format-TranscriptLine 'user' '2026-10-22T17:44:50.300Z' @{ type = 'tool_result'; tool_use_id = 'toolu_hb7'; content = '{"success":true}' }))
+} finally { $sw.Dispose() }
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload @{ session_id = 'hb7'; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = 'code-review-gatekeeper'; agent_id = 'hb7agent'; last_assistant_message = ''; agent_transcript_path = $hb7 })
+$ln = Get-Lines (Join-Path $crDir 'hb7')
+Assert '[RECORD-SUBAGENT-RUN-HB-7] transcript over 16 MiB: hand-back in the tail still records verdict and target' ((Get-Item $hb7).Length -gt 16777216 -and $r.Code -eq 0 -and $ln.Count -eq 4 -and $ln[1] -eq 'verdict=APPROVED' -and $ln[3] -eq "target=$hbTgt")
+Remove-Item -LiteralPath $hb7 -Force -ErrorAction SilentlyContinue
+
+# HB-8: a continued reviewer (same transcript, same hand-back) after HEAD moved is suppressed; a new hand-back records
+$hb8T1 = Write-TranscriptFile 'hb8a.jsonl' "Target: $hbTgt`nVERDICT: APPROVED" 'Reviewing...' 'toolu_hb8a'
+$hb8Pl = @{ session_id = 'hb8'; cwd = $scratch; hook_event_name = 'SubagentStop'; agent_type = 'code-review-gatekeeper'; agent_id = 'hb8agent'; last_assistant_message = ''; agent_transcript_path = $hb8T1 }
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload $hb8Pl)
+$h1 = (git -C $scratch rev-parse HEAD).Trim()
+$srcFile = Join-Path $crDir 'hb8.verdict-sources'; $supFile = Join-Path $crDir 'hb8.verdict-suppressed'
+Assert '[RECORD-SUBAGENT-RUN-HB-8] first hand-back recorded at H1' ($r.Code -eq 0 -and (Get-Text (Join-Path $crDir 'hb8')) -match 'verdict=APPROVED' -and (Get-Text (Join-Path $crDir 'hb8')) -match "head=$h1")
+git -C $scratch commit -q --allow-empty -m 'hb8 moves head'
+$h2 = (git -C $scratch rev-parse HEAD).Trim()
+$mBefore = Get-Text (Join-Path $crDir 'hb8'); $sBefore = Get-Text $srcFile
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload $hb8Pl)
+Assert '[RECORD-SUBAGENT-RUN-HB-8] same hand-back after HEAD moved: marker unchanged (head=H1)' ($r.Code -eq 0 -and $h1 -ne $h2 -and (Get-Text (Join-Path $crDir 'hb8')) -ceq $mBefore -and $mBefore -match "head=$h1")
+Assert '[RECORD-SUBAGENT-RUN-HB-8] one .verdict-suppressed line, guard=instance-dedupe; .verdict-sources unchanged' (@(Get-Lines $supFile | Where-Object { $_ }).Count -eq 1 -and (Get-Text $supFile) -match 'guard=instance-dedupe' -and (Get-Text $srcFile) -ceq $sBefore)
+$hb8T2 = Write-TranscriptFile 'hb8b.jsonl' "Target: $hbTgt`nVERDICT: CHANGES_REQUIRED" 'Reviewing...' 'toolu_hb8b'
+$hb8Pl2 = $hb8Pl.Clone(); $hb8Pl2['agent_transcript_path'] = $hb8T2
+$r = Invoke-Hook 'record-subagent-run.ps1' (New-Payload $hb8Pl2)
+Assert '[RECORD-SUBAGENT-RUN-HB-8] new hand-back after HEAD moved records CHANGES_REQUIRED at H2 with a second sources line' ($r.Code -eq 0 -and (Get-Text (Join-Path $crDir 'hb8')) -match 'verdict=CHANGES_REQUIRED' -and (Get-Text (Join-Path $crDir 'hb8')) -match "head=$h2" -and (@(Get-Lines $srcFile | Where-Object { $_ }) -join ',') -ceq 'hb8agent-hb-toolu_hb8a,hb8agent-hb-toolu_hb8b')
+git -C $scratch reset -q --hard HEAD~1
+
 Write-Host "session-start-context.ps1"
 
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'c1'; cwd = $scratch })

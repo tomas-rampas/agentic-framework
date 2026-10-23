@@ -2,19 +2,31 @@
 # record-subagent-run.sh — recorder for the peer-review final gate, hardened against stale overwrites.
 #
 # Fires on two events (both registered in hooks/hooks.json via the agentic-framework plugin):
-#   - PostToolUse (matcher Task|Agent): a peer-review-critic subagent call completed
-#   - SubagentStop: a peer-review-critic subagent finished; last_assistant_message carries its final report.
+#   - PostToolUse (matcher Task|Agent): a reviewer subagent call returned. A launch
+#     acknowledgement writes nothing. It is either an object response whose status is
+#     async_launched or whose isAsync is true, or text whose first non-blank line begins
+#     "Async agent launched successfully". The Agent tool returns at launch on current
+#     Claude Code.
+#   - SubagentStop: a reviewer subagent finished. Report text = last_assistant_message when it
+#     holds a whole-line VERDICT:, else the transcript at agent_transcript_path (its LAST 16 MiB: the
+#     report is the final assistant line, followed by a user tool_result line): the last
+#     SubagentHandback tool_use input.message, else the last assistant text blocks.
 #
 # Writes a per-session marker that hooks/stop-peer-review-gate.sh checks:
 #   line 1: ISO timestamp (legacy format ends here)
 #   line 2: verdict=APPROVED|CHANGES_REQUIRED — present only when the report text
-#           contains the standardized "VERDICT:" line (agents/peer-review-critic.md).
+#           contains the standardized "VERDICT:" line (agents/peer-review-critic.md), from either
+#           report source above.
 #   line 3: head=<sha> (git HEAD at time of verdict record; enables HEAD-qualified guards).
 # code-review-gatekeeper (bare or agentic-framework:-scoped) is recorded the same way into
 # <state>/code-review/<session>, plus a last line target=<text> from the report's first
 # "Target:" line (CR removed, trimmed, printable ASCII only, max 200 chars).
 #
 # Stale-verdict hardening: instance dedupe, HEAD-qualified; id-less same-HEAD contradiction guard.
+#   A report taken from a SubagentHandback block has instance id <agent_id>-hb-<that block's tool_use id>,
+#   suppressed once recorded whatever HEAD did (a continued reviewer stopping without a new hand-back).
+#   The text-form launch test needs the next non-blank line to be "agentId: <id>" too. A transcript over
+#   16 MiB is read from its last 16 MiB with the cut window's partial first line dropped.
 # Silent and fail-open; also prunes markers older than 7 days.
 
 set -u
@@ -31,9 +43,16 @@ payload=$(cat)
     session_id=$(printf '%s' "$session_id" | tr -cd 'A-Za-z0-9_-')
     [ -z "$session_id" ] && exit 0
 
+    # Determine state directory (also holds the transcript scratch file)
+    stateRoot="${CLAUDE_STATE_DIR:-}"
+    if [ -z "$stateRoot" ]; then
+        stateRoot="$HOME/.claude/.state"
+    fi
+
     # Determine event type and extract report text
     hook_event_name=$(printf '%s' "$payload" | jq -r '.hook_event_name // ""' 2>/dev/null) || exit 0
     report_text=""
+    hb_id=""
     review_sub="peer-review"
 
     if [ "$hook_event_name" = "SubagentStop" ]; then
@@ -45,6 +64,43 @@ payload=$(cat)
             peer-review-critic|agentic-framework:peer-review-critic|code-review-gatekeeper|agentic-framework:code-review-gatekeeper)
                 case "$agent_type_lower" in *code-review-gatekeeper) review_sub="code-review" ;; esac
                 report_text=$(printf '%s' "$payload" | jq -r '.last_assistant_message // ""' 2>/dev/null) || exit 0
+                if ! printf '%s' "$report_text" | tr -d '\r' | grep -qE '^[[:space:]]*VERDICT:[[:blank:]]*(APPROVED|CHANGES_REQUIRED)[[:blank:]]*$'; then
+                    # No verdict in last_assistant_message: read the report from the transcript
+                    tpath=$(printf '%s' "$payload" | jq -r '.agent_transcript_path // ""' 2>/dev/null) || tpath=""
+                    report_text=""
+                    if [ -n "$tpath" ] && [ -f "$tpath" ] && [ -r "$tpath" ]; then
+                        review_dir="$stateRoot/$review_sub"
+                        mkdir -p "$review_dir" 2>/dev/null || true
+                        hb_tmp=$(umask 077; mktemp "$review_dir/.hb.XXXXXX" 2>/dev/null) || hb_tmp=""
+                        if [ -n "$hb_tmp" ]; then
+                            trap 'rm -f "$hb_tmp"' EXIT
+                            trap 'rm -f "$hb_tmp"; exit 0' INT TERM HUP
+                            # jq reads a FILE (piping a large file into jq.exe is ~7x slower)
+                            tsize=$(wc -c < "$tpath" 2>/dev/null | tr -d ' \r') || tsize=0
+                            if [ "${tsize:-0}" -gt 16777216 ] 2>/dev/null; then
+                                # the cut window's first line is partial: drop it
+                                tail -c 16777216 -- "$tpath" 2>/dev/null | sed 1d | tr -d '\r' > "$hb_tmp" 2>/dev/null; tail_rc=$?
+                            else
+                                tail -c 16777216 -- "$tpath" 2>/dev/null | tr -d '\r' > "$hb_tmp" 2>/dev/null; tail_rc=$?
+                            fi
+                            if [ "$tail_rc" -eq 0 ]; then
+                                hb_pair=$(jq -c -n -R '
+                                  def blocks: (.message | if type == "object" then .content else null end) | if type == "array" then . else [] end;
+                                  [inputs | fromjson? | objects | select(.type == "assistant")] as $a
+                                  | ([$a[] | [blocks[] | select(type == "object" and .type == "tool_use" and .name == "SubagentHandback" and (.input | type) == "object" and (.input.message | type) == "string")
+                                              | [(if (.id | type) == "string" then .id else null end), .input.message]] | last // empty] | last)
+                                    // ([$a[] | [blocks[] | if type == "string" then . elif type == "object" and .type == "text" and (.text | type) == "string" then .text else empty end]
+                                              | select(length > 0) | join("\n")] | last | if . == null then null else [null, .] end)
+                                    // [null, ""]' "$hb_tmp" 2>/dev/null) || hb_pair=""
+                                if [ -n "$hb_pair" ]; then
+                                    report_text=$(printf '%s' "$hb_pair" | jq -r '.[1] // empty' 2>/dev/null) || report_text=""
+                                    hb_id=$(printf '%s' "$hb_pair" | jq -r '.[0] // empty' 2>/dev/null) || hb_id=""
+                                fi
+                            fi
+                            rm -f "$hb_tmp"
+                        fi
+                    fi
+                fi
                 ;;
             *)
                 exit 0
@@ -58,6 +114,9 @@ payload=$(cat)
         case "$subagent_type_lower" in
             peer-review-critic|agentic-framework:peer-review-critic|code-review-gatekeeper|agentic-framework:code-review-gatekeeper)
                 case "$subagent_type_lower" in *code-review-gatekeeper) review_sub="code-review" ;; esac
+                # Structured launch acknowledgement (the payload's tool_response is the tool data object)
+                is_launch=$(printf '%s' "$payload" | jq -r '([.tool_response, .tool_output] | map(select(. != null and . != "")) | .[0] // "") | type == "object" and ((.status == "async_launched") or (.isAsync == true))' 2>/dev/null | tr -d '\r') || exit 0
+                [ "$is_launch" = "true" ] && exit 0
                 # Try tool_response first, fall back to tool_output, extracting text recursively
                 report_text=$(printf '%s' "$payload" | jq -r '
                   ([.tool_response, .tool_output] | map(select(.!=null and .!="")) | .[0]//"") |
@@ -71,6 +130,15 @@ payload=$(cat)
                     empty
                   end
                 ' 2>/dev/null) || exit 0
+                # Launch acknowledgement (Agent tool returned at launch): the report comes later via SubagentStop
+                first_line=$(printf '%s' "$report_text" | tr -d '\r' | grep -m1 -E '[^[:space:]]') || first_line=""
+                if printf '%s' "$first_line" | grep -qE '^[[:space:]]*Async agent launched successfully'; then
+                    # ... and the next non-blank line must be "agentId: <id>", else it is an ordinary report
+                    second_line=$(printf '%s' "$report_text" | tr -d '\r' | grep -E '[^[:space:]]' | sed -n 2p) || second_line=""
+                    if printf '%s' "$second_line" | grep -qE '^agentId:[[:blank:]]*[A-Za-z0-9._-]+'; then
+                        exit 0
+                    fi
+                fi
                 ;;
             *)
                 exit 0
@@ -86,11 +154,6 @@ payload=$(cat)
         verdict=$(printf '%s' "$report_text" | tr -d '\r' | grep -E '^[[:space:]]*VERDICT:[[:blank:]]*(APPROVED|CHANGES_REQUIRED)[[:blank:]]*$' | tail -n 1 | sed -E 's/.*VERDICT:[[:blank:]]*([A-Z_]+).*/\1/')
     fi
 
-    # Determine state directory
-    stateRoot="${CLAUDE_STATE_DIR:-}"
-    if [ -z "$stateRoot" ]; then
-        stateRoot="$HOME/.claude/.state"
-    fi
     review_dir="$stateRoot/$review_sub"
     mkdir -p "$review_dir" 2>/dev/null || true
     marker="$review_dir/$session_id"
@@ -140,6 +203,16 @@ payload=$(cat)
         instance_id=$(printf '%s' "$instance_id" | tr -cd 'A-Za-z0-9_-' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         [ -z "$instance_id" ] && instance_id=""
 
+        # Report came from a SubagentHandback block: one instance id per hand-back
+        hb_form=false
+        if [ -n "$instance_id" ] && [ -n "$hb_id" ]; then
+            hb_clean=$(printf '%s' "$hb_id" | tr -cd 'A-Za-z0-9_-')
+            if [ -n "$hb_clean" ]; then
+                instance_id="${instance_id}-hb-${hb_clean}"
+                hb_form=true
+            fi
+        fi
+
         # Extract existing marker data
         if [ -f "$marker" ]; then
             existing=$(cat "$marker" 2>/dev/null) || true
@@ -165,8 +238,11 @@ payload=$(cat)
             fi
 
             if $already_consumed; then
-                # Instance already recorded: require HEAD to have moved (dedupe always needs new work)
-                if [ -n "$existing_head" ]; then
+                # Instance already recorded: require HEAD to have moved (dedupe always needs new work);
+                # a hand-back instance id is never re-recorded, whatever HEAD did
+                if $hb_form; then
+                    should_suppress=true
+                elif [ -n "$existing_head" ]; then
                     if [ -z "$current_head" ] || [ "$current_head" = "$existing_head" ]; then
                         # HEAD unknown or unchanged: suppress this write (stale re-emission)
                         should_suppress=true
