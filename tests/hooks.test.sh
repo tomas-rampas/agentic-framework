@@ -3837,7 +3837,10 @@ section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE001] 201-row command decision table (d
   gate_row_ps 93 X "$oth_exp" "git -C $oth_w push origin main" "$oth_x"
   # 91b: a PowerShell ~\ location prefix moves the review target on every host (HOME is GF_HOME)
   GATE_HOME="$GF_HOME"
-  gate_row_ps 91b X none 'cd ~\other; git push origin main' 'main vs origin/main'
+  GATE_TOOL=PowerShell
+  gate_run r91b "$GF_X" 'cd ~\other; git push origin main'
+  gate_assert_deny "REQ-004 S.3-bis m row 91b: PowerShell cd ~\\other; git push origin main moves the review target (HOME is GF_HOME)" 'review is recorded' 'main vs origin/main'
+  GATE_TOOL=Bash
   GATE_HOME=""
   gate_row_ps 94 M loc 'git -C C:\nope\x push origin main'
   gate_row_ps 95 M plain $'echo hi\rgit push origin main'
@@ -4483,13 +4486,15 @@ GCASES
     done
   done
   # T.6: a FORM or token-stage tool failure denies W_PLAIN (fail closed): grep -q (FORM)
-  # and sed -E without -n (token stage) exit 2
+  # and sed -E without -n (token stage) exit 2. The sed shim prints a well-formed field line
+  # (git US US US push US US origin US main: a plain push) and then exits 2, so only the
+  # exit-status check can produce the deny.
   for s1_tool in grep sed; do
     s1_real="$(command -v "$s1_tool")"
     s1_flag=-q; [ "$s1_tool" = sed ] && s1_flag=-E
     if [ -n "$s1_real" ] && mkdir -p "$workdir/s1bin"; then
       if [ "$s1_tool" = sed ]; then
-        printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -n ] && exec "%s" "$@"; done\nfor a in "$@"; do [ "$a" = -E ] && { cat >/dev/null; exit 2; }; done\nexec "%s" "$@"\n' "$s1_real" "$s1_real" > "$workdir/s1bin/sed"
+        printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -n ] && exec "%s" "$@"; done\nfor a in "$@"; do [ "$a" = -E ] && { cat >/dev/null; printf "git\\037\\037\\037push\\037\\037origin\\037main\\n"; exit 2; }; done\nexec "%s" "$@"\n' "$s1_real" "$s1_real" > "$workdir/s1bin/sed"
       else
         printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -q ] && { cat >/dev/null; exit 2; }; done\nexec "%s" "$@"\n' "$s1_real" > "$workdir/s1bin/grep"
       fi
@@ -4608,6 +4613,63 @@ GCASES
   gm_m="$(cygpath -m "$GF_M" 2>/dev/null || printf '%s' "$GF_M")"
   gate_run rqw5 "$GF_M" "cd $gm_m && git push origin HEAD:main"
   gate_assert_deny "REQ-004 S.3-bis w positive control: 'cd <C:/repo> && git push origin HEAD:main' reaches the no-marker deny" 'review is recorded'
+
+  # --- gate-round amendments of decision T (T.11 a-d); labels and texts as in hooks.test.ps1 ---
+  bt='`'
+  # T.11(a): every S.1 spelling is also tested with each continuation pair read as a space
+  GATE_TOOL=PowerShell
+  gate_run rt11a1 "$GF_M" "x${bt}"$'\r\n'"git push origin main"
+  gate_assert_deny 'REQ-004 T.11a: PowerShell x + backtick + CRLF + git push origin main is a candidate and not plain' "$GATE_PLAIN"
+  GATE_TOOL=Bash
+  gate_run rt11a2 "$GF_M" "x${bt}"$'\n'"git push origin main${bt}"
+  gate_assert_deny 'REQ-004 T.11a: Bash x + backtick + LF + git push origin main + backtick is a candidate and not plain' "$GATE_PLAIN"
+  GATE_TOOL=PowerShell
+  gate_run rt11a3 "$GF_M" "x${bt}"$'\r\r\n'"git push origin main"
+  gate_assert_deny 'REQ-004 T.11a: PowerShell x + backtick + CR CR LF + git push origin main is not plain' "$GATE_PLAIN"
+  gate_run rt11a4 "$GF_M" "git pu${bt}"$'\r\n'"sh origin main"
+  gate_assert_deny 'REQ-004 T.11a: PowerShell git pu + backtick + CRLF + sh origin main (continuation inside a word) is not plain' "$GATE_PLAIN"
+  GATE_TOOL=Bash
+  gate_run rt11a5 "$GF_M" "git pu${bt}"$'\n'"sh origin main"
+  gate_assert_deny 'REQ-004 T.11a: Bash git pu + backtick + LF + sh origin main (continuation inside a word) is not plain' "$GATE_PLAIN"
+
+  # T.11(b): an expansion that is empty at run time inside a keyword
+  for c11b in 'git pu$()sh origin main' 'git pu$(:)sh origin main' "git pu${bt}:${bt}sh origin main" \
+    'git pu$1sh origin main' 'git pu$@sh origin main' 'git pu$!sh origin main' 'gi$*t push origin main' \
+    'git pu$x"sh" origin main' 'git pu$($null)sh origin main'; do
+    for tl11 in Bash PowerShell; do
+      GATE_TOOL=$tl11
+      gate_run rt11b "$GF_M" "$c11b"
+      gate_assert_deny "REQ-004 T.11b: empty expansion in a keyword is a candidate and not plain [$tl11]: $c11b" "$GATE_PLAIN"
+    done
+  done
+  GATE_TOOL=Bash
+
+  # T.11(c): the PowerShell stop-parsing token
+  c11c="gh pr create --% -B dev -t x'q --base main -b '"
+  GATE_TOOL=PowerShell
+  gate_run rt11c1 "$GF_X" "$c11c"
+  gate_assert_deny 'REQ-004 T.11c: PowerShell gh pr create with --% is not plain' "$GATE_PLAIN"
+  gate_run rt11c2 "$GF_X" 'git push --% origin main'
+  gate_assert_deny 'REQ-004 T.11c: PowerShell git push with --% is not plain' "$GATE_PLAIN"
+  GATE_TOOL=Bash
+  gate_run rt11c3 "$GF_X" "$c11c"
+  gate_assert_deny 'REQ-004 T.11c: Bash gh pr create --% is a literal word and stays plain (no-marker deny, base dev)' 'review is recorded' 'vs dev'
+
+  # T.11(d): a lone surrogate escape is decided on a copy with U+FFFD, never a fail-open (raw JSON, no jq)
+  sur='\ud800'
+  pre11="{\"session_id\":\"rt11d\",\"cwd\":\"$GF_M\",\"tool_name\":\"Bash\",\"tool_input\":{"
+  gate_run_raw "${pre11}\"command\":\"git push origin main #${sur}\"}}"
+  gate_assert_deny 'REQ-004 T.11d: lone surrogate escape in the command is decided and not plain' "$GATE_PLAIN"
+  gate_run_raw "${pre11}\"command\":\"git push origin main #"'\uDfFf'"\"}}"
+  gate_assert_deny 'REQ-004 T.11d: lone low surrogate escape with mixed-case hex is decided and not plain' "$GATE_PLAIN"
+  gate_run_raw "${pre11}\"description\":\"${sur}\",\"command\":\"git push origin main\"}}"
+  gate_assert_deny 'REQ-004 T.11d: lone surrogate in tool_input.description still decides the command' 'review is recorded'
+  gate_run_raw "{\"session_id\":\"rt11d\",\"x\":\"${sur}\",\"cwd\":\"$GF_M\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push origin main\"}}"
+  gate_assert_deny 'REQ-004 T.11d: lone surrogate in an unrelated top-level field still decides the command' 'review is recorded'
+  gate_run_raw "${pre11}\"command\":\"git push origin main #${sur}\"}"
+  gate_assert_allow 'REQ-004 T.11d: a payload with a lone surrogate that is malformed for another reason still exits 0 silently'
+  gate_run_raw "${pre11}\"command\":\"git push origin main #"'\ud83d\ude00'"\"}}"
+  gate_assert_deny 'REQ-004 T.11d: a valid surrogate pair parses normally and decides' "$GATE_PLAIN"
   rm -rf "$workdir"
 }
 

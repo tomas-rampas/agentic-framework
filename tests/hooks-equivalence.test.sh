@@ -782,7 +782,7 @@ section "[HAND-BACK] hand-back report through both recorders"
 # one commit ahead), writes a marker per <marker-kind>, runs both gates on the same
 # payload with the same CLAUDE_STATE_DIR and compares stdout byte-for-byte (CR stripped).
 gate_equiv() {
-  local label="$1" sid="$2" cmd="$3" mkind="$4" mtgt="${5:-feature/x vs origin/main (@MB@..@HEAD@); fallback: none}" tool="${6:-Bash}"
+  local label="$1" sid="$2" cmd="$3" mkind="$4" mtgt="${5:-feature/x vs origin/main (@MB@..@HEAD@); fallback: none}" tool="${6:-Bash}" rawc="${7:-}"
   local wd repo repo_win state state_win head mb payload_ps payload_sh
   local f_ps f_sh ps_rc sh_rc
   wd="$(make_work_dir)" || exit 2
@@ -807,6 +807,11 @@ gate_equiv() {
   esac
   payload_ps=$(jq -cn --arg s "$sid" --arg c "$repo_win" --arg m "$cmd" --arg t "$tool" '{session_id:$s,cwd:$c,tool_name:$t,tool_input:{command:$m}}')
   payload_sh=$(jq -cn --arg s "$sid" --arg c "$repo" --arg m "$cmd" --arg t "$tool" '{session_id:$s,cwd:$c,tool_name:$t,tool_input:{command:$m}}')
+  if [ -n "$rawc" ]; then
+    # a raw JSON string for the command (no jq on the command: it may hold a lone surrogate escape)
+    payload_ps="{\"session_id\":\"$sid\",\"cwd\":$(jq -cn --arg c "$repo_win" '$c' | tr -d '\r'),\"tool_name\":\"$tool\",\"tool_input\":{\"command\":\"$rawc\"}}"
+    payload_sh="{\"session_id\":\"$sid\",\"cwd\":$(jq -cn --arg c "$repo" '$c' | tr -d '\r'),\"tool_name\":\"$tool\",\"tool_input\":{\"command\":\"$rawc\"}}"
+  fi
   f_ps="$wd/out_ps"; f_sh="$wd/out_sh"
   printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_win" pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-code-review-gate.ps1" 2>&1 | tr -d '\r' > "$f_ps"
   ps_rc=${PIPESTATUS[1]}
@@ -848,6 +853,15 @@ gate_equiv "gate deny: quoted redirection target" ge15 'gh pr create --fill > "o
 gate_equiv "gate deny: -o value is not a dry run" ge16 'git push -o -n origin HEAD:main' none
 # shellcheck disable=SC2016
 gate_equiv "gate deny: default-value expansion" ge17 'git pu${a:-s}h origin HEAD:main' none
+# gate-round amendments (T.11, decision H labels)
+gate_equiv "gate deny: backtick glued to a word" ge18 $'x`\r\ngit push origin main' none '' PowerShell
+# shellcheck disable=SC2016
+gate_equiv "gate deny: empty expansion in a keyword" ge19 'git pu$()sh origin main' none
+gate_equiv "gate deny: PowerShell stop-parsing token" ge20 'gh pr create --% -B dev -t x' none '' PowerShell
+# the seventh argument is the raw JSON text of the command: a lone surrogate escape (backslash-u D800)
+gate_equiv "gate deny: lone surrogate escape" ge21 '' none '' Bash 'git push origin main #\ud800'
+# on Windows jq writes every LF as CRLF: this exercises the exact undo (T.11e); elsewhere plain parity
+gate_equiv "gate deny: Windows CRLF payload" ge22 $'git pu`\r\nsh origin main' none '' PowerShell
 
 # gate_equiv_allow <label> <sid> <command> [tool]: both implementations exit 0, silent
 gate_equiv_allow() {

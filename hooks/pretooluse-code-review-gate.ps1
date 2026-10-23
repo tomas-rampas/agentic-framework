@@ -26,6 +26,11 @@
 #     backslashes and backticks, the anchored git stash push exempted; then the
 #     words git+push or gh/glab+pr/mr+create/new (git, gh and glab
 #     case-insensitive). Anything else exits 0 with no git call (fast path).
+#     Every spelling is tested twice, with each continuation pair deleted and with
+#     each pair read as one space (T.11a: a backtick glued to a word). A fourth
+#     spelling removes $(...), a backtick substitution and $NAME / $1 / $@ style
+#     parameters before the quotes, so an expansion that is empty at run time inside
+#     a keyword (git pu$()sh, gi$*t push) is a candidate (T.11b).
 #     Over 64 KB (bytes) the same test decides: match denies (W_SIZE), else exit 0.
 #  2. (FORM, T.3) the text, with CR and LF as SOH and SOH as STX (PowerShell
 #     dialect: curly quotes mapped to ASCII quotes first), must be one plain form
@@ -38,6 +43,8 @@
 #     reads kind, joiner or -C and directory; PUSHARG (push allowlist) and
 #     PR1/PR2 (gh/glab options, the last --head/--base wins) read the values left
 #     to right; an unread - word, a third positional or an empty word is not plain.
+#     In the PowerShell dialect a --% word is not plain (T.11c: the rest of the line
+#     would reach the program raw, unread).
 #  4. (S.4) judges the plain command with read-only git questions (rev-parse,
 #     symbolic-ref, remote, rev-list, merge-base, config); no network. A
 #     wall-clock budget of 8 s from hook start denies any candidate still
@@ -47,7 +54,9 @@
 # Always exits 0. Output nothing to allow; to deny print the single-line JSON
 # hookSpecificOutput permissionDecision deny. Fail-open (exit 0, no output):
 # AF_CODE_REVIEW_GATE=off, malformed JSON, non-object tool_input, missing or
-# non-string command, empty session_id after sanitising (checked before the
+# non-string command (a payload that fails to parse or read only because of a lone
+# surrogate escape, backslash-u D800 to DFFF, is decided on a copy with U+FFFD, T.11d),
+# empty session_id after sanitising (checked before the
 # candidate and size tests), a push whose payload cwd is not inside a git
 # repository (git rev-parse --git-dir fails), a repository with no refs at all
 # (an unborn HEAD in a repository that has other refs is gated), any unexpected
@@ -107,6 +116,9 @@ S1_BRACE2O=\$\{
 S1_BRACE2C=\}
 S1_BRACE3V=\$\{[A-Z_a-z][0-9A-Z_a-z]*\}
 S1_BRACE3O=\$\{[A-Z_a-z][0-9A-Z_a-z]*:?[+=?-]
+S1_SUBST=\$\([^)]*(\)|$)
+S1_BTICK=`[^`]*(`|$)
+S1_PARAM=\$([A-Z_a-z][0-9A-Z_a-z]*|[0-9@*!#?$-])
 S1_QUOTES=["<Q>\\`]
 S1_STASH=^([ <TAB><CR><SOH>]*git[^A-Za-z0-9]+stash[^A-Za-z0-9]+)push
 W_GIT=(^|[^A-Za-z0-9])[Gg][Ii][Tt]([^A-Za-z0-9]|$)
@@ -170,7 +182,7 @@ $script:MK = @{
 # The .NET spelling of the placeholders (one char per byte: the text is a Latin1 view
 # of the command's UTF-8 bytes).
 function Resolve-GrammarText([string]$V) {
-    return $V.Replace('<TAB>', '\t').Replace('<BS>', '\\').Replace('<HI>', '\x80-\xFF').Replace('<CURLY>', '\xE2\x80[\x98-\x9E]').Replace('<Q>', "'").Replace('<CR>', '\x0D').Replace('<SOH>', '\x01').Replace('<STX>', '\x02').Replace('<ETX>', '\x03').Replace('<L>', '\x16').Replace('<R>', '\x17')
+    return $V.Replace('<TAB>', '\t').Replace('<BS>', '\\').Replace('<HI>', '\x80-\xFF').Replace('<CURLY>', '\xE2\x80[\x98-\x9E]').Replace('<Q>', "'").Replace('<CR>', '\x0D').Replace('<SOH>', '\x01').Replace('<L>', '\x16').Replace('<R>', '\x17')
 }
 
 # Expand-Grammar: NAME -> .NET pattern, {NAME} references expanded in block order by
@@ -227,19 +239,32 @@ function Test-Candidate([string]$Bytes, [bool]$Big) {
         $script:G = Expand-Grammar -S1
         $g = $script:G; $mk = $script:MK
         $s = $Bytes.Replace($mk.SOH, $mk.STX).Replace([string][char]3, $mk.STX).Replace("`n", $mk.SOH)
-        $s = (Get-GateRx $g['S1_JOIN']).Replace($s, '')
-        $s = (Get-GateRx $g['S1_CURLY']).Replace($s, '')
-        $s = (Get-GateRx $g['S1_DQ']).Replace($s, '')
         $rq = Get-GateRx $g['S1_QUOTES']; $rs = Get-GateRx $g['S1_STASH']; $rc = Get-GateRx $g['S1_BRACE2C']
-        $t1 = (Get-GateRx $g['S1_BRACE1']).Replace($s, '')
-        $t1 = $rs.Replace($rq.Replace($t1, ''), '${1}PUSH', 1)
-        if (Test-Spelling $t1) { return $true }
-        $t2 = $rc.Replace((Get-GateRx $g['S1_BRACE2O']).Replace($s, ''), '')
-        $t2 = $rs.Replace($rq.Replace($t2, ''), '${1}PUSH', 1)
-        if (Test-Spelling $t2) { return $true }
-        $t3 = (Get-GateRx $g['S1_BRACE3O']).Replace((Get-GateRx $g['S1_BRACE3V']).Replace($s, ''), '')
-        $t3 = $rs.Replace($rq.Replace($rc.Replace($t3, ''), ''), '${1}PUSH', 1)
-        return (Test-Spelling $t3)
+        $rj = Get-GateRx $g['S1_JOIN']
+        # T.11a: each continuation pair is deleted (a word continued across lines), then
+        # read as one space (a backtick glued to a word escapes or substitutes)
+        foreach ($jr in @('', ' ')) {
+            $v = $rj.Replace($s, $jr)
+            $v = (Get-GateRx $g['S1_CURLY']).Replace($v, '')
+            $v = (Get-GateRx $g['S1_DQ']).Replace($v, '')
+            $t1 = (Get-GateRx $g['S1_BRACE1']).Replace($v, '')
+            $t1 = $rs.Replace($rq.Replace($t1, ''), '${1}PUSH', 1)
+            if (Test-Spelling $t1) { return $true }
+            $t2 = $rc.Replace((Get-GateRx $g['S1_BRACE2O']).Replace($v, ''), '')
+            $t2 = $rs.Replace($rq.Replace($t2, ''), '${1}PUSH', 1)
+            if (Test-Spelling $t2) { return $true }
+            $t3 = (Get-GateRx $g['S1_BRACE3O']).Replace((Get-GateRx $g['S1_BRACE3V']).Replace($v, ''), '')
+            $t3 = $rs.Replace($rq.Replace($rc.Replace($t3, ''), ''), '${1}PUSH', 1)
+            if (Test-Spelling $t3) { return $true }
+            # T.11b: substitutions and parameters that expand to nothing, before the quotes go
+            # (spelling 1's ${...} removal comes first, so an unclosed ${ still removes the rest, T.7f)
+            $t4 = (Get-GateRx $g['S1_SUBST']).Replace((Get-GateRx $g['S1_BRACE1']).Replace($v, ''), '')
+            $t4 = (Get-GateRx $g['S1_BTICK']).Replace($t4, '')
+            $t4 = (Get-GateRx $g['S1_PARAM']).Replace($t4, '')
+            $t4 = $rs.Replace($rq.Replace($t4, ''), '${1}PUSH', 1)
+            if (Test-Spelling $t4) { return $true }
+        }
+        return $false
     } catch {
         if (Test-RegexTimeout $_) { Send-Deny $script:K_ANY $script:W_TIME $script:T_ANY }
         if ($Big) { Send-Deny $script:K_ANY $script:W_SIZE $script:T_ANY }
@@ -264,14 +289,16 @@ function Get-PlainField([string]$Text, [bool]$Psd) {
 
         # lexer: joiner, redirection operator, blank run, quoted strings; then W/O tokens
         $t = (Get-GateRx $g['LEX']).Replace($b, $mk.A + '${1}' + $mk.B + '${4}' + $mk.C + '${5}${6}' + $mk.D + '${2}' + $mk.E)
-        $t = (Get-GateRx '\x11\x12\x13\x14[0-9*]?>[^\x02]*$').Replace($t, '')
-        $t = (Get-GateRx '\x11(&&|;)\x12\x13\x14\x15').Replace($t, $R + $L + 'O${1}' + $R + $L + 'W')
-        $t = (Get-GateRx '\x11\x12[ \t\x01]+\x13\x14\x15').Replace($t, $R + $L + 'W')
+        $t = (Get-GateRx '\x11\x12\x13\x14[0-9*]?>[^\x02]*$').Replace($t, '')  # markers: A B C D, STX
+        $t = (Get-GateRx '\x11(&&|;)\x12\x13\x14\x15').Replace($t, $R + $L + 'O${1}' + $R + $L + 'W')  # markers: A B C D E
+        $t = (Get-GateRx '\x11\x12[ \t\x01]+\x13\x14\x15').Replace($t, $R + $L + 'W')  # markers: A B C D E, SOH
         # leading and trailing blank runs go before the quote markers do, so a trailing
         # empty quoted word ("") stays an (empty) token
-        $t = (Get-GateRx '^\x17\x16W|\x17\x16W$').Replace($t, '')
+        $t = (Get-GateRx '^\x17\x16W|\x17\x16W$').Replace($t, '')  # markers: R L
         $t = $t.Replace($mk.A + $mk.B + $mk.C, '').Replace($mk.D + $mk.E, '')
         $t = $L + 'W' + $t + $R
+        # T.11c: after --% PowerShell passes the rest of the line raw, so nothing later is read
+        if ($Psd -and $t.Contains($L + 'W--%' + $R)) { Send-NotPlain }
 
         # header: location prefix, kind, -C; P_CD holds one group, so the groups shift by one
         $cd = if ($Psd) { $g['P_CD'] } else { $g['B_CD'] }
@@ -300,13 +327,13 @@ function Get-PlainField([string]$Text, [bool]$Psd) {
             # PUSHARG: -o and its value, --push-option= / --force-with-lease= values, no-op options, flags
             $r = (Get-GateRx $g['PUSHARG']).Replace($r, $mk.V + '${1}${3}' + $mk.VE + $mk.F + '${5}' + $mk.FE)
             # PowerShell: an option value is held to the push alphabet (S.3-bis c)
-            if ($Psd -and (Get-GateRx ('\x18' + $g['ALPHA'] + '*[^%+-:=@-Z_a-z\x19]')).IsMatch($r)) { Send-NotPlain }
-            if ((Get-GateRx '\x1A(-n|--dry-run)\x1B').IsMatch($r)) { $flags += 'N' }
-            if ((Get-GateRx '\x1A(-d|--delete)\x1B').IsMatch($r)) { $flags += 'D' }
-            if ((Get-GateRx '\x1A--tags\x1B').IsMatch($r)) { $flags += 'T' }
-            $r = (Get-GateRx '\x18[^\x19]*\x19\x1A[^\x1B]*\x1B').Replace($r, '')
+            if ($Psd -and (Get-GateRx ('\x18' + $g['ALPHA'] + '*[^%+-:=@-Z_a-z\x19]')).IsMatch($r)) { Send-NotPlain }  # markers: V VE
+            if ((Get-GateRx '\x1A(-n|--dry-run)\x1B').IsMatch($r)) { $flags += 'N' }  # markers: F FE
+            if ((Get-GateRx '\x1A(-d|--delete)\x1B').IsMatch($r)) { $flags += 'D' }  # markers: F FE
+            if ((Get-GateRx '\x1A--tags\x1B').IsMatch($r)) { $flags += 'T' }  # markers: F FE
+            $r = (Get-GateRx '\x18[^\x19]*\x19\x1A[^\x1B]*\x1B').Replace($r, '')  # markers: V VE F FE
             # an unread - word, an empty word, a third positional
-            if ((Get-GateRx ('\x16W-|\x16W\x17|' + $g['T'] + $g['T'] + '\x16')).IsMatch($r)) { Send-NotPlain }
+            if ((Get-GateRx ('\x16W-|\x16W\x17|' + $g['T'] + $g['T'] + '\x16')).IsMatch($r)) { Send-NotPlain }  # markers: L R
             $pm = (Get-GateRx ('^(' + $g['T'] + ')?(' + $g['T'] + ')?$')).Match($r)
             if (-not $pm.Success) { Send-NotPlain }
             $a1 = $pm.Groups[2].Value; $a2 = $pm.Groups[4].Value
@@ -322,11 +349,11 @@ function Get-PlainField([string]$Text, [bool]$Psd) {
             $r = (Get-GateRx $p1).Replace($r, $mk.S + '${1}' + $mk.SV + '${3}' + $mk.SE + $mk.DD + '${4}' + $mk.DV + '${6}' + $mk.DE)
             $r = (Get-GateRx $p2).Replace($r, $mk.S + '${1}' + $mk.SV + '${2}' + $mk.SE + $mk.DD + '${3}' + $mk.DV + '${4}' + $mk.DE + $mk.N + '${5}' + $mk.NE + $mk.X + '${6}' + $mk.XE)
             $r = $r.Replace($mk.S + $mk.SV + $mk.SE, '').Replace($mk.DD + $mk.DV + $mk.DE, '').Replace($mk.N + $mk.NE, '').Replace($mk.X + $mk.XE, '')
-            if ((Get-GateRx '\x0C[^\x08]+\x08').IsMatch($r)) { Send-NotPlain }
-            if ((Get-GateRx '\x10--dry-run\x0B').IsMatch($r)) { $flags += 'N' }
+            if ((Get-GateRx '\x0C[^\x08]+\x08').IsMatch($r)) { Send-NotPlain }  # markers: X XE
+            if ((Get-GateRx '\x10--dry-run\x0B').IsMatch($r)) { $flags += 'N' }  # markers: N NE
             # the last --head / --base wins: one anchored match each
-            $a1 = (Get-GateRx '^([^\x03]*\x1C[^\x1D]*\x1D([^\x1E]*)\x1E)?[^\x1C]*$').Match($r).Groups[2].Value
-            $a2 = (Get-GateRx '^([^\x03]*\x0D[^\x0E]*\x0E([^\x0F]*)\x0F)?[^\x0D]*$').Match($r).Groups[2].Value
+            $a1 = (Get-GateRx '^([^\x03]*\x1C[^\x1D]*\x1D([^\x1E]*)\x1E)?[^\x1C]*$').Match($r).Groups[2].Value  # markers: S SV SE, ETX
+            $a2 = (Get-GateRx '^([^\x03]*\x0D[^\x0E]*\x0E([^\x0F]*)\x0F)?[^\x0D]*$').Match($r).Groups[2].Value  # markers: DD DV DE, ETX
         }
         return @{ Kind = $kind; Op = $op; Loc = (ConvertFrom-ByteText $loc); Flags = $flags; A1 = (ConvertFrom-ByteText $a1); A2 = (ConvertFrom-ByteText $a2) }
     } catch {
@@ -872,6 +899,33 @@ function Invoke-Pr([string]$Kind, [string]$Src, [string]$Dst, [string]$Flags) {
     exit 0
 }
 
+# Get-PayloadField: parse the payload and read session_id, cwd, tool_name and
+# tool_input.command; $null when the payload is not an object with a string command
+# (fail-open); a parse or string-read failure throws.
+function Get-PayloadField([string]$Json) {
+    $doc = [System.Text.Json.JsonDocument]::Parse($Json)
+    $root = $doc.RootElement
+    $JK = [System.Text.Json.JsonValueKind]
+    if ($root.ValueKind -ne $JK::Object) { return $null }
+    $ti = $null; $sid = ''; $cwd0 = ''; $tool = ''
+    foreach ($p in $root.EnumerateObject()) {
+        # ordinal key match (PowerShell's switch and -ceq compare culture-aware); a string
+        # is read only for the three fields used
+        $isStr = ($p.Value.ValueKind -eq $JK::String)
+        if (Test-Eq $p.Name 'tool_input') { $ti = $p.Value }
+        elseif (Test-Eq $p.Name 'session_id') { $sid = if ($isStr) { $p.Value.GetString() } else { '' } }
+        elseif (Test-Eq $p.Name 'cwd') { $cwd0 = if ($isStr) { $p.Value.GetString() } else { '' } }
+        elseif (Test-Eq $p.Name 'tool_name') { $tool = if ($isStr) { $p.Value.GetString() } else { '' } }
+    }
+    if ($null -eq $ti -or $ti.ValueKind -ne $JK::Object) { return $null }
+    $cmdEl = $null
+    foreach ($p in $ti.EnumerateObject()) { if (Test-Eq $p.Name 'command') { $cmdEl = $p.Value } }
+    if ($null -eq $cmdEl -or $cmdEl.ValueKind -ne $JK::String) { return $null }
+    $cmd = $cmdEl.GetString().Replace([string][char]0, '').TrimEnd("`n")
+    if (Test-Eq $cmd '') { return $null }
+    return @{ Sid = $sid; Cwd = $cwd0; Tool = $tool; Cmd = $cmd }
+}
+
 try {
     $ErrorActionPreference = 'Stop'
 
@@ -884,25 +938,16 @@ try {
     $payload = $reader.ReadToEnd()
     if (-not $payload) { exit 0 }
 
-    $doc = [System.Text.Json.JsonDocument]::Parse($payload)
-    $root = $doc.RootElement
-    $JK = [System.Text.Json.JsonValueKind]
-    if ($root.ValueKind -ne $JK::Object) { exit 0 }
-    $ti = $null; $sid = ''; $cwd0 = ''; $tool = ''
-    foreach ($p in $root.EnumerateObject()) {
-        # ordinal key match (PowerShell's switch and -ceq compare culture-aware)
-        $sv = if ($p.Value.ValueKind -eq $JK::String) { $p.Value.GetString() } else { '' }
-        if (Test-Eq $p.Name 'tool_input') { $ti = $p.Value }
-        elseif (Test-Eq $p.Name 'session_id') { $sid = $sv }
-        elseif (Test-Eq $p.Name 'cwd') { $cwd0 = $sv }
-        elseif (Test-Eq $p.Name 'tool_name') { $tool = $sv }
+    # T.11d: a parse (or a string read) that fails on a lone surrogate escape is retried on a
+    # copy with each such escape replaced by U+FFFD; any other failure keeps EDGE-007 (exit 0)
+    try { $pf0 = Get-PayloadField $payload }
+    catch {
+        $sx = '\\u[dD][89a-fA-F][0-9a-fA-F]{2}'
+        if (-not [regex]::IsMatch($payload, $sx)) { throw }
+        $pf0 = Get-PayloadField ([regex]::Replace($payload, $sx, '\uFFFD'))
     }
-    if ($null -eq $ti -or $ti.ValueKind -ne $JK::Object) { exit 0 }
-    $cmdEl = $null
-    foreach ($p in $ti.EnumerateObject()) { if (Test-Eq $p.Name 'command') { $cmdEl = $p.Value } }
-    if ($null -eq $cmdEl -or $cmdEl.ValueKind -ne $JK::String) { exit 0 }
-    $cmd = $cmdEl.GetString().Replace([string][char]0, '').TrimEnd("`n")
-    if (Test-Eq $cmd '') { exit 0 }
+    if ($null -eq $pf0) { exit 0 }
+    $sid = $pf0.Sid; $cwd0 = $pf0.Cwd; $tool = $pf0.Tool; $cmd = $pf0.Cmd
 
     # --- candidate test (S.1, T.2), on the command's UTF-8 bytes (one char per byte)
     $bstr = [System.Text.Encoding]::Latin1.GetString([System.Text.Encoding]::UTF8.GetBytes($cmd))

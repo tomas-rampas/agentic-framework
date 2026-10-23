@@ -1223,7 +1223,7 @@ Test-GateRowPs 'EDGE-001 row 175' M plain "if (`$false) { Set-Location '$plW' };
 # PowerShell location prefix moves the review target on every host (HOME = the fixture home, whose other/ is on main)
 $script:GateHome = $script:GF.HOME
 Invoke-Gate 'r175b' $script:GF.X 'cd ~\other; git push origin main' $null 'PowerShell'
-Assert-GateDeny 'EDGE-001 row 175b: PowerShell cd ~\other; git push origin main reviews the other repository: main vs origin/main' @('review is recorded', 'main vs origin/main')
+Assert-GateDeny 'REQ-004 S.3-bis m row 175b: PowerShell cd ~\other; git push origin main reviews the other repository: main vs origin/main' @('review is recorded', 'main vs origin/main')
 $script:GateHome = $null
 
 # rows 176-201
@@ -1783,6 +1783,65 @@ Assert-GateDeny "REQ-004 S.3-bis w 'cd C:repo && git push origin main' is not pl
 $gmM = $GF.M.Replace('\', '/')
 Invoke-Gate 'rqw5' $GF.M "cd $gmM && git push origin HEAD:main"
 Assert-GateDeny "REQ-004 S.3-bis w positive control: 'cd <C:/repo> && git push origin HEAD:main' reaches the no-marker deny" @('review is recorded')
+
+# --- gate-round amendments of decision T (T.11 a-d) ---
+$bt = [string][char]96
+# T.11(a): every S.1 spelling is also tested with each continuation pair read as a space
+Invoke-Gate 'rt11a1' $GF.M "x${bt}`r`ngit push origin main" $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.11a: PowerShell x + backtick + CRLF + git push origin main is a candidate and not plain' @($script:GatePlain)
+Invoke-Gate 'rt11a2' $GF.M "x${bt}`ngit push origin main${bt}"
+Assert-GateDeny 'REQ-004 T.11a: Bash x + backtick + LF + git push origin main + backtick is a candidate and not plain' @($script:GatePlain)
+Invoke-Gate 'rt11a3' $GF.M "x${bt}`r`r`ngit push origin main" $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.11a: PowerShell x + backtick + CR CR LF + git push origin main is not plain' @($script:GatePlain)
+Invoke-Gate 'rt11a4' $GF.M "git pu${bt}`r`nsh origin main" $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.11a: PowerShell git pu + backtick + CRLF + sh origin main (continuation inside a word) is not plain' @($script:GatePlain)
+Invoke-Gate 'rt11a5' $GF.M "git pu${bt}`nsh origin main"
+Assert-GateDeny 'REQ-004 T.11a: Bash git pu + backtick + LF + sh origin main (continuation inside a word) is not plain' @($script:GatePlain)
+
+# T.11(b): an expansion that is empty at run time inside a keyword
+$t11b = @(
+    'git pu$()sh origin main'
+    'git pu$(:)sh origin main'
+    "git pu${bt}:${bt}sh origin main"
+    'git pu$1sh origin main'
+    'git pu$@sh origin main'
+    'git pu$!sh origin main'
+    'gi$*t push origin main'
+    'git pu$x"sh" origin main'
+    'git pu$($null)sh origin main'
+)
+foreach ($c11b in $t11b) {
+    foreach ($tl in @('Bash', 'PowerShell')) {
+        Invoke-Gate 'rt11b' $GF.M $c11b $null $tl
+        Assert-GateDeny "REQ-004 T.11b: empty expansion in a keyword is a candidate and not plain [$tl]: $c11b" @($script:GatePlain)
+    }
+}
+
+# T.11(c): the PowerShell stop-parsing token
+$c11c = "gh pr create --% -B dev -t x'q --base main -b '"
+Invoke-Gate 'rt11c1' $GF.X $c11c $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.11c: PowerShell gh pr create with --% is not plain' @($script:GatePlain)
+Invoke-Gate 'rt11c2' $GF.X "git push --% origin main" $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.11c: PowerShell git push with --% is not plain' @($script:GatePlain)
+Invoke-Gate 'rt11c3' $GF.X $c11c
+Assert-GateDeny 'REQ-004 T.11c: Bash gh pr create --% is a literal word and stays plain (no-marker deny, base dev)' @('review is recorded', 'vs dev')
+
+# T.11(d): a lone surrogate escape is decided on a copy with U+FFFD, never a fail-open
+$m11 = $GF.M.Replace('\', '/')
+$sur = [string][char]92 + 'ud800'
+$pre11 = '{"session_id":"rt11d","cwd":"' + $m11 + '","tool_name":"Bash","tool_input":{'
+Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + $sur + '"}}')
+Assert-GateDeny 'REQ-004 T.11d: lone surrogate escape in the command is decided and not plain' @($script:GatePlain)
+Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + [string][char]92 + 'uDfFf"}}')
+Assert-GateDeny 'REQ-004 T.11d: lone low surrogate escape with mixed-case hex is decided and not plain' @($script:GatePlain)
+Invoke-GateRaw ($pre11 + '"description":"' + $sur + '","command":"git push origin main"}}')
+Assert-GateDeny 'REQ-004 T.11d: lone surrogate in tool_input.description still decides the command' @('review is recorded')
+Invoke-GateRaw ('{"session_id":"rt11d","x":"' + $sur + '","cwd":"' + $m11 + '","tool_name":"Bash","tool_input":{"command":"git push origin main"}}')
+Assert-GateDeny 'REQ-004 T.11d: lone surrogate in an unrelated top-level field still decides the command' @('review is recorded')
+Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + $sur + '"}')
+Assert-GateAllow 'REQ-004 T.11d: a payload with a lone surrogate that is malformed for another reason still exits 0 silently'
+Invoke-GateRaw ($pre11 + '"command":"git push origin main #' + [string][char]92 + 'ud83d' + [string][char]92 + 'ude00"}}')
+Assert-GateDeny 'REQ-004 T.11d: a valid surrogate pair parses normally and decides' @($script:GatePlain)
 
 Write-Host "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE002] marker from an earlier HEAD"
 $script:GateState = Join-Path $workRoot 'gate-state-3'

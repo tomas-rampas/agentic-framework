@@ -169,7 +169,7 @@ mindmap
 
 ### 3.3 Hooks — the enforcement layer (9)
 
-The only component that can **say no**: gate and advisory hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, plus three silent sh-only telemetry hooks, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. The .sh implementations parse that JSON with `jq` and enforce nothing without it — if `jq` is absent on a POSIX host, the gate is disarmed; hooks fire but don't enforce. Windows runs the .ps1 via pwsh (which parses JSON natively with ConvertFrom-Json), or the .sh under Git Bash when jq is available.
+The only component that can **say no**: gate and advisory hook scripts implemented as both PowerShell 7 (.ps1) and POSIX shell (.sh) pairs, plus three silent sh-only telemetry hooks, registered on Claude Code lifecycle events as shell-form chains, receiving event JSON on stdin. The .sh implementations parse that JSON with `jq` and enforce nothing without it — if `jq` is absent on a POSIX host, both gates (the peer-review Stop gate and the code-review push/PR gate) are disarmed; hooks fire but don't enforce. Windows runs the .ps1 via pwsh (which parses JSON natively with ConvertFrom-Json), or the .sh under Git Bash when jq is available.
 
 | Hook (.ps1/.sh pair unless noted) | Event | Guards |
 |---|---|---|
@@ -333,7 +333,7 @@ The six MCP servers are part of the plugin and connect at session start. To set 
 /agentic-framework:setup
 ```
 
-**Prerequisites:** Claude Code CLI, git, bash + jq (jq is a hard prerequisite: every POSIX hook, the code-review push/PR gate included, parses its payload with it, and the gate matches its grammar with `sed -E` and `grep -E`); PowerShell 7 (Windows only; Linux/macOS optional); Node/npx and uv, which the plugin's MCP servers need to start.
+**Prerequisites:** Claude Code CLI, git, bash + jq (jq is a hard prerequisite of every POSIX hook: each one, the code-review push/PR gate included, parses its payload with it, and the gate matches its grammar with the base utilities `tr`, `sed -E` and `grep -E`, present on GNU, BSD and busybox; without jq, or with a failing `tr`/`sed`/`grep`, the gate is disarmed); PowerShell 7 (Windows only; Linux/macOS optional); Node/npx and uv, which the plugin's MCP servers need to start.
 
 **Legacy installation (pre-4.0, historical reference):**
 See [README.md Migration section](README.md#migration-existing-local-clones) if you have an existing local clone to migrate.

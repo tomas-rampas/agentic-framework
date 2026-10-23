@@ -23,11 +23,13 @@ export LC_ALL
 # through --arg only. The gate does not try to understand shell text. Three regex
 # stages, each a fixed number of tr, sed -E and grep -E passes over the command's
 # bytes (LC_ALL=C, exported above), no loop over characters or tokens:
-#  1. (S.1, T.2) candidate test: continuations joined, curly quotes and a $
-#     before a quote removed, then three spellings (${...} removed; ${ and }
-#     removed; ${NAME} and ${NAME<op> removed, then }), each without quotes,
-#     backslashes and backticks, the anchored git stash push exempted; then the
-#     words git+push or gh/glab+pr/mr+create/new (git, gh and glab
+#  1. (S.1, T.2, T.11) candidate test: curly quotes and a $ before a quote
+#     removed, then four spellings (${...} removed; ${ and } removed; ${NAME}
+#     and ${NAME<op> removed, then }; ${...}, $(...), a backtick substitution
+#     and $NAME / $1 / $@ style parameters removed), each without quotes,
+#     backslashes and backticks, the anchored git stash push exempted, and each
+#     tested twice, with every continuation pair deleted and read as one space;
+#     then the words git+push or gh/glab+pr/mr+create/new (git, gh and glab
 #     case-insensitive), one tr | sed -n | grep -c pipeline. A text with no g or G
 #     exits 0 with no fork; anything else that is not a candidate exits 0 with no
 #     git call (fast path). Over 64 KB (bytes) the same test decides: match
@@ -55,7 +57,9 @@ export LC_ALL
 # Always exits 0. Output nothing to allow; to deny print the single-line JSON
 # hookSpecificOutput permissionDecision deny. Fail-open (exit 0, no output):
 # AF_CODE_REVIEW_GATE=off, missing jq, malformed JSON, non-object tool_input,
-# missing or non-string command, empty session_id after sanitising (checked
+# missing or non-string command (a payload that fails to parse only because of a lone
+# surrogate escape, backslash-u D800 to DFFF, is decided on a copy with U+FFFD, T.11d),
+# empty session_id after sanitising (checked
 # before the candidate and size tests), a push whose payload cwd is not inside
 # a git repository (git rev-parse --git-dir fails), a repository with no refs
 # at all (an unborn HEAD in a repository that has other refs is gated), any unexpected
@@ -96,12 +100,20 @@ payload=$(cat 2>/dev/null) || exit 0
 
 # Four fields, newline separated; the first three have CR/LF removed, the
 # command (last) keeps its newlines.
-parsed=$(printf '%s' "$payload" | jq -j '
+jq_prog='
   def one: if type == "string" then gsub("[\r\n]"; "") else "" end;
   if (type == "object") and ((.tool_input | type) == "object") and ((.tool_input.command | type) == "string")
   then ((.session_id // "" | one) + "\n" + (.cwd // "" | one) + "\n" + (.tool_name // "" | one)
         + "\n" + .tool_input.command)
-  else empty end' 2>/dev/null) || exit 0
+  else empty end'
+if ! parsed=$(printf '%s' "$payload" | jq -j "$jq_prog" 2>/dev/null); then
+  # T.11(d): jq rejects the whole document over one lone surrogate escape (backslash-u D800
+  # to DFFF); decide on a copy with each such escape replaced by U+FFFD (the fallback of
+  # pretooluse-model-guard.sh). Any other parse failure keeps EDGE-007 (exit 0).
+  sanitized=$(printf '%s' "$payload" | sed -E 's/\\u[dD][89a-fA-F][0-9a-fA-F]{2}/\\uFFFD/g' 2>/dev/null) || exit 0
+  [ "$sanitized" != "$payload" ] || exit 0
+  parsed=$(printf '%s' "$sanitized" | jq -j "$jq_prog" 2>/dev/null) || exit 0
+fi
 [ -n "$parsed" ] || exit 0
 
 sid=${parsed%%"$NL"*};  rest=${parsed#*"$NL"}
@@ -115,10 +127,12 @@ esac
 # every keyword holds g or G, and no S.1 deletion adds one: exit with no fork
 case $cmd in *[Gg]*) ;; *) exit 0 ;; esac
 
-# Control bytes in one fork: SOH STX ETX TAB CR US, the markers (the same bytes as
-# the .ps1: header K H J Z, lexer A-E, token L R, push V VE F FE, PR S SV SE, D DV
-# DE with D = CR, N NE X XE), then the raw bytes of <HI> and <CURLY> and the curly
-# quote ranges. The stages guarantee each marker absent from the text they run on.
+# Control bytes in one fork: SOH STX ETX TAB CR US, the markers (header K H J Z, lexer
+# A-E, token L R, push V VE F FE, PR S SV SE, D DV DE with D = CR, N NE X XE; the .ps1
+# keeps those header fields in variables and has no header markers, but the token and
+# lexer markers L R and A-E are shared bytes), then the raw bytes of <HI> and <CURLY>
+# and the curly quote ranges. The stages guarantee each marker absent from the text
+# they run on.
 IFS=' '
 # shellcheck disable=SC2046
 set -- $(printf '\001 \002 \003 \011 \015 \037 \004 \005 \006 \007 \021 \022 \023 \024 \025 \026 \027 \030 \031 \032 \033 \034 \035 \036 \016 \017 \020 \013 \014 \010 \200 \377 \342\200 \230 \233 \234 \236')
@@ -131,6 +145,18 @@ M_VE=$1; M_F=$2; M_FE=$3; M_S=$4; M_SV=$5; M_SE=$6; M_DV=$7; M_DE=$8; M_N=$9; sh
 M_NE=$1; M_X=$2; M_XE=$3; HI0=$4; HI1=$5; CU0=$6; CU1=$7; CU4=$8; CU5=$9; shift 9
 CU7=$1
 M_DD=$CR
+
+# T.11(e) exact undo of jq's CRLF output. jq on Windows writes every LF of its output as
+# CRLF, so a CR ends the tool_name field (detected here, then dropped) and every LF of the
+# command arrives as CR LF (a CR LF as CR CR LF). In that mode exactly one CR before each LF
+# of the command goes, restoring the bytes the .ps1 sees; the last line loses its CR too (jq
+# wrote its LF, then the substitution above removed it). Elsewhere nothing changes.
+crlf=0
+case $tool in *"$CR") crlf=1; tool=${tool%"$CR"} ;; esac
+if [ "$crlf" = 1 ]; then
+  cmd_u=$(printf '%s' "$cmd" | sed "s/$CR\$//" 2>/dev/null) && cmd=$cmd_u
+  [ -n "$cmd" ] || exit 0
+fi
 
 # --- deny helper and wordings -------------------------------------------------
 deny() {
@@ -166,7 +192,7 @@ not_plain() { deny "$K_ANY" "$W_PLAIN" "$T_ANY"; }
 # The block below is shared byte for byte with the .ps1 (the equivalence suite
 # compares them). Each line is NAME=TEXT; {NAME} refers to an earlier line and is
 # expanded once per run by literal replacement (g_load). The placeholders <TAB> <BS>
-# <HI> <CURLY> <Q> and the marker names are the only per-engine difference (g_get).
+# <HI> <CURLY> <Q> and the marker names are the only per-engine difference (g_tr).
 # {X_CD}, {X_VF}, {HL}, {HS}, {BL}, {BS} select the dialect or the tool and are filled
 # in where the pattern is used.
 # shellcheck disable=SC2016
@@ -180,6 +206,9 @@ S1_BRACE2O=\$\{
 S1_BRACE2C=\}
 S1_BRACE3V=\$\{[A-Z_a-z][0-9A-Z_a-z]*\}
 S1_BRACE3O=\$\{[A-Z_a-z][0-9A-Z_a-z]*:?[+=?-]
+S1_SUBST=\$\([^)]*(\)|$)
+S1_BTICK=`[^`]*(`|$)
+S1_PARAM=\$([A-Z_a-z][0-9A-Z_a-z]*|[0-9@*!#?$-])
 S1_QUOTES=["<Q>\\`]
 S1_STASH=^([ <TAB><CR><SOH>]*git[^A-Za-z0-9]+stash[^A-Za-z0-9]+)push
 W_GIT=(^|[^A-Za-z0-9])[Gg][Ii][Tt]([^A-Za-z0-9]|$)
@@ -240,7 +269,8 @@ g_rep() {
 }
 
 # g_refs <text>: GR = text with each {NAME} of an earlier block line replaced by its
-# value; a {NAME} that is not a block line (a selector) is kept as is.
+# value (kept in the variable GV_NAME, set by g_load: a lookup is one eval, not a scan
+# of the whole block); a {NAME} that is not a block line (a selector) is kept as is.
 g_refs() {
   GR=""; gf_t=$1
   while :; do
@@ -253,17 +283,33 @@ g_refs() {
     case $gf_k in
       ''|[!A-Z]*|*[!A-Z0-9_]*) GR=$GR"{"; continue ;;
     esac
-    case $GX in
-      *"$NL$gf_k="*) gf_v=${GX#*"$NL$gf_k="}; GR=$GR${gf_v%%"$NL"*}; gf_t=${gf_t#*"}"} ;;
-      *) GR=$GR"{" ;;
-    esac
+    gf_s=""; gf_v=""
+    # gf_k holds only [A-Z0-9_] (checked above); the value is assigned by indirection and
+    # never evaluated
+    eval "gf_s=\${GV_$gf_k+x}"
+    if [ "$gf_s" = x ]; then
+      eval "gf_v=\$GV_$gf_k"; GR=$GR$gf_v; gf_t=${gf_t#*"}"}
+    else
+      GR=$GR"{"
+    fi
   done
 }
 
-# g_load <1|0>: GX = NL NAME=VALUE NL ... with references expanded in block order;
+# g_tr <text>: GR = text with the placeholders in their POSIX ERE spelling (raw bytes;
+# <BS> is a backslash inside brackets). Run on the short source line, before references
+# are expanded, so a long expanded line is never scanned.
+g_tr() {
+  case $1 in *"<"*) ;; *) GR=$1; return 0 ;; esac
+  g_rep "$1" "<TAB>" "$TAB"; g_rep "$GR" "<BS>" '\'; g_rep "$GR" "<HI>" "$HI0-$HI1"
+  g_rep "$GR" "<CURLY>" "${CU0}[$CU1-$CU7]"; g_rep "$GR" "<Q>" "'"; g_rep "$GR" "<CR>" "$CR"
+  g_rep "$GR" "<SOH>" "$SOH"; g_rep "$GR" "<L>" "$M_L"; g_rep "$GR" "<R>" "$M_R"
+}
+
+# g_load <1|0>: GV_NAME = the line's value, placeholders translated and references
+# expanded, in block order (a reference sees earlier lines only);
 # 1 keeps only the S.1 lines (S1_*, W_*, which refer to no other line): the hot path.
 g_load() {
-  GX=$NL; gl_rest=$G_DEFS
+  gl_rest=$G_DEFS
   while [ -n "$gl_rest" ]; do
     gl_ln=${gl_rest%%"$NL"*}
     case $gl_rest in *"$NL"*) gl_rest=${gl_rest#*"$NL"} ;; *) gl_rest="" ;; esac
@@ -272,25 +318,22 @@ g_load() {
     if [ "$1" = 1 ]; then
       case $gl_n in S1_*|W_*) ;; *) continue ;; esac
     fi
+    g_tr "$gl_v"; gl_v=$GR
     case $gl_v in *"{"*) g_refs "$gl_v"; gl_v=$GR ;; esac
-    GX=$GX$gl_n=$gl_v$NL
+    # gl_n holds only [A-Z0-9_] (a block line name); the value is assigned, never evaluated
+    case $gl_n in *[!A-Z0-9_]*) continue ;; esac
+    eval "GV_$gl_n=\$gl_v"
   done
 }
 
-# g_get <NAME>: GV = the expanded line with the placeholders in their POSIX ERE
-# spelling (raw bytes; <BS> is a backslash inside brackets). A missing line is an
-# internal error: the caller's stage rule applies (tool failure).
+# g_get <NAME>: GV = the expanded line. A missing line is an internal error: the
+# caller's stage rule applies (tool failure).
 g_get() {
-  case $GX in
-    *"$NL$1="*) GV=${GX#*"$NL$1="}; GV=${GV%%"$NL"*} ;;
-    *) GV=""; return 1 ;;
-  esac
-  case $GV in *"<"*) ;; *) return 0 ;; esac
-  g_rep "$GV" "<TAB>" "$TAB"; g_rep "$GR" "<BS>" '\'; g_rep "$GR" "<HI>" "$HI0-$HI1"
-  g_rep "$GR" "<CURLY>" "${CU0}[$CU1-$CU7]"; g_rep "$GR" "<Q>" "'"; g_rep "$GR" "<CR>" "$CR"
-  g_rep "$GR" "<SOH>" "$SOH"; g_rep "$GR" "<STX>" "$STX"; g_rep "$GR" "<ETX>" "$ETX"
-  g_rep "$GR" "<L>" "$M_L"; g_rep "$GR" "<R>" "$M_R"; GV=$GR
-  return 0
+  case $1 in ''|*[!A-Z0-9_]*) GV=""; return 1 ;; esac
+  gg_s=""
+  eval "gg_s=\${GV_$1+x}"
+  if [ "$gg_s" = x ]; then eval "GV=\$GV_$1"; return 0; fi
+  GV=""; return 1
 }
 
 # --- candidate test (S.1, T.2) ------------------------------------------------
@@ -305,21 +348,19 @@ s1_fail() {
   exit 0
 }
 g_load 1
-s1_l=""
-for s1_n in JOIN CURLY DQ BRACE1 BRACE2O BRACE2C BRACE3V BRACE3O QUOTES STASH; do
-  g_get "S1_$s1_n" || s1_fail
-  s1_l=$s1_l$GV$NL
-done
-s1_join=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_curly=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_dq=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_b1=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_b2o=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_b2c=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_b3v=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_b3o=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_q=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
-s1_st=${s1_l%%"$NL"*}
+g_get S1_JOIN || s1_fail; s1_join=$GV
+g_get S1_CURLY || s1_fail; s1_curly=$GV
+g_get S1_DQ || s1_fail; s1_dq=$GV
+g_get S1_BRACE1 || s1_fail; s1_b1=$GV
+g_get S1_BRACE2O || s1_fail; s1_b2o=$GV
+g_get S1_BRACE2C || s1_fail; s1_b2c=$GV
+g_get S1_BRACE3V || s1_fail; s1_b3v=$GV
+g_get S1_BRACE3O || s1_fail; s1_b3o=$GV
+g_get S1_SUBST || s1_fail; s1_subst=$GV
+g_get S1_BTICK || s1_fail; s1_btick=$GV
+g_get S1_PARAM || s1_fail; s1_param=$GV
+g_get S1_QUOTES || s1_fail; s1_q=$GV
+g_get S1_STASH || s1_fail; s1_st=$GV
 
 # CAND: (W_GIT and W_PUSH) or (W_GH and W_PRMR and W_CRNEW) on one line, as the
 # orderings of the words with a separator between them (a DFA in grep; the .ps1
@@ -353,16 +394,19 @@ for s1_o in "gh prmr crnew" "gh crnew prmr" "prmr gh crnew" "prmr crnew gh" "crn
   cand="$cand|$s1_t"
 done
 
-# Three spellings (h/g/p in one sed), then a sentinel line that always matches: a
-# count below 1 means a tool failed. A CR run before SOH is cut to one CR (jq on
-# Windows writes every LF as CRLF, so a CRLF arrives as CR CR LF). CR stays a byte; LF becomes SOH; SOH and ETX
-# become STX (ETX is the any-byte class).
-n1=$({ printf '%s' "$cmd" | tr '\012\001\003' '\001\002\002'; printf '\n'; } | sed -n -E \
-  -e "s/$CR+$SOH/$CR$SOH/g" -e "s/$s1_join//g" -e "s/$s1_curly//g" -e "s/$s1_dq//g" -e h \
+# Four spellings (h/g/p in one sed; T.2, T.11b), each twice (T.11a): the text goes in as
+# two lines, line 1 with each continuation pair deleted and line 2 with each pair read as
+# one space. Then one sentinel line (on the last input line) that always matches: a count
+# below 1 means a tool failed. CR stays a byte; LF becomes SOH; SOH and ETX become STX
+# (ETX is the any-byte class). The CRLF translation of jq on Windows was undone above (T.11e).
+s1_x=$(printf '%s' "$cmd" | tr '\012\001\003' '\001\002\002')
+n1=$(printf '%s\n%s\n' "$s1_x" "$s1_x" | sed -n -E \
+  -e "1s/$s1_join//g" -e "2s/$s1_join/ /g" -e "s/$s1_curly//g" -e "s/$s1_dq//g" -e h \
   -e "s/$s1_b1//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p -e g \
   -e "s/$s1_b2o//g" -e "s/$s1_b2c//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p -e g \
-  -e "s/$s1_b3v//g" -e "s/$s1_b3o//g" -e "s/$s1_b2c//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p \
-  -e "s/^[^$ETX]*\$/git push/" -e p 2>/dev/null | grep -a -c -E -e "$cand" 2>/dev/null)
+  -e "s/$s1_b3v//g" -e "s/$s1_b3o//g" -e "s/$s1_b2c//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p -e g \
+  -e "s/$s1_b1//g" -e "s/$s1_subst//g" -e "s/$s1_btick//g" -e "s/$s1_param//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p \
+  -e "\$s/^[^$ETX]*\$/git push/" -e '$p' 2>/dev/null | grep -a -c -E -e "$cand" 2>/dev/null)
 case $n1 in
   ''|*[!0-9]*|0) s1_fail ;;
   1) exit 0 ;;
@@ -370,8 +414,6 @@ esac
 [ "$big" = 1 ] && deny "$K_ANY" "$W_SIZE" "$T_ANY"
 chk_time
 
-# jq on Windows writes its "\n" separators as CRLF: drop the CR that ends the field.
-tool=${tool%"$CR"}
 case $tool in
   PowerShell|powershell|POWERSHELL) dialect_ps=1 ;;
   *) dialect_ps=0 ;;
@@ -420,6 +462,10 @@ if [ "$dialect_ps" = 1 ]; then
 else
   ts_hdr="$M_K\\4$M_H\\3\\6$M_J\\2\\7$M_K\\8$M_Z"
 fi
+# T.11(c): in the PowerShell dialect a --% word is not plain (the rest of the line would
+# reach the program raw, unread): the line becomes the bare K marker, which the field check
+# below denies. Bash reads --% as a literal word: its pattern is a word that cannot occur.
+if [ "$dialect_ps" = 1 ]; then ts_pct='--%'; else ts_pct=$M_K; fi
 g_get PUSHARG || not_plain; ts_pa=$GV
 g_get ALPHA || not_plain; ts_al=$GV
 ts_p2=""
@@ -479,6 +525,7 @@ f=$(printf '%s\n' "$body" | sed -E \
   -e "s/^$M_R${M_L}W//" -e "s/$M_R${M_L}W\$//" \
   -e "s/$M_A$M_B$M_C//g" -e "s/$M_D$M_E//g" \
   -e "s/^/${M_L}W/" -e "s/\$/$M_R/" \
+  -e "/${M_L}W${ts_pct}${M_R}/s/.*/$M_K/" \
   -e "s/$ts_pre/$ts_hdr/" \
   -e "s/^($M_K(gh|glab)${M_H}[^$M_K]*$M_K(pr|mr))$M_Z${M_L}W(create|new)$M_R/\\1+$M_Z/" \
   -e "$ts_push" -e "$ts_gh" -e "$ts_gl" 2>/dev/null) || not_plain
