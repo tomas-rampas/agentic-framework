@@ -1,6 +1,12 @@
 #!/bin/sh
 set -u
+LC_ALL=C
+export LC_ALL
 # pretooluse-code-review-gate.sh - blocking PreToolUse hook (matcher: Bash|PowerShell).
+#
+# POSIX twin of pretooluse-code-review-gate.ps1; the grammar block is shared byte for
+# byte; the .ps1 is the reference for decision T. The two must produce byte-identical
+# deny output.
 #
 # Denies a shell command that opens a pull/merge request (gh pr create|new,
 # glab mr create|new) or pushes to main/master (git push, force included)
@@ -8,31 +14,36 @@ set -u
 # the exact commit (HEAD) against the exact destination, with a reviewed range
 # (<merge-base>..<head-sha>) that binds the approval to the commits being sent,
 # in the marker <state>/code-review/<session_id> written by record-subagent-run.
-# Grammar: decision S of specs/code-review-gate.md (a whitelist of plain forms);
-# the unlock rule is REQ-004. State dir: CLAUDE_STATE_DIR, else
-# $HOME/.claude/.state.
+# Grammar: decisions S and T of specs/code-review-gate.md (a whitelist of plain
+# forms written as one regex grammar); the unlock rule is REQ-004. State dir:
+# CLAUDE_STATE_DIR, else $HOME/.claude/.state.
 #
 # SECURITY: the command string is untrusted data. It is NEVER evaluated or
 # executed: no eval, no sh -c, no unquoted expansion into a command; jq gets it
-# through --arg only. The gate does not try to understand shell text. It:
-#  1. (S.1) decides whether the text is a candidate at all: continuations
-#     joined, CRLF collapsed, ${...} removed, quotes, backslashes and backticks
-#     removed, then the words git+push or gh/glab+create/new (git, gh and glab
-#     case-insensitive). Anything else exits 0 with no git call (fast path).
-#     Over 64 KB the same test decides: match denies (W_SIZE), else exit 0.
-#  2. (S.2) splits the raw text with a small POSIX awk tokenizer (LC_ALL=C,
-#     byte semantics) over whitespace and quotes only. Every accepted token is
-#     a literal word: any of $ ` { } ( ) * ? [ < | & ; # or a control character
-#     anywhere (quoted or not), other than one && or ; joiner and trailing
-#     redirections (>, >>, N>, N>&M, PowerShell *>&1), makes the text not plain.
-#     A backslash is literal in the PowerShell dialect (tool_name PowerShell)
-#     and allowed only inside single quotes otherwise; PowerShell '' and ""
-#     inside quotes and curly quotes are quotes; a PowerShell , or a word
-#     starting @x outside quotes is not plain.
-#  3. accepts exactly: [cd <dir> && | cd <dir>; | Set-Location <dir>;]
-#     git [-C <dir>] push [allowlisted options] [<remote> [<refspec>]], or
-#     gh pr create|new ... / glab mr create|new ... (one location prefix at
-#     most). Every other candidate is denied W_PLAIN (S.3).
+# through --arg only. The gate does not try to understand shell text. Three regex
+# stages, each a fixed number of tr, sed -E and grep -E passes over the command's
+# bytes (LC_ALL=C, exported above), no loop over characters or tokens:
+#  1. (S.1, T.2) candidate test: continuations joined, curly quotes and a $
+#     before a quote removed, then three spellings (${...} removed; ${ and }
+#     removed; ${NAME} and ${NAME<op> removed, then }), each without quotes,
+#     backslashes and backticks, the anchored git stash push exempted; then the
+#     words git+push or gh/glab+pr/mr+create/new (git, gh and glab
+#     case-insensitive), one tr | sed -n | grep -c pipeline. A text with no g or G
+#     exits 0 with no fork; anything else that is not a candidate exits 0 with no
+#     git call (fast path). Over 64 KB (bytes) the same test decides: match
+#     denies (W_SIZE), else exit 0; a failing tool keeps that rule.
+#  2. (FORM, T.3) the text, with CR and LF as SOH and SOH as STX (PowerShell
+#     dialect: curly quotes mapped to ASCII quotes first), must be one plain form
+#     of the grammar block below (B_FORM for Bash, P_FORM for PowerShell), one
+#     grep -E: [cd <dir> && | cd <dir>; | Set-Location <dir>;]
+#     git [-C <dir>] push [words] [redirections], or gh pr create|new ... /
+#     glab mr create|new ...; a word is literal (bare bytes and clean quoted
+#     strings). Every other candidate is denied W_PLAIN (S.3).
+#  3. (token stage, T.4) one sed -E: a lexer pass and fixed passes make W/O
+#     tokens; STRUCT reads kind, joiner or -C and directory; PUSHARG (push
+#     allowlist) and PR1/PR2 (gh/glab options, the last --head/--base wins) read
+#     the values left to right; an unread - word, a third positional or an empty
+#     word is not plain. A failing FORM or token-stage tool denies W_PLAIN.
 #  4. (S.4) judges the plain command: destination from the refspec, bare
 #     refspec remap (remote.<r>.push, push.default upstream/tracking), or the
 #     @{push}/upstream/current-branch chain; then the marker. It only asks git
@@ -48,7 +59,8 @@ set -u
 # before the candidate and size tests), a push whose payload cwd is not inside
 # a git repository (git rev-parse --git-dir fails), a repository with no refs
 # at all (an unborn HEAD in a repository that has other refs is gated), any unexpected
-# internal error. Not fail-open: a non-plain candidate (W_PLAIN), a cd/-C
+# internal error outside the grammar stages. Not fail-open: a non-plain candidate
+# (W_PLAIN, also any tool failure in the FORM or token stage), a cd/-C
 # directory that is missing or not a git work tree (W_LOC), a pull/merge
 # request from a directory that is not a git work tree (W_NOREPO).
 
@@ -100,16 +112,31 @@ case $rest in
   *) cmd="" ;;
 esac
 [ -n "$cmd" ] || exit 0
+# every keyword holds g or G, and no S.1 deletion adds one: exit with no fork
+case $cmd in *[Gg]*) ;; *) exit 0 ;; esac
 
-US=$(printf '\037')
-STX=$(printf '\002')
-CR=$(printf '\r')
+# Control bytes in one fork: SOH STX ETX TAB CR US, the markers (the same bytes as
+# the .ps1: header K H J Z, lexer A-E, token L R, push V VE F FE, PR S SV SE, D DV
+# DE with D = CR, N NE X XE), then the raw bytes of <HI> and <CURLY> and the curly
+# quote ranges. The stages guarantee each marker absent from the text they run on.
+IFS=' '
+# shellcheck disable=SC2046
+set -- $(printf '\001 \002 \003 \011 \015 \037 \004 \005 \006 \007 \021 \022 \023 \024 \025 \026 \027 \030 \031 \032 \033 \034 \035 \036 \016 \017 \020 \013 \014 \010 \200 \377 \342\200 \230 \233 \234 \236')
+IFS=$OLDIFS
+[ $# -eq 37 ] || exit 0
+SOH=$1; STX=$2; ETX=$3; TAB=$4; CR=$5; US=$6
+M_K=$7; M_H=$8; M_J=$9; shift 9
+M_Z=$1; M_A=$2; M_B=$3; M_C=$4; M_D=$5; M_E=$6; M_L=$7; M_R=$8; M_V=$9; shift 9
+M_VE=$1; M_F=$2; M_FE=$3; M_S=$4; M_SV=$5; M_SE=$6; M_DV=$7; M_DE=$8; M_N=$9; shift 9
+M_NE=$1; M_X=$2; M_XE=$3; HI0=$4; HI1=$5; CU0=$6; CU1=$7; CU4=$8; CU5=$9; shift 9
+CU7=$1
+M_DD=$CR
 
 # --- deny helper and wordings -------------------------------------------------
 deny() {
   # $1 command kind, $2 specific sentence, $3 review target
   dn_reason="Code-review gate: ${1} denied. ${2} Review target: ${3}. To unlock: launch the code-review-gatekeeper sub-agent (Agent tool, subagent_type: code-review-gatekeeper) and have it apply agentic-framework:code-review to that target (${3}); the command is allowed once VERDICT: APPROVED is recorded at the current HEAD against that base. Setting AF_CODE_REVIEW_GATE=off in the launch environment disables this gate (a restart is needed)."
-  dn_reason=$(printf '%s' "$dn_reason" | LC_ALL=C tr -cd '\040-\176' | tr -d '"<>&')
+  dn_reason=$(printf '%s' "$dn_reason" | tr -cd '\040-\176' | tr -d '"<>&')
   jq -cn --arg r "$dn_reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}' 2>/dev/null
   exit 0
 }
@@ -133,84 +160,214 @@ W_LOC="The command text is unresolvable: the cd, Set-Location or git -C director
 W_NOREPO="The command text is unresolvable: the pull or merge request is created from a directory that is not a git work tree, so the commit to propose cannot be identified. Run it from the repository whose branch is proposed."
 W_REFMAP="The push destination cannot be resolved: a remote.REMOTE.push entry matches this branch but does not name a single destination branch. Push with an explicit source:destination refspec."
 
-# --- candidate test (S.1) -----------------------------------------------------
-# Prints "<candidate 0|1> <oversize 0|1>". Bytes under LC_ALL=C.
+not_plain() { deny "$K_ANY" "$W_PLAIN" "$T_ANY"; }
+
+# --- grammar (decision T) -----------------------------------------------------
+# The block below is shared byte for byte with the .ps1 (the equivalence suite
+# compares them). Each line is NAME=TEXT; {NAME} refers to an earlier line and is
+# expanded once per run by literal replacement (g_load). The placeholders <TAB> <BS>
+# <HI> <CURLY> <Q> and the marker names are the only per-engine difference (g_get).
+# {X_CD}, {X_VF}, {HL}, {HS}, {BL}, {BS} select the dialect or the tool and are filled
+# in where the pattern is used.
 # shellcheck disable=SC2016
-FP_PROG='
-# Linear in the text length (decision S 3-bis s): no gsub with many matches (it is
-# quadratic in the match count); split-and-join for the fixed removals, one
-# character pass per spelling for the rest.
-function rep(t, re, r,   n, a, k, o) {
-  n = split(t, a, re)
-  if (n < 2) return t
-  o = a[1]
-  for (k = 2; k <= n; k++) o = o r a[k]
-  return o
+G_DEFS='
+# --- S.1 candidate test (on the S.1 text)
+S1_JOIN=[\\`]<CR>?<SOH>
+S1_CURLY=<CURLY>
+S1_DQ=\$["<Q>]
+S1_BRACE1=\$\{[^}]*(\}|$)
+S1_BRACE2O=\$\{
+S1_BRACE2C=\}
+S1_BRACE3V=\$\{[A-Z_a-z][0-9A-Z_a-z]*\}
+S1_BRACE3O=\$\{[A-Z_a-z][0-9A-Z_a-z]*:?[+=?-]
+S1_QUOTES=["<Q>\\`]
+S1_STASH=^([ <TAB><CR><SOH>]*git[^A-Za-z0-9]+stash[^A-Za-z0-9]+)push
+W_GIT=(^|[^A-Za-z0-9])[Gg][Ii][Tt]([^A-Za-z0-9]|$)
+W_PUSH=(^|[^A-Za-z0-9])push([^A-Za-z0-9.]|$)
+W_GH=(^|[^A-Za-z0-9])([Gg][Hh]|[Gg][Ll][Aa][Bb])([^A-Za-z0-9]|$)
+W_PRMR=(^|[^A-Za-z0-9])(pr|mr)([^A-Za-z0-9]|$)
+W_CRNEW=(^|[^A-Za-z0-9])(create|new)([^A-Za-z0-9]|$)
+# --- plain-form language (S.2)
+B_B=[]!%+-:=@-Z^_a-z~<HI>]
+P_B=[]!%+.-:=@-Z<BS>^_a-z~-]
+P_B1=[]!%+.-:=A-Z<BS>^_a-z~-]
+SQC=[][ <TAB>!-#%&(-Z^_a-~<HI>]
+DQC=[][ <TAB>!#%-Z^_a-~<HI>]
+SQXB=[]<TAB> !"%+-:=>@-Z^_a-z~<HI>]
+SQXBS=[]<TAB> !"%+-:=>@-Z<BS>^_a-z~<HI>]
+SQXP=[]<TAB> !"%+-:=>@-Z^_a-z~]
+SQXPS=[]<TAB> !"%+-:=>@-Z<BS>^_a-z~]
+DQXP=[]<TAB> !%<Q>+-:=>@-Z^_a-z~]
+DQXPS=[]<TAB> !%<Q>+-:=>@-Z<BS>^_a-z~]
+B_SQ=<Q>({SQC}*|{SQXB}*\\{SQXBS}*)<Q>
+B_DQ="{DQC}*"
+B_W=({B_B}|{B_SQ}|{B_DQ})+
+P_SQ=<Q>({SQC}*|{SQXP}*\\{SQXPS}*)<Q>
+P_DQ="({DQC}*|{DQXP}*\\{DQXPS}*)"
+P_Q=({P_SQ}|{P_DQ})
+P_W=(@|{P_Q}|{P_B1}{P_B}*({P_Q}{P_B}+)*{P_Q}?)
+B_RD=[0-9]?>>?(&[0-9]|[ <TAB>]*{B_B}+)
+P_RD=[0-9*]?>>?(&[0-9]|[ <TAB>]*{P_B}+)
+B_LOC=cd[ <TAB>]+{B_W}[ <TAB>]*(&&|;)[ <TAB>]*
+P_LOC=([Cc][Dd][ <TAB>]+{P_W}[ <TAB>]*(&&|;)|[Ss][Ee][Tt]-[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn][ <TAB>]+{P_W}[ <TAB>]*;)[ <TAB>]*
+B_FORM=^[ <TAB><SOH>]*(({B_LOC})?(gh[ <TAB>]+pr|glab[ <TAB>]+mr)[ <TAB>]+(create|new)|({B_LOC}git|git([ <TAB>]+-C[ <TAB>]+{B_W})?)[ <TAB>]+push)([ <TAB>]+{B_W})*([ <TAB>]+{B_RD})*[ <TAB><SOH>]*$
+P_FORM=^[ <TAB><SOH>]*(({P_LOC})?(gh[ <TAB>]+pr|glab[ <TAB>]+mr)[ <TAB>]+(create|new)|({P_LOC}git|git([ <TAB>]+-C[ <TAB>]+{P_W})?)[ <TAB>]+push)([ <TAB>]+{P_W})*([ <TAB>]+{P_RD})*[ <TAB><SOH>]*$
+TILDE=^[ <TAB><SOH>]*(cd|git[ <TAB>]+-C)[ <TAB>]+~(/|[ <TAB>;&])
+# --- token stage
+LEX=[ <TAB>]*(&&|;)[ <TAB>]*|[ <TAB>]+([0-9*]?>>?(&[0-9])?)|([ <TAB><SOH>]+)|<Q>([^<Q>]*)<Q>|"([^"]*)"
+T=<L>W([^<R>]*)<R>
+B_CD=cd
+P_CD=([Cc][Dd]|[Ss][Ee][Tt]-[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn])
+STRUCT=^(<L>W{X_CD}<R>{T}<L>O([^<R>]*)<R>)?<L>W(git|gh|glab)<R>(<L>W(-C)<R>{T})?<L>W(push|pr|mr)<R>(<L>W(create|new)<R>)?
+PUSHOPT=-u|--set-upstream|-f|--force|--force-with-lease|--follow-tags|--no-verify|-q|--quiet|-v|--verbose|--porcelain
+PUSHARG=<L>W-o<R>{T}|<L>W--(push-option|force-with-lease)=([^<R>]*)<R>|<L>W({PUSHOPT})<R>|<L>W(--tags|-n|--dry-run|-d|--delete)<R>
+ALPHA=[%+-:=@-Z_a-z]
+GH_VF=--title|-t|--body|-b|--body-file|-F|--assignee|-a|--label|-l|--milestone|-m|--project|-p|--reviewer|-r|--template|-T|--repo|-R|--recover
+GL_VF=--title|-t|--description|-d|--assignee|-a|--label|-l|--milestone|-m|--reviewer|--target-project|--repo|-R|--head|-H|--related-issue|-i
+PR1=<L>W({HL}|{HS})<R>({T})?|<L>W({BL}|{BS})<R>({T})?|<L>W({X_VF})<R>(<L>W[^<R>]*<R>)?
+PR2=<L>W({HL})=([^<R>]*)<R>|<L>W({BL})=([^<R>]*)<R>|<L>W(--dry-run)<R>|<L>W(--dry-run=[^<R>]*|-[^-<R>][^<R>]+)<R>
+'
+
+# g_rep <text> <from> <to>: GR = text with every from replaced by to (no fork).
+g_rep() {
+  GR=""; gr_t=$1
+  while :; do
+    case $gr_t in
+      *"$2"*) GR=$GR${gr_t%%"$2"*}$3; gr_t=${gr_t#*"$2"} ;;
+      *) GR=$GR$gr_t; return 0 ;;
+    esac
+  done
 }
-# scan(t, mode): 1 = spelling with ${...} removed, 2 = spelling with only ${ and }
-# removed. Quotes, backslashes and backticks are transparent (a word continues
-# across them). A word is a maximal run of letters and digits; "push" directly
-# followed by a dot is not a push; "push" whose two previous words are exactly
-# "git" "stash" as the first two words of a text that has nothing but whitespace
-# before them (the text begins "git stash push") is not a push; the separators
-# between and after those words may be anything (the .ps1 regex agrees).
-function scan(t, mode,   n, i, j, c, cw, pw, ppw, lc, k, g, p, h, m, cr, lw, dot, wc, clean) {
-  n = length(t); lc = 0
-  if (mode == 1) for (k = n; k >= 1; k--) if (substr(t, k, 1) == "}") { lc = k; break }
-  g = 0; p = 0; h = 0; m = 0; cr = 0; pw = ""; ppw = ""; cw = ""; wc = 0; clean = 1
-  for (i = 1; i <= n + 1; i++) {
-    dot = 0
-    if (i <= n) {
-      c = substr(t, i, 1)
-      if (c == DQ || c == SQ || c == BS || c == BT) continue
-      if (c == "$" && substr(t, i + 1, 1) == "{") {
-        if (mode == 2) { i++; continue }
-        if (lc >= i + 2) { j = i + 2; while (substr(t, j, 1) != "}") j++; i = j; continue }
-      }
-      if (mode == 2 && c == "}") continue
-      if (index(ALNUM, c) > 0) { cw = cw c; continue }
-      dot = (c == ".") ? 1 : 0
-      if (wc == 0 && cw == "" && c != " " && c != "\t" && c != "\r" && c != "\n") clean = 0
-    }
-    if (cw != "") {
-      lw = tolower(cw)
-      if (lw == "git") g = 1
-      if (lw == "gh" || lw == "glab") h = 1
-      if (cw == "push") {
-        if (dot) cw = "pushdot"
-        else if (!(wc == 2 && clean && pw == "stash" && ppw == "git")) p = 1
-      }
-      if (cw == "pr" || cw == "mr") m = 1
-      if (cw == "create" || cw == "new") cr = 1
-      if ((g && p) || (h && m && cr)) return 1
-      ppw = pw; pw = cw; cw = ""; wc++
-    }
-  }
+
+# g_refs <text>: GR = text with each {NAME} of an earlier block line replaced by its
+# value; a {NAME} that is not a block line (a selector) is kept as is.
+g_refs() {
+  GR=""; gf_t=$1
+  while :; do
+    case $gf_t in
+      *"{"*) ;;
+      *) GR=$GR$gf_t; return 0 ;;
+    esac
+    GR=$GR${gf_t%%"{"*}; gf_t=${gf_t#*"{"}
+    case $gf_t in *"}"*) gf_k=${gf_t%%"}"*} ;; *) gf_k="" ;; esac
+    case $gf_k in
+      ''|[!A-Z]*|*[!A-Z0-9_]*) GR=$GR"{"; continue ;;
+    esac
+    case $GX in
+      *"$NL$gf_k="*) gf_v=${GX#*"$NL$gf_k="}; GR=$GR${gf_v%%"$NL"*}; gf_t=${gf_t#*"}"} ;;
+      *) GR=$GR"{" ;;
+    esac
+  done
+}
+
+# g_load <1|0>: GX = NL NAME=VALUE NL ... with references expanded in block order;
+# 1 keeps only the S.1 lines (S1_*, W_*, which refer to no other line): the hot path.
+g_load() {
+  GX=$NL; gl_rest=$G_DEFS
+  while [ -n "$gl_rest" ]; do
+    gl_ln=${gl_rest%%"$NL"*}
+    case $gl_rest in *"$NL"*) gl_rest=${gl_rest#*"$NL"} ;; *) gl_rest="" ;; esac
+    case $gl_ln in ''|'#'*) continue ;; esac
+    gl_n=${gl_ln%%=*}; gl_v=${gl_ln#*=}
+    if [ "$1" = 1 ]; then
+      case $gl_n in S1_*|W_*) ;; *) continue ;; esac
+    fi
+    case $gl_v in *"{"*) g_refs "$gl_v"; gl_v=$GR ;; esac
+    GX=$GX$gl_n=$gl_v$NL
+  done
+}
+
+# g_get <NAME>: GV = the expanded line with the placeholders in their POSIX ERE
+# spelling (raw bytes; <BS> is a backslash inside brackets). A missing line is an
+# internal error: the caller's stage rule applies (tool failure).
+g_get() {
+  case $GX in
+    *"$NL$1="*) GV=${GX#*"$NL$1="}; GV=${GV%%"$NL"*} ;;
+    *) GV=""; return 1 ;;
+  esac
+  case $GV in *"<"*) ;; *) return 0 ;; esac
+  g_rep "$GV" "<TAB>" "$TAB"; g_rep "$GR" "<BS>" '\'; g_rep "$GR" "<HI>" "$HI0-$HI1"
+  g_rep "$GR" "<CURLY>" "${CU0}[$CU1-$CU7]"; g_rep "$GR" "<Q>" "'"; g_rep "$GR" "<CR>" "$CR"
+  g_rep "$GR" "<SOH>" "$SOH"; g_rep "$GR" "<STX>" "$STX"; g_rep "$GR" "<ETX>" "$ETX"
+  g_rep "$GR" "<L>" "$M_L"; g_rep "$GR" "<R>" "$M_R"; GV=$GR
   return 0
 }
-BEGIN {
-  RS = sprintf("%c", 1); DQ = "\""; SQ = sprintf("%c", 39); BS = "\\"; BT = "`"
-  ALNUM = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-  CURLY = ""
-  for (k = 152; k <= 158; k++) CURLY = CURLY (k > 152 ? "|" : "") sprintf("%c%c%c", 226, 128, k)
-}
-{ s = (NR > 1) ? s RS $0 : $0 }
-END {
-  big = (length(s) > 65536) ? 1 : 0
-  s = rep(s, "[\\\\`]\r?\n", "")
-  s = rep(s, "\r\n", "\n")
-  s = rep(s, CURLY, "")
-  s = rep(s, "\\$[\"\047]", "")
-  printf "%d %d", (scan(s, 1) || scan(s, 2)) ? 1 : 0, big
-}'
+
+# --- candidate test (S.1, T.2) ------------------------------------------------
 sid=$(printf '%s' "$sid" | tr -cd 'A-Za-z0-9_-')
 [ -n "$sid" ] || exit 0
-fp=$(printf '%s' "$cmd" | LC_ALL=C awk "$FP_PROG" 2>/dev/null) || exit 0
-case $fp in
-  "1 1") deny "$K_ANY" "$W_SIZE" "$T_ANY" ;;
-  "1 0") ;;
-  *) exit 0 ;;
+# ${#cmd} counts bytes: LC_ALL=C is exported at hook start (bash 3.2 included)
+big=0
+[ "${#cmd}" -gt 65536 ] && big=1
+# s1_fail: a failing S.1 tool keeps S.1's rule: over the cap W_SIZE, else exit 0
+s1_fail() {
+  [ "$big" = 1 ] && deny "$K_ANY" "$W_SIZE" "$T_ANY"
+  exit 0
+}
+g_load 1
+s1_l=""
+for s1_n in JOIN CURLY DQ BRACE1 BRACE2O BRACE2C BRACE3V BRACE3O QUOTES STASH; do
+  g_get "S1_$s1_n" || s1_fail
+  s1_l=$s1_l$GV$NL
+done
+s1_join=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_curly=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_dq=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_b1=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_b2o=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_b2c=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_b3v=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_b3o=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_q=${s1_l%%"$NL"*}; s1_l=${s1_l#*"$NL"}
+s1_st=${s1_l%%"$NL"*}
+
+# CAND: (W_GIT and W_PUSH) or (W_GH and W_PRMR and W_CRNEW) on one line, as the
+# orderings of the words with a separator between them (a DFA in grep; the .ps1
+# runs the five word tests separately, the language is the same). s1_atom splits a
+# W_ line (lead)WORD(SEP|$) into AW = WORD and AS = SEP.
+s1_lead='(^|[^A-Za-z0-9])'
+s1_atom() {
+  g_get "$1" || s1_fail
+  case $GV in "$s1_lead"*'|$)') ;; *) s1_fail ;; esac
+  sa_w=${GV#"$s1_lead"}; sa_s=${sa_w##*"("}
+  AW=${sa_w%"($sa_s"}; AS=${sa_s%'|$)'}
+}
+s1_atom W_GIT; a_git=$AW; s_git=$AS
+s1_atom W_PUSH; a_push=$AW; s_push=$AS
+s1_atom W_GH; a_gh=$AW; s_gh=$AS
+s1_atom W_PRMR; a_prmr=$AW; s_prmr=$AS
+s1_atom W_CRNEW; a_crnew=$AW; s_crnew=$AS
+s1_gap="([^$ETX]*[^A-Za-z0-9])?"
+cand="$s1_lead$a_git$s_git$s1_gap$a_push($s_push|\$)|$s1_lead$a_push$s_push$s1_gap$a_git($s_git|\$)"
+for s1_o in "gh prmr crnew" "gh crnew prmr" "prmr gh crnew" "prmr crnew gh" "crnew gh prmr" "crnew prmr gh"; do
+  s1_t=$s1_lead; s1_k=0
+  for s1_w in $s1_o; do
+    s1_k=$((s1_k + 1))
+    case $s1_w in
+      gh) s1_a=$a_gh; s1_s=$s_gh ;;
+      prmr) s1_a=$a_prmr; s1_s=$s_prmr ;;
+      *) s1_a=$a_crnew; s1_s=$s_crnew ;;
+    esac
+    if [ "$s1_k" = 3 ]; then s1_t=$s1_t$s1_a"($s1_s|\$)"; else s1_t=$s1_t$s1_a$s1_s$s1_gap; fi
+  done
+  cand="$cand|$s1_t"
+done
+
+# Three spellings (h/g/p in one sed), then a sentinel line that always matches: a
+# count below 1 means a tool failed. CR stays a byte; LF becomes SOH; SOH and ETX
+# become STX (ETX is the any-byte class).
+n1=$({ printf '%s' "$cmd" | tr '\012\001\003' '\001\002\002'; printf '\n'; } | sed -n -E \
+  -e "s/$s1_join//g" -e "s/$s1_curly//g" -e "s/$s1_dq//g" -e h \
+  -e "s/$s1_b1//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p -e g \
+  -e "s/$s1_b2o//g" -e "s/$s1_b2c//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p -e g \
+  -e "s/$s1_b3v//g" -e "s/$s1_b3o//g" -e "s/$s1_b2c//g" -e "s/$s1_q//g" -e "s/$s1_st/\\1PUSH/" -e p \
+  -e "s/^[^$ETX]*\$/git push/" -e p 2>/dev/null | grep -a -c -E -e "$cand" 2>/dev/null)
+case $n1 in
+  ''|*[!0-9]*|0) s1_fail ;;
+  1) exit 0 ;;
 esac
+[ "$big" = 1 ] && deny "$K_ANY" "$W_SIZE" "$T_ANY"
+chk_time
 
 # jq on Windows writes its "\n" separators as CRLF: drop the CR that ends the field.
 tool=${tool%"$CR"}
@@ -228,189 +385,154 @@ state_root=${CLAUDE_STATE_DIR:-}
 [ -n "$state_root" ] || state_root=${HOME:-}/.claude/.state
 marker=$state_root/code-review/$sid
 
-# --- plain-form tokenizer (S.2) -----------------------------------------------
-# Output: "OK" then one line per token: W<word> or O<joiner> (&& or ;); trailing
-# redirections are consumed. "BAD" when the text is not plain.
-# shellcheck disable=SC2016
-TOK_PROG='
-function fail() { print "BAD"; exit }
-function badc(c) { return (index(BADS, c) > 0 || index(CTRL, c) > 0) }
-function emit(w,   qp) {
-  qp = qpre; qpre = 0; sl = 0
-  if (w == "" && !wq) fail()
-  if (rt) { rt = 0; return }
-  if (nr) fail()
-  if (PSD && substr(w, 1, 1) == "@" && length(w) > 1 && !wq) fail()
-  # a Bash word with a quote before its first unquoted slash is not tilde-expanded
-  # by the shell: mark a leading tilde so a quoted directory is not read as HOME
-  # (S.3-bis e, n)
-  if (!PSD && qp && substr(w, 1, 1) == "~") w = STX w
-  out = out "W" w "\n"
-}
-# a PowerShell word that begins with a quoted string may not continue (S.3-bis t)
-function contfail(p,   x) {
-  x = substr(s, p, 1)
-  if (x != "" && x != " " && x != "\t" && x != ";" && substr(s, p, 2) != "&&") fail()
-}
-function op(o) { if (nr || rt) fail(); out = out "O" o "\n" }
-BEGIN {
-  RS = sprintf("%c", 1); SQ = sprintf("%c", 39); DQ = "\""; BS = "\\"
-  BADS = "$`{}()*?[<|&;#"
-  CTRL = ""
-  for (k = 1; k < 32; k++) if (k != 9) CTRL = CTRL sprintf("%c", k)
-  CTRL = CTRL sprintf("%c", 127)
-  HIGH = ""
-  for (k = 128; k < 256; k++) HIGH = HIGH sprintf("%c", k)
-  STX = sprintf("%c", 2)
-}
-{ s = (NR > 1) ? s RS $0 : $0 }
-END {
-  sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s)
-  n = length(s); i = 1; cur = ""; inw = 0; wq = 0; q = ""; nr = 0; rt = 0; out = ""
-  qpre = 0; sl = 0; qbeg = 0
-  while (i <= n) {
-    c = substr(s, i, 1)
-    if (q != "") {
-      if (c == q) {
-        if (PSD && substr(s, i + 1, 1) == q) { cur = cur c; i += 2; continue }
-        q = ""
-        if (qbeg) contfail(i + 1)
-        qbeg = 0; i++; continue
-      }
-      if (badc(c)) fail()
-      if (c == BS && !PSD && q == DQ) fail()
-      if (PSD && index(HIGH, c) > 0) fail()
-      cur = cur c; i++; continue
-    }
-    if (c == " " || c == "\t") { if (inw) { emit(cur); cur = ""; inw = 0; wq = 0 }; i++; continue }
-    if (c == DQ || c == SQ) {
-      # a closed quoted string with no $ ` backslash or control character is one
-      # literal token: the banned characters inside it are data (S.2)
-      if (!PSD && !sl) qpre = 1
-      qb = (PSD && !inw) ? 1 : 0
-      k = i + 1
-      while (k <= n) {
-        ch = substr(s, k, 1)
-        if (ch == c) { if (PSD && substr(s, k + 1, 1) == c) { k += 2; continue }; break }
-        k++
-      }
-      if (k <= n) {
-        raw = substr(s, i + 1, k - i - 1); clean = 1
-        if (index(raw, "$") > 0 || index(raw, "`") > 0 || index(raw, BS) > 0) clean = 0
-        for (z = 1; clean && z <= length(raw); z++) {
-          ch = substr(raw, z, 1)
-          if (index(CTRL, ch) > 0) clean = 0
-        }
-        if (clean) {
-          if (PSD) gsub(c c, c, raw)
-          if (qb) contfail(k + 1)
-          cur = cur raw; inw = 1; wq = 1; i = k + 1; continue
-        }
-      }
-      q = c; qbeg = qb; inw = 1; wq = 1; i++; continue
-    }
-    if (substr(s, i, 2) == "&&") { if (inw) { emit(cur); cur = ""; inw = 0; wq = 0 }; op("&&"); i += 2; continue }
-    if (c == ";") { if (inw) { emit(cur); cur = ""; inw = 0; wq = 0 }; op(";"); i++; continue }
-    if (!inw) {
-      rest = substr(s, i, 8)
-      m = PSD ? match(rest, /^[0-9*]?>>?(&[0-9])?/) : match(rest, /^[0-9]?>>?(&[0-9])?/)
-      if (m) {
-        if (rt) fail()
-        tk = substr(rest, 1, RLENGTH); i += RLENGTH; nr = 1
-        if (index(tk, "&") > 0) {
-          nx = substr(s, i, 1)
-          if (nx != "" && nx != " " && nx != "\t") fail()
-        } else rt = 1
-        continue
-      }
-    }
-    if (c == ">") fail()
-    if (c == BS && !PSD) fail()
-    if (PSD && c == ",") fail()
-    if (PSD && index(HIGH, c) > 0) fail()
-    if (badc(c)) fail()
-    if (c == "/") sl = 1
-    cur = cur c; inw = 1; i++
-  }
-  if (q != "") fail()
-  if (inw) emit(cur)
-  if (rt) fail()
-  printf "OK\n%s", out
-}'
-
-not_plain() { deny "$K_ANY" "$W_PLAIN" "$T_ANY"; }
-
+# --- FORM (T.3) ---------------------------------------------------------------
+# Any failure from here to the fields (a tool, a missing grammar line) denies W_PLAIN.
+g_load 0
+if [ "$dialect_ps" = 1 ]; then g_get P_FORM || not_plain; else g_get B_FORM || not_plain; fi
+g_form=$GV
 tcmd=$cmd
 if [ "$dialect_ps" = 1 ]; then
-  q1=$(printf '\342\200\230'); q2=$(printf '\342\200\231'); q3=$(printf '\342\200\232'); q4=$(printf '\342\200\233')
-  d1=$(printf '\342\200\234'); d2=$(printf '\342\200\235'); d3=$(printf '\342\200\236')
-  tcmd=$(printf '%s' "$cmd" | LC_ALL=C sed -e "s/$q1/'/g" -e "s/$q2/'/g" -e "s/$q3/'/g" -e "s/$q4/'/g" \
-    -e "s/$d1/\"/g" -e "s/$d2/\"/g" -e "s/$d3/\"/g" 2>/dev/null) || not_plain
+  # curly quotes are quotes in the PowerShell dialect: U+2018-U+201B to ', U+201C-U+201E to "
+  tcmd=$(printf '%s' "$cmd" | sed -e "s/${CU0}[$CU1-$CU4]/'/g" -e "s/${CU0}[$CU5-$CU7]/\"/g" 2>/dev/null) || not_plain
 fi
-toks=$(printf '%s' "$tcmd" | LC_ALL=C awk -v PSD="$dialect_ps" "$TOK_PROG" 2>/dev/null) || not_plain
-case $toks in
-  OK) toks="" ;;
-  OK"$NL"*) toks=${toks#OK"$NL"} ;;
+body=$(printf '%s' "$tcmd" | tr '\001\015\012' '\002\001\001' 2>/dev/null) || not_plain
+[ -n "$body" ] || not_plain
+printf '%s\n' "$body" | grep -a -E -q -e "$g_form" 2>/dev/null || not_plain
+
+# --- token stage (T.4) --------------------------------------------------------
+# One sed -E. Output: kind US op US loc US sub US flags US a1 US a2 (push) or
+# kind US op US loc US sub US flags US a1 NL a2 (PR); flags N dry run, D delete,
+# T --tags, X not plain. The header STRUCT is applied without its create|new tail,
+# which only a gh/glab header takes (git push create main keeps create as its
+# remote): sub is push, or pr+ / mr+ once create|new is read.
+g_get LEX || not_plain; ts_lex=$GV
+g_get T || not_plain; ts_t=$GV
+g_get STRUCT || not_plain; ts_st=$GV
+if [ "$dialect_ps" = 1 ]; then g_get P_CD || not_plain; else g_get B_CD || not_plain; fi
+g_rep "$ts_st" "{X_CD}" "$GV"; ts_st=$GR
+ts_suf="($M_L""W(create|new)$M_R)?"
+ts_pre=${ts_st%"$ts_suf"}
+[ "$ts_pre" != "$ts_st" ] || not_plain
+# P_CD holds one group, so the groups shift by one in the PowerShell dialect
+if [ "$dialect_ps" = 1 ]; then
+  ts_hdr="$M_K\\5$M_H\\4\\7$M_J\\3\\8$M_K\\9$M_Z"
+else
+  ts_hdr="$M_K\\4$M_H\\3\\6$M_J\\2\\7$M_K\\8$M_Z"
+fi
+g_get PUSHARG || not_plain; ts_pa=$GV
+g_get ALPHA || not_plain; ts_al=$GV
+ts_p2=""
+# PowerShell: an option value is held to the push alphabet (S.3-bis c)
+[ "$dialect_ps" = 1 ] && ts_p2="/$M_V$ts_al*[^%+-:=@-Z_a-z$M_VE]/s/$M_Z/${M_Z}X/$NL"
+ts_push="/^${M_K}git$M_H/{
+s/$ts_pa/$M_V\\1\\3$M_VE$M_F\\5$M_FE/g
+$ts_p2/$M_F(-n|--dry-run)$M_FE/s/$M_Z/${M_Z}N/
+/$M_F(-d|--delete)$M_FE/s/$M_Z/${M_Z}D/
+/$M_F--tags$M_FE/s/$M_Z/${M_Z}T/
+s/${M_V}[^$M_VE]*$M_VE${M_F}[^$M_FE]*$M_FE//g
+/${M_L}O/s/$M_Z/${M_Z}X/
+/${M_L}W-|${M_L}W$M_R|$ts_t$ts_t$M_L/s/$M_Z/${M_Z}X/
+s/^$M_K([^$M_H]*)$M_H([^$M_J]*)$M_J([^$M_K]*)$M_K([^$M_Z]*)$M_Z([NDTX]*)($ts_t)?($ts_t)?\$/\\1$US\\2$US\\3$US\\4$US\\5$US\\7$US\\9/
+}"
+g_get PR1 || not_plain; ts_r1=$GV
+g_get PR2 || not_plain; ts_r2=$GV
+g_get GH_VF || not_plain; ts_ghvf=$GV
+g_get GL_VF || not_plain; ts_glvf=$GV
+# ts_prblock <kind> <head long> <head short> <base long> <base short> <value-taking list>
+ts_prblock() {
+  g_rep "$ts_r1" "{HL}" "$2"; g_rep "$GR" "{HS}" "$3"; g_rep "$GR" "{BL}" "$4"; g_rep "$GR" "{BS}" "$5"
+  g_rep "$GR" "{X_VF}" "$6"; tp_1=$GR
+  g_rep "$ts_r2" "{HL}" "$2"; g_rep "$GR" "{BL}" "$4"; tp_2=$GR
+  # value-taking options consume the next word first, then the single-word rules;
+  # the last --head / --base wins: one anchored match each (hold space)
+  TP="/^$M_K$1$M_H/{
+s/$tp_1/$M_S\\1$M_SV\\3$M_SE$M_DD\\4$M_DV\\6$M_DE/g
+s/$tp_2/$M_S\\1$M_SV\\2$M_SE$M_DD\\3$M_DV\\4$M_DE$M_N\\5$M_NE$M_X\\6$M_XE/g
+s/$M_S$M_SV$M_SE//g
+s/$M_DD$M_DV$M_DE//g
+s/$M_N$M_NE//g
+s/$M_X$M_XE//g
+/${M_X}[^$M_XE]+$M_XE/s/$M_Z/${M_Z}X/
+/$M_N--dry-run$M_NE/s/$M_Z/${M_Z}N/
+/${M_L}O/s/$M_Z/${M_Z}X/
+h
+s/^(${M_K}[^$M_Z]*${M_Z}[NX]*)([^$ETX]*${M_S}[^$M_SV]*$M_SV([^$M_SE]*)$M_SE)?[^$M_S]*\$/\\1$US\\3/
+x
+s/^([^$ETX]*${M_DD}[^$M_DV]*$M_DV([^$M_DE]*)$M_DE)?[^$M_DD]*\$/\\2/
+x
+G
+s/^$M_K([^$M_H]*)$M_H([^$M_J]*)$M_J([^$M_K]*)$M_K([^$M_Z]*)$M_Z([NX]*)/\\1$US\\2$US\\3$US\\4$US\\5/
+}"
+}
+ts_prblock gh --head -H --base -B "$ts_ghvf"; ts_gh=$TP
+ts_prblock glab --source-branch -s --target-branch -b "$ts_glvf"; ts_gl=$TP
+
+# lexer: joiner, redirection operator, blank run, quoted strings; then W/O tokens.
+# Leading and trailing blank runs go before the quote markers do, so a trailing empty
+# quoted word ("") stays an (empty) token.
+f=$(printf '%s\n' "$body" | sed -E \
+  -e "s/$ts_lex/$M_A\\1$M_B\\4$M_C\\5\\6$M_D\\2$M_E/g" \
+  -e "s/$M_A$M_B$M_C${M_D}[0-9*]?>[^$STX]*\$//" \
+  -e "s/$M_A(&&|;)$M_B$M_C$M_D$M_E/$M_R${M_L}O\\1$M_R${M_L}W/g" \
+  -e "s/$M_A${M_B}[ $TAB$SOH]+$M_C$M_D$M_E/$M_R${M_L}W/g" \
+  -e "s/^$M_R${M_L}W//" -e "s/$M_R${M_L}W\$//" \
+  -e "s/$M_A$M_B$M_C//g" -e "s/$M_D$M_E//g" \
+  -e "s/^/${M_L}W/" -e "s/\$/$M_R/" \
+  -e "s/$ts_pre/$ts_hdr/" \
+  -e "s/^($M_K(gh|glab)${M_H}[^$M_K]*$M_K(pr|mr))$M_Z${M_L}W(create|new)$M_R/\\1+$M_Z/" \
+  -e "$ts_push" -e "$ts_gh" -e "$ts_gl" 2>/dev/null) || not_plain
+chk_time
+
+# --- fields -------------------------------------------------------------------
+case $f in *"$M_K"*|*"$M_H"*|*"$M_J"*|*"$M_Z"*|*"$M_L"*|*"$M_R"*) not_plain ;; esac
+# fld: FV = the next US-separated field of f; a missing separator is not plain
+fld() {
+  case $f in *"$US"*) FV=${f%%"$US"*}; f=${f#*"$US"} ;; *) not_plain ;; esac
+}
+fld; kind=$FV
+fld; op=$FV
+fld; loc=$FV
+fld; sub=$FV
+fld; flags=$FV
+case $kind in
+  git)
+    [ "$sub" = push ] || not_plain
+    fld; a1=$FV; a2=$f
+    case $a2 in *"$US"*|*"$NL"*) not_plain ;; esac ;;
+  gh|glab)
+    if [ "$kind" = gh ]; then [ "$sub" = pr+ ] || not_plain; else [ "$sub" = mr+ ] || not_plain; fi
+    case $f in
+      *"$NL"*) a1=${f%%"$NL"*}; a2=${f#*"$NL"} ;;
+      *) a1=$f; a2="" ;;
+    esac
+    case $a1$a2 in *"$US"*|*"$NL"*) not_plain ;; esac ;;
   *) not_plain ;;
 esac
-[ -n "$toks" ] || not_plain
-IFS=$NL
-# shellcheck disable=SC2086
-set -- $toks
-IFS=$OLDIFS
+# a location prefix and -C together, an unread option, an O joiner among the words
+case $op in ''|'&&'|';'|-C) ;; *) not_plain ;; esac
+case $flags in *X*) not_plain ;; esac
+has_loc=0
+[ -n "$op" ] && has_loc=1
 
-# --- grammar: one optional location prefix, then one command ------------------
-loc=""; has_loc=0; lp=0
-case $1 in
-  Wcd) lp=1 ;;
-  W[Cc][Dd]) [ "$dialect_ps" = 1 ] && lp=1 ;;
-  W[Ss][Ee][Tt]-[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]) [ "$dialect_ps" = 1 ] && lp=2 ;;
-esac
-if [ "$lp" != 0 ]; then
-  [ $# -ge 3 ] || not_plain
-  case $2 in W?*) loc=${2#W} ;; *) not_plain ;; esac
-  case $3 in
-    "O&&") [ "$lp" = 1 ] || not_plain ;;
-    "O;") ;;
-    *) not_plain ;;
-  esac
-  has_loc=1
-  shift 3
-fi
-[ $# -ge 1 ] || not_plain
-for t in "$@"; do
-  case $t in O*) not_plain ;; esac
-done
-
-kind=""
-case $1 in
-  Wgit)
-    shift
-    if [ "${1:-}" = W-C ] && [ "$has_loc" = 0 ]; then
-      [ $# -ge 2 ] || not_plain
-      loc=${2#W}; has_loc=1; shift 2
-    fi
-    [ "${1:-}" = Wpush ] || not_plain
-    shift; kind=push ;;
-  Wgh)
-    [ "${2:-}" = Wpr ] || not_plain
-    case ${3:-} in Wcreate|Wnew) ;; *) not_plain ;; esac
-    shift 3; kind=gh ;;
-  Wglab)
-    [ "${2:-}" = Wmr ] || not_plain
-    case ${3:-} in Wcreate|Wnew) ;; *) not_plain ;; esac
-    shift 3; kind=glab ;;
-  *) not_plain ;;
-esac
+# --- post-checks on the location (T.5) ----------------------------------------
 if [ "$has_loc" = 1 ]; then
   [ -n "$loc" ] || not_plain
-  # option-looking, UNC/network (decided before any filesystem access), ~user, and
-  # a quoted tilde (not expanded by a Bash shell) are not plain
+  # 3-bis e, n: a Bash directory beginning with ~ is plain only when its raw text
+  # begins ~/ or is ~ (a quoted tilde is not expanded by the shell): TILDE
+  if [ "$dialect_ps" = 0 ]; then
+    case $loc in
+      "~"*)
+        g_get TILDE || not_plain
+        printf '%s\n' "$body" | grep -a -E -q -e "$GV" 2>/dev/null || not_plain ;;
+    esac
+  fi
+  # option-looking, UNC/network (decided before any filesystem access) and ~user
+  # are not plain
   # shellcheck disable=SC2088
   case $loc in
     [A-Za-z]:|[A-Za-z]:[!/\\]*) not_plain ;;
     \\[!\\/]*|\\) not_plain ;;
-    -*|//*|\\\\*|/\\*|\\/*|"$STX"*) not_plain ;;
+    -*|//*|\\\\*|/\\*|\\/*) not_plain ;;
     "~"|"~/"*|"~\\"*) ;;
     "~"*) not_plain ;;
   esac
@@ -419,19 +541,7 @@ if [ "$has_loc" = 1 ]; then
     case $loc in /*) not_plain ;; esac
   fi
 fi
-# tokens keep their W prefix so an empty quoted value stays one field
-args=""
-tn=0
-for t in "$@"; do
-  args=$args$t$NL
-  tn=$((tn + 1))
-  [ $((tn % 2000)) -ne 0 ] || chk_time
-done
 chk_time
-IFS=$NL
-# shellcheck disable=SC2086
-set -- $args
-IFS=$OLDIFS
 
 # --- helpers ----------------------------------------------------------------
 gdir=""; headsha=""; branch=""; remote=""
@@ -832,43 +942,15 @@ EOF
   nrefs=$rb_out
 }
 
-# --- git push <args> (S.2 option allowlist, S.4 decision) ---------------------
-# push_val <value>: in the PowerShell dialect (which splits native arguments on
-# Unicode whitespace) an option value is held to the push alphabet.
-push_val() {
-  [ "$dialect_ps" = 1 ] || return 0
-  case $1 in *[!A-Za-z0-9._/@:+=%,-]*) not_plain ;; esac
-}
-
+# --- git push (S.2 option allowlist read by the token stage, S.4 decision) ----
+# $1 $2: the positionals (remote, refspec); $3 flags: N dry run, D delete, T --tags.
 do_push() {
-  dry=0; del=0; tags=0; all=0; mirror=0; remote=""; refs=""; npos=0
-  dp_n=0
-  while [ $# -gt 0 ]; do
-    t=${1#W}; shift
-    dp_n=$((dp_n + 1))
-    [ $((dp_n % 2000)) -ne 0 ] || chk_time
-    case $t in
-      -u|--set-upstream|-f|--force|--force-with-lease|--follow-tags|--no-verify|-q|--quiet|-v|--verbose|--porcelain) ;;
-      --force-with-lease=*) push_val "${t#--force-with-lease=}" ;;
-      --push-option=*) push_val "${t#--push-option=}" ;;
-      --tags) tags=1 ;;
-      -n|--dry-run) dry=1 ;;
-      -d|--delete) del=1 ;;
-      -o) [ $# -gt 0 ] || not_plain; push_val "${1#W}"; shift ;;
-      -*) not_plain ;;
-      *)
-        [ -n "$t" ] || not_plain
-        npos=$((npos + 1))
-        case $npos in
-          1) remote=$t ;;
-          2) refs=$t ;;
-          *) not_plain ;;
-        esac ;;
-    esac
-  done
+  dry=0; del=0; tags=0; all=0; mirror=0; remote=$1; refs=$2
+  case $3 in *N*) dry=1 ;; esac
+  case $3 in *D*) del=1 ;; esac
+  case $3 in *T*) tags=1 ;; esac
   # S.2 quoting never relaxes the plain form: after unquoting, the remote and the
   # refspec must still be literal names (a quoted wildcard or space is not plain).
-  case $remote$refs in *"$NL"*) not_plain ;; esac
   # Builtin case globs only (no external tool on a restricted PATH). The character
   # class is the spec's remote/refspec alphabets plus ':' '+' '=' '%' ',' so that
   # URL remotes and the ':dst' delete refspec keep their existing rows; '*', '?',
@@ -977,39 +1059,13 @@ EOF
   exit 0
 }
 
-# --- gh pr create|new / glab mr create|new <args> -----------------------------
+# --- gh pr create|new / glab mr create|new ------------------------------------
+# $1 $2: the last --head / --base (--source-branch / --target-branch) values;
+# $3 flags: N --dry-run.
 do_pr() {
-  if [ "$kind" = glab ]; then
-    pr_label="glab mr create"
-    hl=--source-branch; hs=-s; bl=--target-branch; bs=-b
-    vf=" --title -t --description -d --assignee -a --label -l --milestone -m --reviewer --target-project --repo -R --head -H --related-issue -i "
-  else
-    pr_label="gh pr create"
-    hl=--head; hs=-H; bl=--base; bs=-B
-    vf=" --title -t --body -b --body-file -F --assignee -a --label -l --milestone -m --project -p --reviewer -r --template -T --repo -R --recover "
-  fi
-  pr_src=""; pr_dst=""; pr_dry=0; pr_n=0
-  # tokens carry a W prefix (an empty quoted value is the token W alone)
-  while [ $# -gt 0 ]; do
-    t=${1#W}; shift
-    pr_n=$((pr_n + 1))
-    [ $((pr_n % 2000)) -ne 0 ] || chk_time
-    if [ "$t" = --dry-run ]; then pr_dry=1; continue; fi
-    if [ "$t" = "$hl" ] || [ "$t" = "$hs" ]; then pr_src=${1:-}; pr_src=${pr_src#W}; [ $# -gt 0 ] && shift; continue; fi
-    if [ "$t" = "$bl" ] || [ "$t" = "$bs" ]; then pr_dst=${1:-}; pr_dst=${pr_dst#W}; [ $# -gt 0 ] && shift; continue; fi
-    case $t in
-      --dry-run=*) not_plain ;;
-      "$hl="*) pr_src=${t#"$hl="}; continue ;;
-      "$bl="*) pr_dst=${t#"$bl="}; continue ;;
-      --*) ;;
-      -?) ;;
-      -?*) not_plain ;;
-    esac
-    case $vf in
-      *" $t "*) [ $# -gt 0 ] && shift ;;
-    esac
-  done
-  [ "$pr_dry" = 1 ] && exit 0
+  if [ "$kind" = glab ]; then pr_label="glab mr create"; else pr_label="gh pr create"; fi
+  pr_src=$1; pr_dst=$2
+  case $3 in *N*) exit 0 ;; esac
   resolve_loc "$pr_label"
   if ! prep_repo; then
     [ "$PREP_WT" = 1 ] || deny "$pr_label" "$W_NOREPO" "HEAD vs ${pr_dst:-its destination}"
@@ -1031,4 +1087,4 @@ do_pr() {
   exit 0
 }
 
-if [ "$kind" = push ]; then do_push "$@"; else do_pr "$@"; fi
+if [ "$kind" = git ]; then do_push "$a1" "$a2" "$flags"; else do_pr "$a1" "$a2" "$flags"; fi

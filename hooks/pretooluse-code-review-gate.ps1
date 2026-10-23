@@ -1,8 +1,8 @@
 #Requires -Version 7.0
 # pretooluse-code-review-gate.ps1 - blocking PreToolUse hook (matcher: Bash|PowerShell).
 #
-# PowerShell twin of pretooluse-code-review-gate.sh; the .sh is the reference
-# implementation and the two must produce byte-identical deny output.
+# PowerShell twin of pretooluse-code-review-gate.sh; the grammar block is shared byte for
+# byte; the .ps1 is the reference for decision T. The two must produce byte-identical deny output.
 #
 # Denies a shell command that opens a pull/merge request (gh pr create|new,
 # glab mr create|new) or pushes to main/master (git push, force included)
@@ -10,30 +10,34 @@
 # the exact commit (HEAD) against the exact destination, with a reviewed range
 # (<merge-base>..<head-sha>) that binds the approval to the commits being sent,
 # in the marker <state>/code-review/<session_id> written by record-subagent-run
-# (read here, never written). Grammar: decision S of specs/code-review-gate.md
-# (a whitelist of plain forms); the unlock rule is REQ-004. State dir:
-# CLAUDE_STATE_DIR, else $HOME/.claude/.state.
+# (read here, never written). Grammar: decisions S and T of specs/code-review-gate.md
+# (a whitelist of plain forms written as one regex grammar); the unlock rule is
+# REQ-004. State dir: CLAUDE_STATE_DIR, else $HOME/.claude/.state.
 #
 # SECURITY: the command string is untrusted data. It is NEVER evaluated or
 # executed: no Invoke-Expression, no call operator on any part of it, no
-# cmd /c. The gate does not try to understand shell text. It:
-#  1. (S.1) decides whether the text is a candidate at all: continuations
-#     joined, CRLF collapsed, ${...} removed, quotes, backslashes and backticks
-#     removed, then the words git+push or gh/glab+create/new (git, gh and glab
+# cmd /c. The gate does not try to understand shell text. Three regex stages,
+# each a fixed number of passes over the command's UTF-8 bytes (one char per
+# byte), no loop over characters or tokens; every regex has CultureInvariant
+# and a match timeout equal to the remaining 8 s budget, and a timeout denies W_TIME:
+#  1. (S.1, T.2) candidate test: continuations joined, curly quotes and a $
+#     before a quote removed, then three spellings (${...} removed; ${ and }
+#     removed; ${NAME} and ${NAME<op> removed, then }), each without quotes,
+#     backslashes and backticks, the anchored git stash push exempted; then the
+#     words git+push or gh/glab+pr/mr+create/new (git, gh and glab
 #     case-insensitive). Anything else exits 0 with no git call (fast path).
 #     Over 64 KB (bytes) the same test decides: match denies (W_SIZE), else exit 0.
-#  2. (S.2) splits the raw text with the class GateTok, a line-for-line port of
-#     the .sh awk TOK_PROG: it works on the command's UTF-8 bytes (one char per
-#     byte, the awk LC_ALL=C semantics) over whitespace and quotes only. Every
-#     accepted token is a literal word: any of $ ` { } ( ) * ? [ < | & ; # or a
-#     control character anywhere (quoted or not, except inside a clean quoted
-#     string), other than one && or ; joiner and trailing redirections, makes
-#     the text not plain. A backslash is literal in the PowerShell dialect
-#     (tool_name PowerShell) and allowed only inside single quotes otherwise.
-#  3. accepts exactly: [cd <dir> && | cd <dir>; | Set-Location <dir>;]
-#     git [-C <dir>] push [allowlisted options] [<remote> [<refspec>]], or
-#     gh pr create|new ... / glab mr create|new ... (one location prefix at
-#     most). Every other candidate is denied W_PLAIN (S.3).
+#  2. (FORM, T.3) the text, with CR and LF as SOH and SOH as STX (PowerShell
+#     dialect: curly quotes mapped to ASCII quotes first), must be one plain form
+#     of the grammar block below (B_FORM for Bash, P_FORM for PowerShell):
+#     [cd <dir> && | cd <dir>; | Set-Location <dir>;]
+#     git [-C <dir>] push [words] [redirections], or gh pr create|new ... /
+#     glab mr create|new ...; a word is literal (bare bytes and clean quoted
+#     strings). Every other candidate is denied W_PLAIN (S.3).
+#  3. (token stage, T.4) a lexer pass and fixed passes make W/O tokens; STRUCT
+#     reads kind, joiner or -C and directory; PUSHARG (push allowlist) and
+#     PR1/PR2 (gh/glab options, the last --head/--base wins) read the values left
+#     to right; an unread - word, a third positional or an empty word is not plain.
 #  4. (S.4) judges the plain command with read-only git questions (rev-parse,
 #     symbolic-ref, remote, rev-list, merge-base, config); no network. A
 #     wall-clock budget of 8 s from hook start denies any candidate still
@@ -47,158 +51,13 @@
 # candidate and size tests), a push whose payload cwd is not inside a git
 # repository (git rev-parse --git-dir fails), a repository with no refs at all
 # (an unborn HEAD in a repository that has other refs is gated), any unexpected
-# internal error. A bare repository or a directory inside .git is denied W_LOC.
-# Not fail-open: a non-plain candidate (W_PLAIN), a cd/-C directory that is
-# missing or not a git work tree (W_LOC), a pull/merge request from a directory
-# that is not a git work tree (W_NOREPO).
+# internal error outside the grammar stages. A bare repository or a directory
+# inside .git is denied W_LOC.
+# Not fail-open: a non-plain candidate (W_PLAIN, also any error in the FORM or
+# token stage), a cd/-C directory that is missing or not a git work tree (W_LOC),
+# a pull/merge request from a directory that is not a git work tree (W_NOREPO).
 
 $script:SW = [System.Diagnostics.Stopwatch]::StartNew()
-
-# Port of TOK_PROG (pretooluse-code-review-gate.sh). Input: the command's UTF-8
-# bytes, one char per byte. Out: W<word> / O<joiner> entries; Scan returns
-# $false when the text is not plain.
-class GateTok {
-    [System.Collections.Generic.List[string]]$Out = [System.Collections.Generic.List[string]]::new()
-    [bool]$Psd = $false
-    [bool]$Rt = $false
-    [bool]$Nr = $false
-    [bool]$Wq = $false
-    [bool]$Qpre = $false
-    [bool]$Sl = $false
-
-    static [bool] Ctrl([int]$c) { return (($c -ge 1 -and $c -lt 32 -and $c -ne 9) -or $c -eq 127) }
-    static [bool] Badc([int]$c) { return ('$`{}()*?[<|&;#'.IndexOf([char]$c) -ge 0) -or [GateTok]::Ctrl($c) }
-
-    [void] Emit([string]$w) {
-        $qp = $this.Qpre; $this.Qpre = $false; $this.Sl = $false
-        if ($w.Length -eq 0 -and -not $this.Wq) { throw 'BAD' }
-        if ($this.Rt) { $this.Rt = $false; return }
-        if ($this.Nr) { throw 'BAD' }
-        if ($this.Psd -and $w.Length -gt 1 -and [int]$w[0] -eq 64 -and -not $this.Wq) { throw 'BAD' }
-        # a Bash word with a quote before its first unquoted slash is not tilde-expanded
-        # by the shell: mark a leading tilde so a quoted directory is not read as HOME
-        # (S.3-bis e, n)
-        if (-not $this.Psd -and $qp -and $w.Length -gt 0 -and [int]$w[0] -eq 126) { $w = [string][char]2 + $w }
-        $this.Out.Add('W' + $w)
-    }
-
-    # a PowerShell word that begins with a quoted string may not continue (S.3-bis t)
-    hidden [void] ContFail([string]$s, [int]$p) {
-        if ($p -ge $s.Length) { return }
-        $x = [int]$s[$p]
-        if ($x -ne 32 -and $x -ne 9 -and $x -ne 59 -and -not ($x -eq 38 -and $p + 1 -lt $s.Length -and [int]$s[$p + 1] -eq 38)) { throw 'BAD' }
-    }
-
-    [void] Op([string]$o) {
-        if ($this.Nr -or $this.Rt) { throw 'BAD' }
-        $this.Out.Add('O' + $o)
-    }
-
-    [bool] Scan([string]$s0, [bool]$psd) {
-        $this.Psd = $psd
-        try {
-            $this.Run($s0)
-            return $true
-        } catch {
-            return $false
-        }
-    }
-
-    hidden [void] Run([string]$s0) {
-        $s = [regex]::Replace($s0, '^[ \t\r\n]+', '')
-        $s = [regex]::Replace($s, '[ \t\r\n]+\z', '')
-        # fast path (speed only): a text of nothing but letters, digits and . _ / : = + % ~ ^ ! -
-        # with blanks has no quote, operator, redirection or special character, so the
-        # loop below would return exactly its blank-separated words
-        if ([regex]::IsMatch($s, '^[A-Za-z0-9._/:=+%~^!\- \t]*\z')) {
-            foreach ($fw in $s.Split([char[]]@(' ', "`t"), [System.StringSplitOptions]::RemoveEmptyEntries)) { $this.Out.Add('W' + $fw) }
-            return
-        }
-        $n = $s.Length; $i = 0
-        $cur = [System.Text.StringBuilder]::new()
-        $inw = $false; $q = 0; $qbeg = $false
-        $rx = if ($this.Psd) { [regex]'\G[0-9*]?>>?(&[0-9])?' } else { [regex]'\G[0-9]?>>?(&[0-9])?' }
-        while ($i -lt $n) {
-            $c = [int]$s[$i]
-            if ($q -ne 0) {
-                if ($c -eq $q) {
-                    if ($this.Psd -and $i + 1 -lt $n -and [int]$s[$i + 1] -eq $q) { [void]$cur.Append([char]$c); $i += 2; continue }
-                    $q = 0
-                    if ($qbeg) { $this.ContFail($s, $i + 1) }
-                    $qbeg = $false; $i++; continue
-                }
-                if ([GateTok]::Badc($c)) { throw 'BAD' }
-                if ($c -eq 92 -and -not $this.Psd -and $q -eq 34) { throw 'BAD' }
-                if ($this.Psd -and $c -ge 128) { throw 'BAD' }
-                [void]$cur.Append([char]$c); $i++; continue
-            }
-            if ($c -eq 32 -or $c -eq 9) {
-                if ($inw) { $this.Emit($cur.ToString()); [void]$cur.Clear(); $inw = $false; $this.Wq = $false }
-                $i++; continue
-            }
-            if ($c -eq 34 -or $c -eq 39) {
-                # a closed quoted string with no $ ` backslash or control character is one
-                # literal token: the banned characters inside it are data (S.2)
-                if (-not $this.Psd -and -not $this.Sl) { $this.Qpre = $true }
-                $qb = ($this.Psd -and -not $inw)
-                $k = $i + 1
-                while ($k -lt $n) {
-                    $ch = [int]$s[$k]
-                    if ($ch -eq $c) {
-                        if ($this.Psd -and $k + 1 -lt $n -and [int]$s[$k + 1] -eq $c) { $k += 2; continue }
-                        break
-                    }
-                    $k++
-                }
-                if ($k -lt $n) {
-                    $raw = $s.Substring($i + 1, $k - $i - 1)
-                    $clean = ($raw.IndexOf([char]'$') -lt 0 -and $raw.IndexOf([char]'`') -lt 0 -and $raw.IndexOf([char]'\') -lt 0)
-                    if ($clean) {
-                        foreach ($z in $raw.ToCharArray()) { if ([GateTok]::Ctrl([int]$z)) { $clean = $false; break } }
-                    }
-                    if ($clean) {
-                        if ($this.Psd) { $qs = [string][char]$c; $raw = $raw.Replace($qs + $qs, $qs) }
-                        if ($qb) { $this.ContFail($s, $k + 1) }
-                        [void]$cur.Append($raw); $inw = $true; $this.Wq = $true; $i = $k + 1; continue
-                    }
-                }
-                $q = $c; $qbeg = $qb; $inw = $true; $this.Wq = $true; $i++; continue
-            }
-            if ($c -eq 38 -and $i + 1 -lt $n -and [int]$s[$i + 1] -eq 38) {
-                if ($inw) { $this.Emit($cur.ToString()); [void]$cur.Clear(); $inw = $false; $this.Wq = $false }
-                $this.Op('&&'); $i += 2; continue
-            }
-            if ($c -eq 59) {
-                if ($inw) { $this.Emit($cur.ToString()); [void]$cur.Clear(); $inw = $false; $this.Wq = $false }
-                $this.Op(';'); $i++; continue
-            }
-            if (-not $inw) {
-                $m = $rx.Match($s, $i)
-                if ($m.Success) {
-                    if ($this.Rt) { throw 'BAD' }
-                    $tk = $m.Value; $i += $m.Length; $this.Nr = $true
-                    if ($tk.IndexOf([char]'&') -ge 0) {
-                        if ($i -lt $n) {
-                            $nx = [int]$s[$i]
-                            if ($nx -ne 32 -and $nx -ne 9) { throw 'BAD' }
-                        }
-                    } else { $this.Rt = $true }
-                    continue
-                }
-            }
-            if ($c -eq 62) { throw 'BAD' }
-            if ($c -eq 92 -and -not $this.Psd) { throw 'BAD' }
-            if ($this.Psd -and $c -eq 44) { throw 'BAD' }
-            if ($this.Psd -and $c -ge 128) { throw 'BAD' }
-            if ([GateTok]::Badc($c)) { throw 'BAD' }
-            if ($c -eq 47) { $this.Sl = $true }
-            [void]$cur.Append([char]$c); $inw = $true; $i++
-        }
-        if ($q -ne 0) { throw 'BAD' }
-        if ($inw) { $this.Emit($cur.ToString()) }
-        if ($this.Rt) { throw 'BAD' }
-    }
-}
 
 # --- deny helper and wordings ------------------------------------------------------
 function Send-Deny {
@@ -231,54 +90,249 @@ function Test-Time {
     if ($script:SW.Elapsed.TotalSeconds -ge 8) { Send-Deny $script:K_ANY $script:W_TIME $script:T_ANY }
 }
 function Send-NotPlain { Send-Deny $script:K_ANY $script:W_PLAIN $script:T_ANY }
-function Test-In([string]$S, [string[]]$List) {
-    foreach ($x in $List) { if ([string]::Equals($S, $x)) { return $true } }
+
+# --- grammar (decision T) -----------------------------------------------------------
+# The block below is shared byte for byte with the .sh. Each line is NAME=TEXT; {NAME}
+# refers to an earlier line and is expanded once per run by literal replacement. The
+# placeholders <TAB> <BS> <HI> <CURLY> <Q> and the marker names are the only
+# per-engine difference (Resolve-GrammarText). {X_CD}, {X_VF}, {HL}, {HS}, {BL}, {BS}
+# select the dialect or the tool and are filled in where the pattern is used.
+$script:GDEFS = @'
+# --- S.1 candidate test (on the S.1 text)
+S1_JOIN=[\\`]<CR>?<SOH>
+S1_CURLY=<CURLY>
+S1_DQ=\$["<Q>]
+S1_BRACE1=\$\{[^}]*(\}|$)
+S1_BRACE2O=\$\{
+S1_BRACE2C=\}
+S1_BRACE3V=\$\{[A-Z_a-z][0-9A-Z_a-z]*\}
+S1_BRACE3O=\$\{[A-Z_a-z][0-9A-Z_a-z]*:?[+=?-]
+S1_QUOTES=["<Q>\\`]
+S1_STASH=^([ <TAB><CR><SOH>]*git[^A-Za-z0-9]+stash[^A-Za-z0-9]+)push
+W_GIT=(^|[^A-Za-z0-9])[Gg][Ii][Tt]([^A-Za-z0-9]|$)
+W_PUSH=(^|[^A-Za-z0-9])push([^A-Za-z0-9.]|$)
+W_GH=(^|[^A-Za-z0-9])([Gg][Hh]|[Gg][Ll][Aa][Bb])([^A-Za-z0-9]|$)
+W_PRMR=(^|[^A-Za-z0-9])(pr|mr)([^A-Za-z0-9]|$)
+W_CRNEW=(^|[^A-Za-z0-9])(create|new)([^A-Za-z0-9]|$)
+# --- plain-form language (S.2)
+B_B=[]!%+-:=@-Z^_a-z~<HI>]
+P_B=[]!%+.-:=@-Z<BS>^_a-z~-]
+P_B1=[]!%+.-:=A-Z<BS>^_a-z~-]
+SQC=[][ <TAB>!-#%&(-Z^_a-~<HI>]
+DQC=[][ <TAB>!#%-Z^_a-~<HI>]
+SQXB=[]<TAB> !"%+-:=>@-Z^_a-z~<HI>]
+SQXBS=[]<TAB> !"%+-:=>@-Z<BS>^_a-z~<HI>]
+SQXP=[]<TAB> !"%+-:=>@-Z^_a-z~]
+SQXPS=[]<TAB> !"%+-:=>@-Z<BS>^_a-z~]
+DQXP=[]<TAB> !%<Q>+-:=>@-Z^_a-z~]
+DQXPS=[]<TAB> !%<Q>+-:=>@-Z<BS>^_a-z~]
+B_SQ=<Q>({SQC}*|{SQXB}*\\{SQXBS}*)<Q>
+B_DQ="{DQC}*"
+B_W=({B_B}|{B_SQ}|{B_DQ})+
+P_SQ=<Q>({SQC}*|{SQXP}*\\{SQXPS}*)<Q>
+P_DQ="({DQC}*|{DQXP}*\\{DQXPS}*)"
+P_Q=({P_SQ}|{P_DQ})
+P_W=(@|{P_Q}|{P_B1}{P_B}*({P_Q}{P_B}+)*{P_Q}?)
+B_RD=[0-9]?>>?(&[0-9]|[ <TAB>]*{B_B}+)
+P_RD=[0-9*]?>>?(&[0-9]|[ <TAB>]*{P_B}+)
+B_LOC=cd[ <TAB>]+{B_W}[ <TAB>]*(&&|;)[ <TAB>]*
+P_LOC=([Cc][Dd][ <TAB>]+{P_W}[ <TAB>]*(&&|;)|[Ss][Ee][Tt]-[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn][ <TAB>]+{P_W}[ <TAB>]*;)[ <TAB>]*
+B_FORM=^[ <TAB><SOH>]*(({B_LOC})?(gh[ <TAB>]+pr|glab[ <TAB>]+mr)[ <TAB>]+(create|new)|({B_LOC}git|git([ <TAB>]+-C[ <TAB>]+{B_W})?)[ <TAB>]+push)([ <TAB>]+{B_W})*([ <TAB>]+{B_RD})*[ <TAB><SOH>]*$
+P_FORM=^[ <TAB><SOH>]*(({P_LOC})?(gh[ <TAB>]+pr|glab[ <TAB>]+mr)[ <TAB>]+(create|new)|({P_LOC}git|git([ <TAB>]+-C[ <TAB>]+{P_W})?)[ <TAB>]+push)([ <TAB>]+{P_W})*([ <TAB>]+{P_RD})*[ <TAB><SOH>]*$
+TILDE=^[ <TAB><SOH>]*(cd|git[ <TAB>]+-C)[ <TAB>]+~(/|[ <TAB>;&])
+# --- token stage
+LEX=[ <TAB>]*(&&|;)[ <TAB>]*|[ <TAB>]+([0-9*]?>>?(&[0-9])?)|([ <TAB><SOH>]+)|<Q>([^<Q>]*)<Q>|"([^"]*)"
+T=<L>W([^<R>]*)<R>
+B_CD=cd
+P_CD=([Cc][Dd]|[Ss][Ee][Tt]-[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn])
+STRUCT=^(<L>W{X_CD}<R>{T}<L>O([^<R>]*)<R>)?<L>W(git|gh|glab)<R>(<L>W(-C)<R>{T})?<L>W(push|pr|mr)<R>(<L>W(create|new)<R>)?
+PUSHOPT=-u|--set-upstream|-f|--force|--force-with-lease|--follow-tags|--no-verify|-q|--quiet|-v|--verbose|--porcelain
+PUSHARG=<L>W-o<R>{T}|<L>W--(push-option|force-with-lease)=([^<R>]*)<R>|<L>W({PUSHOPT})<R>|<L>W(--tags|-n|--dry-run|-d|--delete)<R>
+ALPHA=[%+-:=@-Z_a-z]
+GH_VF=--title|-t|--body|-b|--body-file|-F|--assignee|-a|--label|-l|--milestone|-m|--project|-p|--reviewer|-r|--template|-T|--repo|-R|--recover
+GL_VF=--title|-t|--description|-d|--assignee|-a|--label|-l|--milestone|-m|--reviewer|--target-project|--repo|-R|--head|-H|--related-issue|-i
+PR1=<L>W({HL}|{HS})<R>({T})?|<L>W({BL}|{BS})<R>({T})?|<L>W({X_VF})<R>(<L>W[^<R>]*<R>)?
+PR2=<L>W({HL})=([^<R>]*)<R>|<L>W({BL})=([^<R>]*)<R>|<L>W(--dry-run)<R>|<L>W(--dry-run=[^<R>]*|-[^-<R>][^<R>]+)<R>
+'@
+
+# Markers: control chars the stages guarantee absent from the text they run on (FORM
+# admits no control char but tab, and SOH only as leading or trailing white space).
+$script:MK = @{
+    SOH = [string][char]0x01; STX = [string][char]0x02
+    A = [string][char]0x11; B = [string][char]0x12; C = [string][char]0x13; D = [string][char]0x14; E = [string][char]0x15
+    L = [string][char]0x16; R = [string][char]0x17
+    V = [string][char]0x18; VE = [string][char]0x19; F = [string][char]0x1A; FE = [string][char]0x1B
+    S = [string][char]0x1C; SV = [string][char]0x1D; SE = [string][char]0x1E
+    DD = [string][char]0x0D; DV = [string][char]0x0E; DE = [string][char]0x0F
+    N = [string][char]0x10; NE = [string][char]0x0B; X = [string][char]0x0C; XE = [string][char]0x08
+}
+
+# The .NET spelling of the placeholders (one char per byte: the text is a Latin1 view
+# of the command's UTF-8 bytes).
+function Resolve-GrammarText([string]$V) {
+    return $V.Replace('<TAB>', '\t').Replace('<BS>', '\\').Replace('<HI>', '\x80-\xFF').Replace('<CURLY>', '\xE2\x80[\x98-\x9E]').Replace('<Q>', "'").Replace('<CR>', '\x0D').Replace('<SOH>', '\x01').Replace('<STX>', '\x02').Replace('<ETX>', '\x03').Replace('<L>', '\x16').Replace('<R>', '\x17')
+}
+
+# Expand-Grammar: NAME -> .NET pattern, {NAME} references expanded in block order by
+# literal replacement; a {NAME} that is not a block line (a selector) is kept as is.
+# -S1 keeps only the S.1 lines (S1_*, W_*, which refer to no other line): the hot path.
+function Expand-Grammar([switch]$S1) {
+    $defs = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::Ordinal)
+    $ev = [System.Text.RegularExpressions.MatchEvaluator] {
+        param($m)
+        $k = $m.Groups[1].Value
+        if ($defs.ContainsKey($k)) { return $defs[$k] }
+        return $m.Value
+    }
+    foreach ($ln in $script:GDEFS.Split("`n")) {
+        $ln = $ln.TrimEnd("`r")
+        if ($ln.Length -eq 0 -or $ln.StartsWith('#', $script:Ord)) { continue }
+        $eq = $ln.IndexOf([char]'=')
+        if ($S1 -and -not ($ln.StartsWith('S1_', $script:Ord) -or $ln.StartsWith('W_', $script:Ord))) { continue }
+        $v = $ln.Substring($eq + 1)
+        if ($v.IndexOf([char]'{') -ge 0) { $v = [regex]::Replace($v, '\{([A-Z][A-Z0-9_]*)\}', $ev) }
+        $defs[$ln.Substring(0, $eq)] = $v
+    }
+    $out = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::Ordinal)
+    foreach ($k in $defs.Keys) { $out[$k] = Resolve-GrammarText $defs[$k] }
+    return $out
+}
+
+# A grammar regex: CultureInvariant, match timeout = the remaining 8 s budget (>= 100 ms).
+function Get-GateRx([string]$P) {
+    $ms = [math]::Max(100.0, 8000.0 - $script:SW.Elapsed.TotalMilliseconds)
+    return [regex]::new($P, [System.Text.RegularExpressions.RegexOptions]::CultureInvariant, [TimeSpan]::FromMilliseconds($ms))
+}
+
+function Test-RegexTimeout($Err) {
+    $e = $Err.Exception
+    while ($null -ne $e) {
+        if ($e -is [System.Text.RegularExpressions.RegexMatchTimeoutException]) { return $true }
+        $e = $e.InnerException
+    }
     return $false
 }
-# S.1 candidate test on one spelling (bytes as chars): port of the awk scan(). A word
-# is a maximal run of letters and digits. The test is linear in the text length
-# (decision S 3-bis s): whole-text regex scans, no per-word PowerShell loop, so a
-# 300 KB text of short words costs milliseconds. The flags are order independent.
-# A push is "eligible" unless a dot follows it directly, or its two previous words
-# are exactly "git" then "stash" (case-sensitive).
-$script:RxOpt = [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
-$script:RxOptI = $script:RxOpt -bor [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
-$script:RxGit = [regex]::new('(?<![A-Za-z0-9])git(?![A-Za-z0-9])', $script:RxOptI)
-$script:RxGh = [regex]::new('(?<![A-Za-z0-9])(?:gh|glab)(?![A-Za-z0-9])', $script:RxOptI)
-$script:RxPush = [regex]::new('(?<![A-Za-z0-9])push(?![A-Za-z0-9.])', $script:RxOpt)
-# S.1 stash exemption, anchored: the one push that is the third word of a text beginning
-# (after whitespace only) with "git stash" is exempt; its index is the prefix length.
-$script:RxStashPrefix = [regex]::new('\A[ \t\r\n]*git[^A-Za-z0-9]+stash[^A-Za-z0-9]+', $script:RxOpt)
-$script:RxPr = [regex]::new('(?<![A-Za-z0-9])(?:pr|mr)(?![A-Za-z0-9])', $script:RxOpt)
-$script:RxCreate = [regex]::new('(?<![A-Za-z0-9])(?:create|new)(?![A-Za-z0-9])', $script:RxOpt)
-function Test-Cand([string]$T) {
-    if ($script:RxGit.IsMatch($T)) {
-        $ex = -1
-        $sm = $script:RxStashPrefix.Match($T)
-        if ($sm.Success) { $ex = $sm.Length }
-        foreach ($pm in $script:RxPush.Matches($T)) { if ($pm.Index -ne $ex) { return $true } }
-    }
-    return ($script:RxGh.IsMatch($T) -and $script:RxPr.IsMatch($T) -and $script:RxCreate.IsMatch($T))
+
+# Test-Spelling: one S.1 spelling holds (git and push) or (gh/glab and pr/mr and create/new).
+function Test-Spelling([string]$T) {
+    $g = $script:G
+    if ((Get-GateRx $g['W_GIT']).IsMatch($T) -and (Get-GateRx $g['W_PUSH']).IsMatch($T)) { return $true }
+    return ((Get-GateRx $g['W_GH']).IsMatch($T) -and (Get-GateRx $g['W_PRMR']).IsMatch($T) -and (Get-GateRx $g['W_CRNEW']).IsMatch($T))
 }
-# Remove ${...} in linear time: only while a closing brace remains after the opener.
-function Get-WithoutBraceExpansion([string]$T) {
-    $lc = $T.LastIndexOf('}')
-    if ($lc -lt 0) { return $T }
-    $sb = [System.Text.StringBuilder]::new()
-    $pos = 0
-    while ($true) {
-        $p = $T.IndexOf('${', $pos, $script:Ord)
-        if ($p -lt 0 -or $lc -lt $p + 2) { break }
-        $e = $T.IndexOf('}', $p + 2)
-        [void]$sb.Append($T.Substring($pos, $p - $pos))
-        $pos = $e + 1
+
+# Test-Candidate (S.1, T.2) on the command's bytes as chars. A regex timeout denies
+# W_TIME; any other error keeps S.1's rule (over the cap W_SIZE, else exit 0).
+function Test-Candidate([string]$Bytes, [bool]$Big) {
+    try {
+        $script:G = Expand-Grammar -S1
+        $g = $script:G; $mk = $script:MK
+        $s = $Bytes.Replace($mk.SOH, $mk.STX).Replace([string][char]3, $mk.STX).Replace("`n", $mk.SOH)
+        $s = (Get-GateRx $g['S1_JOIN']).Replace($s, '')
+        $s = (Get-GateRx $g['S1_CURLY']).Replace($s, '')
+        $s = (Get-GateRx $g['S1_DQ']).Replace($s, '')
+        $rq = Get-GateRx $g['S1_QUOTES']; $rs = Get-GateRx $g['S1_STASH']; $rc = Get-GateRx $g['S1_BRACE2C']
+        $t1 = (Get-GateRx $g['S1_BRACE1']).Replace($s, '')
+        $t1 = $rs.Replace($rq.Replace($t1, ''), '${1}PUSH', 1)
+        if (Test-Spelling $t1) { return $true }
+        $t2 = $rc.Replace((Get-GateRx $g['S1_BRACE2O']).Replace($s, ''), '')
+        $t2 = $rs.Replace($rq.Replace($t2, ''), '${1}PUSH', 1)
+        if (Test-Spelling $t2) { return $true }
+        $t3 = (Get-GateRx $g['S1_BRACE3O']).Replace((Get-GateRx $g['S1_BRACE3V']).Replace($s, ''), '')
+        $t3 = $rs.Replace($rq.Replace($rc.Replace($t3, ''), ''), '${1}PUSH', 1)
+        return (Test-Spelling $t3)
+    } catch {
+        if (Test-RegexTimeout $_) { Send-Deny $script:K_ANY $script:W_TIME $script:T_ANY }
+        if ($Big) { Send-Deny $script:K_ANY $script:W_SIZE $script:T_ANY }
+        exit 0
     }
-    [void]$sb.Append($T.Substring($pos, $T.Length - $pos))
-    return $sb.ToString()
 }
-# push_val: in the PowerShell dialect an option value is held to the push alphabet.
-function Test-PushVal([string]$V) {
-    if ($script:dialectPs -and [regex]::IsMatch($V, '[^A-Za-z0-9._/@:+=%,-]')) { Send-NotPlain }
+
+function ConvertFrom-ByteText([string]$S) { return [System.Text.Encoding]::UTF8.GetString([System.Text.Encoding]::Latin1.GetBytes($S)) }
+
+# Get-PlainField (FORM, T.3; token stage, T.4) on the tokenizer text (PowerShell
+# dialect: curly quotes already mapped). Returns @{ Kind; Op; Loc; Flags; A1; A2 }
+# (A1 A2 = remote and refspec, or source and destination); a text that is not plain,
+# and any error here, denies W_PLAIN; a regex timeout denies W_TIME.
+function Get-PlainField([string]$Text, [bool]$Psd) {
+    try {
+        $script:G = Expand-Grammar
+        $g = $script:G; $mk = $script:MK
+        $L = $mk.L; $R = $mk.R
+        $b = [System.Text.Encoding]::Latin1.GetString([System.Text.Encoding]::UTF8.GetBytes($Text))
+        $b = $b.Replace($mk.SOH, $mk.STX).Replace("`r", $mk.SOH).Replace("`n", $mk.SOH)
+        if (-not (Get-GateRx $g[$(if ($Psd) { 'P_FORM' } else { 'B_FORM' })]).IsMatch($b)) { Send-NotPlain }
+
+        # lexer: joiner, redirection operator, blank run, quoted strings; then W/O tokens
+        $t = (Get-GateRx $g['LEX']).Replace($b, $mk.A + '${1}' + $mk.B + '${4}' + $mk.C + '${5}${6}' + $mk.D + '${2}' + $mk.E)
+        $t = (Get-GateRx '\x11\x12\x13\x14[0-9*]?>[^\x02]*$').Replace($t, '')
+        $t = (Get-GateRx '\x11(&&|;)\x12\x13\x14\x15').Replace($t, $R + $L + 'O${1}' + $R + $L + 'W')
+        $t = (Get-GateRx '\x11\x12[ \t\x01]+\x13\x14\x15').Replace($t, $R + $L + 'W')
+        # leading and trailing blank runs go before the quote markers do, so a trailing
+        # empty quoted word ("") stays an (empty) token
+        $t = (Get-GateRx '^\x17\x16W|\x17\x16W$').Replace($t, '')
+        $t = $t.Replace($mk.A + $mk.B + $mk.C, '').Replace($mk.D + $mk.E, '')
+        $t = $L + 'W' + $t + $R
+
+        # header: location prefix, kind, -C; P_CD holds one group, so the groups shift by one
+        $cd = if ($Psd) { $g['P_CD'] } else { $g['B_CD'] }
+        $m = (Get-GateRx $g['STRUCT'].Replace('{X_CD}', $cd)).Match($t)
+        if (-not $m.Success) { Send-NotPlain }
+        $o = if ($Psd) { 1 } else { 0 }
+        $kind = $m.Groups[4 + $o].Value; $sub = $m.Groups[8 + $o].Value
+        $op = ''; $loc = ''
+        if ($m.Groups[1].Success -and $m.Groups[5 + $o].Success) { Send-NotPlain }
+        if ($m.Groups[1].Success) { $loc = $m.Groups[2 + $o].Value; $op = $m.Groups[3 + $o].Value }
+        elseif ($m.Groups[5 + $o].Success) { $loc = $m.Groups[7 + $o].Value; $op = '-C' }
+        if ([string]::Equals($kind, 'git')) {
+            # git push never takes create/new into its header: the rest starts after push
+            if (-not [string]::Equals($sub, 'push')) { Send-NotPlain }
+            $r = $t.Substring($m.Groups[8 + $o].Index + $m.Groups[8 + $o].Length + 1)
+        } else {
+            $want = if ([string]::Equals($kind, 'gh')) { 'pr' } else { 'mr' }
+            if (-not [string]::Equals($sub, $want) -or -not $m.Groups[9 + $o].Success) { Send-NotPlain }
+            $r = $t.Substring($m.Index + $m.Length)
+        }
+        if ($r.Contains($L + 'O')) { Send-NotPlain }
+        if (-not $Psd -and $loc.StartsWith('~', $script:Ord) -and -not (Get-GateRx $g['TILDE']).IsMatch($b)) { Send-NotPlain }
+        $flags = ''; $a1 = ''; $a2 = ''
+
+        if ([string]::Equals($kind, 'git')) {
+            # PUSHARG: -o and its value, --push-option= / --force-with-lease= values, no-op options, flags
+            $r = (Get-GateRx $g['PUSHARG']).Replace($r, $mk.V + '${1}${3}' + $mk.VE + $mk.F + '${5}' + $mk.FE)
+            # PowerShell: an option value is held to the push alphabet (S.3-bis c)
+            if ($Psd -and (Get-GateRx ('\x18' + $g['ALPHA'] + '*[^%+-:=@-Z_a-z\x19]')).IsMatch($r)) { Send-NotPlain }
+            if ((Get-GateRx '\x1A(-n|--dry-run)\x1B').IsMatch($r)) { $flags += 'N' }
+            if ((Get-GateRx '\x1A(-d|--delete)\x1B').IsMatch($r)) { $flags += 'D' }
+            if ((Get-GateRx '\x1A--tags\x1B').IsMatch($r)) { $flags += 'T' }
+            $r = (Get-GateRx '\x18[^\x19]*\x19\x1A[^\x1B]*\x1B').Replace($r, '')
+            # an unread - word, an empty word, a third positional
+            if ((Get-GateRx ('\x16W-|\x16W\x17|' + $g['T'] + $g['T'] + '\x16')).IsMatch($r)) { Send-NotPlain }
+            $pm = (Get-GateRx ('^(' + $g['T'] + ')?(' + $g['T'] + ')?$')).Match($r)
+            if (-not $pm.Success) { Send-NotPlain }
+            $a1 = $pm.Groups[2].Value; $a2 = $pm.Groups[4].Value
+        } else {
+            if ([string]::Equals($kind, 'glab')) {
+                $hl = '--source-branch'; $hs = '-s'; $bl = '--target-branch'; $bs = '-b'; $vf = $g['GL_VF']
+            } else {
+                $hl = '--head'; $hs = '-H'; $bl = '--base'; $bs = '-B'; $vf = $g['GH_VF']
+            }
+            $p1 = $g['PR1'].Replace('{HL}', $hl).Replace('{HS}', $hs).Replace('{BL}', $bl).Replace('{BS}', $bs).Replace('{X_VF}', $vf)
+            $p2 = $g['PR2'].Replace('{HL}', $hl).Replace('{BL}', $bl)
+            # value-taking options consume the next word first, then the single-word rules
+            $r = (Get-GateRx $p1).Replace($r, $mk.S + '${1}' + $mk.SV + '${3}' + $mk.SE + $mk.DD + '${4}' + $mk.DV + '${6}' + $mk.DE)
+            $r = (Get-GateRx $p2).Replace($r, $mk.S + '${1}' + $mk.SV + '${2}' + $mk.SE + $mk.DD + '${3}' + $mk.DV + '${4}' + $mk.DE + $mk.N + '${5}' + $mk.NE + $mk.X + '${6}' + $mk.XE)
+            $r = $r.Replace($mk.S + $mk.SV + $mk.SE, '').Replace($mk.DD + $mk.DV + $mk.DE, '').Replace($mk.N + $mk.NE, '').Replace($mk.X + $mk.XE, '')
+            if ((Get-GateRx '\x0C[^\x08]+\x08').IsMatch($r)) { Send-NotPlain }
+            if ((Get-GateRx '\x10--dry-run\x0B').IsMatch($r)) { $flags += 'N' }
+            # the last --head / --base wins: one anchored match each
+            $a1 = (Get-GateRx '^([^\x03]*\x1C[^\x1D]*\x1D([^\x1E]*)\x1E)?[^\x1C]*$').Match($r).Groups[2].Value
+            $a2 = (Get-GateRx '^([^\x03]*\x0D[^\x0E]*\x0E([^\x0F]*)\x0F)?[^\x0D]*$').Match($r).Groups[2].Value
+        }
+        return @{ Kind = $kind; Op = $op; Loc = (ConvertFrom-ByteText $loc); Flags = $flags; A1 = (ConvertFrom-ByteText $a1); A2 = (ConvertFrom-ByteText $a2) }
+    } catch {
+        if (Test-RegexTimeout $_) { Send-Deny $script:K_ANY $script:W_TIME $script:T_ANY }
+        Send-NotPlain
+    }
 }
 
 # --- state ---------------------------------------------------------------------------
@@ -699,29 +753,11 @@ function Add-ChangedBranch($Pairs) {
     }
 }
 
-# --- git push <args> (S.2 option allowlist, S.4 decision) ---------------------------
-function Invoke-Push([string[]]$A) {
-    $noop = @('-u', '--set-upstream', '-f', '--force', '--force-with-lease', '--follow-tags', '--no-verify', '-q', '--quiet', '-v', '--verbose', '--porcelain')
-    $dry = $false; $del = $false; $tags = $false; $mirror = $false; $script:remote = ''; $refs = ''; $npos = 0
-    $i = 0; $dpn = 0
-    while ($i -lt $A.Count) {
-        $t = $A[$i]; $i++
-        $dpn++
-        if ($dpn % 2000 -eq 0) { Test-Time }
-        if (Test-In $t $noop) { continue }
-        if (Test-StartsWith $t '--force-with-lease=') { Test-PushVal $t.Substring(19); continue }
-        if (Test-StartsWith $t '--push-option=') { Test-PushVal $t.Substring(14); continue }
-        if (Test-Eq $t '--tags') { $tags = $true; continue }
-        if ((Test-Eq $t '-n') -or (Test-Eq $t '--dry-run')) { $dry = $true; continue }
-        if ((Test-Eq $t '-d') -or (Test-Eq $t '--delete')) { $del = $true; continue }
-        if (Test-Eq $t '-o') { if ($i -ge $A.Count) { Send-NotPlain }; Test-PushVal $A[$i]; $i++; continue }
-        if (Test-StartsWith $t '-') { Send-NotPlain }
-        if (Test-Eq $t '') { Send-NotPlain }
-        $npos++
-        if ($npos -eq 1) { $script:remote = $t }
-        elseif ($npos -eq 2) { $refs = $t }
-        else { Send-NotPlain }
-    }
+# --- git push (S.2 option allowlist read by the token stage, S.4 decision) ----------
+# $Remote, $Refs: the positionals; $Flags: N dry run, D delete, T --tags.
+function Invoke-Push([string]$Remote, [string]$Refs, [string]$Flags) {
+    $dry = $Flags.Contains('N'); $del = $Flags.Contains('D'); $tags = $Flags.Contains('T'); $mirror = $false
+    $script:remote = $Remote; $refs = $Refs
     # S.2 quoting never relaxes the plain form: after unquoting, the remote and the
     # refspec must still be literal names (a quoted wildcard or space is not plain).
     $alpha = '[^A-Za-z0-9._/@:+=%,-]'
@@ -807,33 +843,12 @@ function Invoke-Push([string[]]$A) {
     exit 0
 }
 
-# --- gh pr create|new / glab mr create|new <args> -----------------------------------
-function Invoke-Pr([string]$Kind, [string[]]$A) {
-    if (Test-Eq $Kind 'glab') {
-        $label = 'glab mr create'
-        $hl = '--source-branch'; $hs = '-s'; $bl = '--target-branch'; $bs = '-b'
-        $vf = ' --title -t --description -d --assignee -a --label -l --milestone -m --reviewer --target-project --repo -R --head -H --related-issue -i '
-    } else {
-        $label = 'gh pr create'
-        $hl = '--head'; $hs = '-H'; $bl = '--base'; $bs = '-B'
-        $vf = ' --title -t --body -b --body-file -F --assignee -a --label -l --milestone -m --project -p --reviewer -r --template -T --repo -R --recover '
-    }
-    $src = ''; $dst = ''; $prDry = $false
-    $i = 0; $prn = 0
-    while ($i -lt $A.Count) {
-        $t = $A[$i]; $i++
-        $prn++
-        if ($prn % 2000 -eq 0) { Test-Time }
-        if (Test-Eq $t '--dry-run') { $prDry = $true; continue }
-        if ((Test-Eq $t $hl) -or (Test-Eq $t $hs)) { $src = if ($i -lt $A.Count) { $A[$i] } else { '' }; if ($i -lt $A.Count) { $i++ }; continue }
-        if ((Test-Eq $t $bl) -or (Test-Eq $t $bs)) { $dst = if ($i -lt $A.Count) { $A[$i] } else { '' }; if ($i -lt $A.Count) { $i++ }; continue }
-        if (Test-StartsWith $t '--dry-run=') { Send-NotPlain }
-        if (Test-StartsWith $t "$hl=") { $src = $t.Substring($hl.Length + 1); continue }
-        if (Test-StartsWith $t "$bl=") { $dst = $t.Substring($bl.Length + 1); continue }
-        # -x is one option; a longer single-dash word is a cluster or an attached value
-        if (-not (Test-StartsWith $t '--') -and $t.Length -ge 3 -and [int]$t[0] -eq 45) { Send-NotPlain }
-        if ($vf.Contains(' ' + $t + ' ', $script:Ord) -and $i -lt $A.Count) { $i++ }
-    }
+# --- gh pr create|new / glab mr create|new ------------------------------------------
+# $Src, $Dst: the last --head / --base (--source-branch / --target-branch) values;
+# $Flags: N --dry-run.
+function Invoke-Pr([string]$Kind, [string]$Src, [string]$Dst, [string]$Flags) {
+    $label = if (Test-Eq $Kind 'glab') { 'glab mr create' } else { 'gh pr create' }
+    $src = $Src; $dst = $Dst; $prDry = $Flags.Contains('N')
     if ($prDry) { exit 0 }
     Resolve-Loc $label
     if (-not (Initialize-Repo)) {
@@ -889,21 +904,15 @@ try {
     $cmd = $cmdEl.GetString().Replace([string][char]0, '').TrimEnd("`n")
     if (Test-Eq $cmd '') { exit 0 }
 
-    # --- candidate test (S.1), on the command's UTF-8 bytes (awk under LC_ALL=C)
+    # --- candidate test (S.1, T.2), on the command's UTF-8 bytes (one char per byte)
     $bstr = [System.Text.Encoding]::Latin1.GetString([System.Text.Encoding]::UTF8.GetBytes($cmd))
     $big = ($bstr.Length -gt 65536)
     # the session id is sanitised before the candidate and size tests
     $sid = [regex]::Replace($sid, '[^A-Za-z0-9_-]', '')
     if (Test-Eq $sid '') { exit 0 }
-    $fp = [regex]::Replace($bstr, '[\\`]\r?\n', '')
-    $fp = $fp.Replace("`r`n", "`n")
-    foreach ($ck in 152..158) { $fp = $fp.Replace([string]::new([char[]]@([char]226, [char]128, [char]$ck)), '') }
-    $fp = [regex]::Replace($fp, '\$["'']', '')
-    $t1 = Get-WithoutBraceExpansion $fp
-    $t1 = [regex]::Replace($t1, '["''\\`]', '')
-    $t2 = $fp.Replace('${', '').Replace('}', '')
-    $t2 = [regex]::Replace($t2, '["''\\`]', '')
-    if (-not ((Test-Cand $t1) -or (Test-Cand $t2))) { exit 0 }
+    # every keyword holds g or G, and no S.1 deletion adds one
+    if ($bstr.IndexOfAny([char[]]@('g', 'G')) -lt 0) { exit 0 }
+    if (-not (Test-Candidate $bstr $big)) { exit 0 }
     if ($big) { Send-Deny $script:K_ANY $script:W_SIZE $script:T_ANY }
 
     $tool = $tool.Replace("`r", '').Replace("`n", '')
@@ -924,51 +933,17 @@ try {
 
     try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { $null = $_ }
 
-    # --- plain-form tokenizer (S.2)
+    # --- FORM and token stage (T.3, T.4)
     $tcmd = $cmd
     if ($dialectPs) {
         foreach ($cq in @(0x2018, 0x2019, 0x201A, 0x201B)) { $tcmd = $tcmd.Replace([string][char]$cq, "'") }
         foreach ($cq in @(0x201C, 0x201D, 0x201E)) { $tcmd = $tcmd.Replace([string][char]$cq, '"') }
     }
-    $tok = [GateTok]::new()
-    if (-not $tok.Scan([System.Text.Encoding]::Latin1.GetString([System.Text.Encoding]::UTF8.GetBytes($tcmd)), $dialectPs)) { Send-NotPlain }
-    $T = [System.Collections.Generic.List[string]]::new()
-    foreach ($x in $tok.Out) { $T.Add([System.Text.Encoding]::UTF8.GetString([System.Text.Encoding]::Latin1.GetBytes($x))) }
-    if ($T.Count -eq 0) { Send-NotPlain }
+    $pf = Get-PlainField $tcmd $dialectPs
+    $kind = $pf.Kind
+    $script:loc = $pf.Loc; $script:hasLoc = -not (Test-Eq $pf.Op '')
 
-    # --- grammar: one optional location prefix, then one command
-    $lp = 0
-    if (Test-Eq $T[0] 'Wcd') { $lp = 1 }
-    elseif ($dialectPs -and [regex]::IsMatch($T[0], '^W[Cc][Dd]\z')) { $lp = 1 }
-    elseif ($dialectPs -and [regex]::IsMatch($T[0], '^W[Ss][Ee][Tt]-[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]\z')) { $lp = 2 }
-    if ($lp -ne 0) {
-        if ($T.Count -lt 3) { Send-NotPlain }
-        if (-not (Test-StartsWith $T[1] 'W') -or $T[1].Length -lt 2) { Send-NotPlain }
-        $script:loc = $T[1].Substring(1)
-        if (Test-Eq $T[2] 'O&&') { if ($lp -ne 1) { Send-NotPlain } }
-        elseif (-not (Test-Eq $T[2] 'O;')) { Send-NotPlain }
-        $script:hasLoc = $true
-        $T.RemoveRange(0, 3)
-    }
-    if ($T.Count -lt 1) { Send-NotPlain }
-    foreach ($x in $T) { if (Test-StartsWith $x 'O') { Send-NotPlain } }
-
-    $kind = ''
-    $rest = $null
-    if (Test-Eq $T[0] 'Wgit') {
-        $j = 1
-        if ($j -lt $T.Count -and (Test-Eq $T[$j] 'W-C') -and -not $script:hasLoc) {
-            if ($T.Count - $j -lt 2) { Send-NotPlain }
-            $script:loc = $T[$j + 1].Substring(1); $script:hasLoc = $true; $j += 2
-        }
-        if (-not ($j -lt $T.Count -and (Test-Eq $T[$j] 'Wpush'))) { Send-NotPlain }
-        $kind = 'push'; $rest = $T.GetRange($j + 1, $T.Count - $j - 1)
-    } elseif ((Test-Eq $T[0] 'Wgh') -or (Test-Eq $T[0] 'Wglab')) {
-        $sub = if (Test-Eq $T[0] 'Wgh') { 'Wpr' } else { 'Wmr' }
-        if (-not ($T.Count -ge 2 -and (Test-Eq $T[1] $sub))) { Send-NotPlain }
-        if (-not ($T.Count -ge 3 -and ((Test-Eq $T[2] 'Wcreate') -or (Test-Eq $T[2] 'Wnew')))) { Send-NotPlain }
-        $kind = $T[0].Substring(1); $rest = $T.GetRange(3, $T.Count - 3)
-    } else { Send-NotPlain }
+    # --- post-checks on the location (T.5)
     if ($script:hasLoc) {
         $lc = $script:loc
         if (Test-Eq $lc '') { Send-NotPlain }
@@ -976,17 +951,14 @@ try {
         if ($lc -match '^[A-Za-z]:([^/\\]|\z)' -or $lc -match '^\\([^\\/]|\z)') { Send-NotPlain }
         # option-looking and UNC/network directories are decided before any filesystem
         # access; ~user is not plain (a bare ~ and ~/... stay)
-        if ((Test-StartsWith $lc '-') -or (Test-StartsWith $lc '//') -or (Test-StartsWith $lc '\\') -or (Test-StartsWith $lc '/\') -or (Test-StartsWith $lc '\/') -or (Test-StartsWith $lc ([string][char]2))) { Send-NotPlain }
+        if ((Test-StartsWith $lc '-') -or (Test-StartsWith $lc '//') -or (Test-StartsWith $lc '\\') -or (Test-StartsWith $lc '/\') -or (Test-StartsWith $lc '\/')) { Send-NotPlain }
         if ((Test-StartsWith $lc '~') -and -not ((Test-Eq $lc '~') -or (Test-StartsWith $lc '~/') -or (Test-StartsWith $lc '~\'))) { Send-NotPlain }
         # the MSYS drive form /c/... is Bash-dialect only (S.3-bis m)
         if ($dialectPs -and (Test-StartsWith $lc '/')) { Send-NotPlain }
     }
-    $tn = 0
-    foreach ($x in $rest) { $tn++; if ($tn % 2000 -eq 0) { Test-Time } }
     Test-Time
-    $args2 = [string[]]@($rest | ForEach-Object { $_.Substring(1) })
 
-    if (Test-Eq $kind 'push') { Invoke-Push $args2 } else { Invoke-Pr $kind $args2 }
+    if (Test-Eq $kind 'git') { Invoke-Push $pf.A1 $pf.A2 $pf.Flags } else { Invoke-Pr $kind $pf.A1 $pf.A2 $pf.Flags }
     exit 0
 } catch {
     exit 0

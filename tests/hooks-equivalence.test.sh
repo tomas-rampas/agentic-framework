@@ -840,6 +840,53 @@ gate_equiv "gate deny: source not checked out" ge8 'git push origin main:main' n
 gate_equiv "gate deny: not a plain command" ge9 'git commit --allow-empty -m x && git push origin HEAD:main' none
 gate_equiv "gate deny: unresolvable text" ge10 'git push origin "main' none
 gate_equiv "gate deny: drive-relative dir (PowerShell dialect)" ge11 'cd C:; git push origin main' none '' PowerShell
+# decision T (T.7, T.2, T.4) under decision H: the same deny bytes from both grammars
+gate_equiv "gate deny: quoted keyword" ge12 '"git" push origin HEAD:main' none
+gate_equiv "gate deny: doubled quote (PowerShell dialect)" ge13 "gh pr create --title 'it''s'" none '' PowerShell
+gate_equiv "gate deny: adjacent quoted strings (PowerShell dialect)" ge14 "gh pr create --title a'x'\"y\"" none '' PowerShell
+gate_equiv "gate deny: quoted redirection target" ge15 'gh pr create --fill > "out file"' none
+gate_equiv "gate deny: -o value is not a dry run" ge16 'git push -o -n origin HEAD:main' none
+# shellcheck disable=SC2016
+gate_equiv "gate deny: default-value expansion" ge17 'git pu${a:-s}h origin HEAD:main' none
+
+# gate_equiv_allow <label> <sid> <command> [tool]: both implementations exit 0, silent
+gate_equiv_allow() {
+  local label="$1" sid="$2" cmd="$3" tool="${4:-Bash}" wd repo repo_win state state_win payload_ps payload_sh ps_rc sh_rc out_ps out_sh
+  wd="$(make_work_dir)" || exit 2
+  repo="$wd/repo"; state="$wd/state"
+  repo_win=$(cygpath -w "$repo" 2>/dev/null || echo "$repo")
+  state_win=$(cygpath -w "$state" 2>/dev/null || echo "$state")
+  mkdir -p "$repo" "$state/code-review"
+  make_test_repo "$repo"
+  payload_ps=$(jq -cn --arg s "$sid" --arg c "$repo_win" --arg m "$cmd" --arg t "$tool" '{session_id:$s,cwd:$c,tool_name:$t,tool_input:{command:$m}}')
+  payload_sh=$(jq -cn --arg s "$sid" --arg c "$repo" --arg m "$cmd" --arg t "$tool" '{session_id:$s,cwd:$c,tool_name:$t,tool_input:{command:$m}}')
+  printf '%s' "$payload_ps" | CLAUDE_STATE_DIR="$state_win" pwsh -NoProfile -File "$SRC_REPO/hooks/pretooluse-code-review-gate.ps1" > "$wd/out_ps" 2>&1; ps_rc=$?
+  printf '%s' "$payload_sh" | CLAUDE_STATE_DIR="$state" sh "$SRC_REPO/hooks/pretooluse-code-review-gate.sh" > "$wd/out_sh" 2>&1; sh_rc=$?
+  out_ps=$(tr -d '\r' < "$wd/out_ps"); out_sh=$(tr -d '\r' < "$wd/out_sh")
+  if [ "$ps_rc" -eq 0 ] && [ "$sh_rc" -eq 0 ] && [ -z "$out_ps" ] && [ -z "$out_sh" ]; then
+    _pass "$label: both exit 0 with empty output"
+  else
+    _fail "$label" "ps rc=$ps_rc out=$(printf '%s' "$out_ps" | head -c 200) | sh rc=$sh_rc out=$(printf '%s' "$out_sh" | head -c 200)"
+  fi
+  rm -rf "$wd"
+}
+# shellcheck disable=SC2016
+gate_equiv_allow "gate allow: unclosed brace text" ga1 'echo git${a-push'
+
+# decision T.1: the grammar block is byte-identical in the two hooks (the .ps1 is the
+# reference: a single-quoted here-string; the .sh: a single-quoted string)
+{
+  wd="$(make_work_dir)" || exit 2
+  sed -n "/^\$script:GDEFS = @'\$/,/^'@\$/p" "$SRC_REPO/hooks/pretooluse-code-review-gate.ps1" | sed '1d;$d' | tr -d '\r' > "$wd/g_ps"
+  sed -n "/^G_DEFS='\$/,/^'\$/p" "$SRC_REPO/hooks/pretooluse-code-review-gate.sh" | sed '1d;$d' > "$wd/g_sh"
+  g_n=$(grep -c '=' "$wd/g_ps")
+  if [ "$g_n" -ge 50 ] && cmp -s "$wd/g_ps" "$wd/g_sh"; then
+    _pass "gate grammar block: byte-identical in .ps1 and .sh ($g_n lines)"
+  else
+    _fail "gate grammar block" "differs or missing (ps lines=$(wc -l < "$wd/g_ps"), sh lines=$(wc -l < "$wd/g_sh")): $(diff "$wd/g_ps" "$wd/g_sh" | head -5)"
+  fi
+  rm -rf "$wd"
+}
 
 # gate allow: an MSYS absolute path (/c/...) in a cd resolves in both implementations
 # (EDGE-001 row 164; I-ter.2): feat/x with upstream origin/feat/x, so a bare push is allowed.

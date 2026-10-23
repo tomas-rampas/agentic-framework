@@ -26,7 +26,7 @@ This framework extends Claude Code CLI with:
 | **[Claude Code CLI](https://docs.claude.com/en/docs/claude-code)** | Agent execution platform (required) |
 | **Git** | Version control |
 | **PowerShell 7+ (`pwsh`)** | Windows: runs hooks and installer scripts (7.0+ for hooks, 7.3+ for installer); Linux/macOS: optional (hooks run as POSIX shell; pwsh needed only for the optional .ps1 test suites) |
-| **bash + jq** | Validation and doc-generation tooling (Git Bash works on Windows). On Linux/macOS, `sh` + `jq` + `git` are the complete hook runtime — nothing else needed. If `jq` is missing on POSIX hosts, enforcement is disarmed — hooks fire without enforcing anything, including the peer-review Stop gate |
+| **bash + jq** | Validation and doc-generation tooling (Git Bash works on Windows). **`jq` is a hard prerequisite of every POSIX hook**: on Linux/macOS, `sh` + `jq` + `git` plus the POSIX base utilities (`tr`, `sed -E`, `grep -E`) are the complete hook runtime — nothing else needed; the code-review push/PR gate parses its payload with `jq` and matches its command grammar with `sed -E` and `grep -E`. If `jq` is missing on POSIX hosts, enforcement is disarmed — hooks fire without enforcing anything, including the peer-review Stop gate and the code-review gate |
 | **gh + yq** | Command-line executor agents (bash-expert / powershell-expert): GitHub CLI queries and YAML processing; run `gh auth login` once. yq is mikefarah v4 |
 | **Node.js/npm** | Required: the plugin starts the filesystem, context7 and sequential-thinking MCP servers via `npx` |
 | **uv (`uvx`)** | Required: the plugin starts the serena, fetch and code-review-graph MCP servers via `uvx` |

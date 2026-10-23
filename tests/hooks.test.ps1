@@ -1220,6 +1220,11 @@ Test-GateRowPs 'EDGE-001 row 172' X plain "`$env:GIT_DIR='$othW/.git'; git push 
 Test-GateRowPs 'EDGE-001 row 173' M plain "Push-Location '$plW'; Pop-Location; git push origin main"
 Test-GateRowPs 'EDGE-001 row 174' X plain "chdir $othW; git push origin main"
 Test-GateRowPs 'EDGE-001 row 175' M plain "if (`$false) { Set-Location '$plW' }; git push origin main"
+# PowerShell location prefix moves the review target on every host (HOME = the fixture home, whose other/ is on main)
+$script:GateHome = $script:GF.HOME
+Invoke-Gate 'r175b' $script:GF.X 'cd ~\other; git push origin main' $null 'PowerShell'
+Assert-GateDeny 'EDGE-001 row 175b: PowerShell cd ~\other; git push origin main reviews the other repository: main vs origin/main' @('review is recorded', 'main vs origin/main')
+$script:GateHome = $null
 
 # rows 176-201
 $gfDm = Join-Path $workRoot 'gate-fx-1-dm'; Copy-Item -Recurse $script:GF.X $gfDm   # main, dirty, feat/x differs
@@ -1507,7 +1512,7 @@ Assert-GateDeny 'REQ-004 S.3-bis bare repository cwd is gated: W_LOC' @('does no
 Invoke-Gate 'rqa18' (Join-Path $GF.X '.git') 'git push origin HEAD:main'
 Assert-GateDeny 'REQ-004 S.3-bis cwd inside .git is gated: W_LOC' @('does not exist or is not a git work tree')
 
-# S.3-bis k: the deadline is checked inside the argument loops
+# S.3-bis k, T.6: the at-cap -q push through FORM and the token stage; the deadline is checked after the token stage
 $qCmd = 'git push' + (' -q' * 21300)
 $swQ = [Diagnostics.Stopwatch]::StartNew()
 Invoke-Gate 'rqa19' $GF.X $qCmd
@@ -1549,13 +1554,96 @@ Assert-GateAllow "REQ-004 S.1 anchored: 'git/stash push' is not a candidate (wor
 # item 2: the candidate test strips U+201A, U+201B and U+201E too
 $c201e = [string][char]0x201E; $c201a = [string][char]0x201A; $c201b = [string][char]0x201B
 Invoke-Gate 'rqb2' $GF.M "git pu$c201e${c201e}sh origin main" $null 'PowerShell'
-Assert-GateDeny 'REQ-004 S.1 PowerShell git pu<U+201E><U+201E>sh is a candidate (the tokenizer maps it to push: judged)' @('review is recorded')
+Assert-GateDeny 'REQ-004 S.1 PowerShell git pu<U+201E><U+201E>sh is a candidate and not plain (T.7a: a quoted keyword)' @($script:GatePlain)
 Invoke-Gate 'rqb2b' $GF.M "git pu$c201a${c201b}sh origin main" $null 'PowerShell'
-Assert-GateDeny 'REQ-004 S.1 PowerShell git pu<U+201A><U+201B>sh is a candidate (judged)' @('review is recorded')
+Assert-GateDeny 'REQ-004 S.1 PowerShell git pu<U+201A><U+201B>sh is a candidate and not plain (T.7a)' @($script:GatePlain)
 Invoke-Gate 'rqb2c' $GF.M "git pu$c201e${c201e}sh origin main"
 Assert-GateDeny 'REQ-004 S.1 Bash git pu<U+201E><U+201E>sh is a candidate and not plain' @($script:GatePlain)
 Invoke-Gate 'rqb2d' $GF.M "git pu$c201a${c201b}sh origin main"
 Assert-GateDeny 'REQ-004 S.1 Bash git pu<U+201A><U+201B>sh is a candidate and not plain' @($script:GatePlain)
+
+# decision T: the regex grammar's refinements (T.7), the default-value spellings (T.2)
+# and the token-stage ambiguities (T.4)
+Invoke-Gate 'rt7a1' $GF.M '"git" push origin main'
+Assert-GateDeny 'REQ-004 T.7a: "git" push origin main is not plain (quoted keyword)' @($script:GatePlain)
+Invoke-Gate 'rt7a2' $GF.M 'git pu""sh origin main' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.7a: PowerShell git pu""sh origin main is not plain (quoted keyword)' @($script:GatePlain)
+Invoke-Gate 'rt7a3' $GF.M 'git "push" origin main'
+Assert-GateDeny 'REQ-004 T.7a: git "push" origin main is not plain' @($script:GatePlain)
+Invoke-Gate 'rt7b' $GF.X "gh pr create --title 'it''s'" $null 'PowerShell'
+Assert-GateDeny "REQ-004 T.7b: PowerShell 'it''s' (a doubled quote) is not plain" @($script:GatePlain)
+Invoke-Gate 'rt7c' $GF.X "gh pr create --title a'x'`"y`"" $null 'PowerShell'
+Assert-GateDeny "REQ-004 T.7c: PowerShell a'x'`"y`" (two adjacent quoted strings) is not plain" @($script:GatePlain)
+Invoke-Gate 'rt7c2' $GF.X "gh pr create --title a'x'b" $null 'PowerShell'
+Assert-GateDeny "REQ-004 T.7c: PowerShell a'x'b (one quoted string inside a bare word) stays plain: judged" @('feat/x vs main', 'review is recorded')
+Invoke-Gate 'rt7d' $GF.X "gh pr create --title @'x'" $null 'PowerShell'
+Assert-GateDeny "REQ-004 T.7d: PowerShell @'x' is not plain" @($script:GatePlain)
+Invoke-Gate 'rt7d2' $GF.X 'gh pr create --title @' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.7d: PowerShell bare @ stays plain: judged' @('feat/x vs main', 'review is recorded')
+Invoke-Gate 'rt7e1' $GF.X 'gh pr create --fill > "out file"'
+Assert-GateDeny 'REQ-004 T.7e: a quoted redirection target is not plain' @($script:GatePlain)
+Invoke-Gate 'rt7e2' $GF.X "gh pr create --fill > ''"
+Assert-GateDeny "REQ-004 T.7e: an empty quoted redirection target is not plain" @($script:GatePlain)
+Invoke-Gate 'rt7e3' $GF.X 'gh pr create --fill > out.txt'
+Assert-GateDeny 'REQ-004 T.7e: a bare redirection target stays plain: judged' @('feat/x vs main', 'review is recorded')
+Invoke-Gate 'rt7f1' $GF.M 'echo git${a-push'
+Assert-GateAllow 'REQ-004 T.7f: an unclosed ${ removes the rest of spelling 1: echo git${a-push is not a candidate'
+Invoke-Gate 'rt7f2' $GF.M 'echo ${ git push origin main'
+Assert-GateDeny 'REQ-004 T.7f: spelling 2 still sees the tail after an unclosed ${: a candidate, not plain' @($script:GatePlain)
+Invoke-Gate 'rt7g1' $GF.M "git stash`r`npush -m wip"
+Assert-GateAllow 'REQ-004 T.7g: CR and LF are both separators: git stash CRLF push stays exempt'
+Invoke-Gate 'rt7g2' $GF.M "echo x`r`ngit push origin main"
+Assert-GateDeny 'REQ-004 T.7g: a push after a CRLF is a candidate and not plain' @($script:GatePlain)
+Invoke-Gate 'rt2a' $GF.M 'git pu${a:-s}h origin main'
+Assert-GateDeny 'REQ-004 T.2: git pu${a:-s}h origin main is a candidate (spelling 3), not plain' @($script:GatePlain)
+Invoke-Gate 'rt2b' $GF.M 'git pu${a-s}h origin main'
+Assert-GateDeny 'REQ-004 T.2: git pu${a-s}h origin main is a candidate (spelling 3), not plain' @($script:GatePlain)
+Invoke-Gate 'rt2c' $GF.M 'g${a:-i}t push origin main'
+Assert-GateDeny 'REQ-004 T.2: g${a:-i}t push origin main is a candidate (spelling 3), not plain' @($script:GatePlain)
+Invoke-Gate 'rt2d' $GF.M 'git pu${a:-${b}}sh origin main'
+Assert-GateDeny 'REQ-004 T.2: git pu${a:-${b}}sh origin main is a candidate (spelling 3), not plain' @($script:GatePlain)
+Invoke-Gate 'rt4a' $GF.M 'git push -o -n origin main'
+Assert-GateDeny 'REQ-004 T.4: git push -o -n origin main on main is judged (-n is the -o value, not a dry run)' @('main vs origin/main', 'review is recorded')
+Invoke-Gate 'rt4b' $GF.X 'gh pr create --title --base develop'
+Assert-GateDeny 'REQ-004 T.4: --title --base develop: --title consumes --base, the default base is used' @('feat/x vs main', 'review is recorded')
+Invoke-Gate 'rt4c' $GF.X 'gh pr create --base a --base b'
+Assert-GateDeny 'REQ-004 T.4: --base a --base b: the last base wins' @('feat/x vs b', 'review is recorded')
+Invoke-Gate 'rt4d' $GF.X 'gh pr create --title " --base x" --base dev --head=me --base last'
+Assert-GateDeny 'REQ-004 T.4: a quoted " --base x" is the title; head me, base last' @('source me is not HEAD', 'feat/x vs last')
+Invoke-Gate 'rt4e' $GF.X 'gh pr create --title "a > b" 2>&1'
+Assert-GateDeny 'REQ-004 T.4: gh pr create --title "a > b" 2>&1 is plain (the quoted > is data): judged' @('feat/x vs main', 'review is recorded')
+Invoke-Gate 'rt4f' $GF.X 'gh pr create --head'
+Assert-GateDeny 'REQ-004 T.4: a trailing --head leaves the source empty: judged at HEAD' @('feat/x vs main', 'review is recorded')
+Invoke-Gate 'rt4g' $GF.M 'git push origin main -o'
+Assert-GateDeny 'REQ-004 T.4: a trailing -o is an unread option: not plain' @($script:GatePlain)
+Invoke-Gate 'rt4h' $GF.M 'git push a b c'
+Assert-GateDeny 'REQ-004 T.4: a third positional is not plain' @($script:GatePlain)
+Invoke-Gate 'rt4i' $GF.M 'git push origin ""'
+Assert-GateDeny 'REQ-004 T.4: an empty positional is not plain' @($script:GatePlain)
+Invoke-Gate 'rt4j' $GF.M 'git push -o ci.skip --dry-run origin main'
+Assert-GateAllow 'REQ-004 T.4: -o ci.skip --dry-run origin main is a dry run (allowed)'
+Invoke-Gate 'rt4k' $GF.M 'git push -o "a b" origin main' $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.4: PowerShell -o value outside the push alphabet is not plain' @($script:GatePlain)
+Invoke-Gate 'rt4l' $GF.M 'git push -o "a b" origin main'
+Assert-GateDeny 'REQ-004 T.4: Bash -o value is any literal: judged' @('main vs origin/main', 'review is recorded')
+Invoke-Gate 'rt4m' $GF.X 'gh pr create --body "" -H feat/x'
+Assert-GateDeny 'REQ-004 T.4: --body "" consumes the empty word; -H feat/x is HEAD: judged' @('feat/x vs main', 'review is recorded')
+Invoke-Gate 'rt4n' $GF.SB 'cd sub;git push origin main'
+Assert-GateDeny 'REQ-004 T.4: cd sub;git push origin main (no blanks around ;) is plain: judged in sub' @('main vs origin/main', 'review is recorded')
+Invoke-Gate 'rt4o' $GF.M 'cd "a;b" && git push origin main'
+Assert-GateDeny 'REQ-004 T.4: cd "a;b" && ...: the quoted ; is data (no such directory: W_LOC)' @('does not exist or is not a git work tree')
+Invoke-Gate 'rt4p' $GF.M "git push origin main`r"
+Assert-GateDeny 'REQ-004 T.3: a trailing CR is trailing white space: judged' @('main vs origin/main', 'review is recorded')
+Invoke-Gate 'rt4q' $GF.M ('git push origin main' + (' ' * 32768))
+Assert-GateDeny 'REQ-004 T.3: a 32 KB trailing blank run is plain: judged' @('main vs origin/main', 'review is recorded')
+Invoke-Gate 'rt4r' $GF.X "gh pr create --title caf$([char]0xE9)"
+Assert-GateDeny 'REQ-004 T.3: Bash bare high byte is plain: judged' @('feat/x vs main', 'review is recorded')
+Invoke-Gate 'rt4s' $GF.X "gh pr create --title caf$([char]0xE9)" $null 'PowerShell'
+Assert-GateDeny 'REQ-004 T.3: PowerShell bare high byte is not plain' @($script:GatePlain)
+Invoke-Gate 'rt4t' $GF.M ('git push origin main ' + ([string][char]0x2018 * 21846))
+Assert-GateDeny 'REQ-004 T.2: 21,846 x U+2018 after a push (65,559 bytes) is over 64 KB by bytes: W_SIZE' @('longer than 64 KB')
+Invoke-Gate 'rt4u' $GF.M 'cd ~"/x" && git push origin main'
+Assert-GateDeny 'REQ-004 T.5: Bash cd ~"/x" (raw text not ~/...) is not plain (TILDE)' @($script:GatePlain)
 
 # item 3 (S.3-bis s): the candidate test is linear; 300 KB of short words ending in a push
 $big2 = ('ab c ' * 75000) + 'git push origin main'
@@ -1570,6 +1658,36 @@ Invoke-Gate 'rqb3b' $GF.M $big3
 $swBig3.Stop(); $tBig3 = [int]$swBig3.ElapsedMilliseconds
 Assert-GateDeny "REQ-004 S.3-bis s 300 KB of `${x}a ending in git push: W_SIZE in $tBig3 ms (limit 5000)" @('longer than 64 KB') ($tBig3 -lt 5000)
 $big3 = $null
+
+# S.3-bis s, linearity: each timed shape at n and 2n (300 KB and 600 KB); t(2n) < 3 t(n) + 200 ms
+function Measure-GateShape([string]$Sid, [string]$Cmd) {
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    Invoke-Gate $Sid $GF.M $Cmd
+    $sw.Stop()
+    return [int]$sw.ElapsedMilliseconds
+}
+# Each shape: text at n and 2n, the needle both must be denied with, and the size label.
+$lin = [ordered]@{
+    'short words'  = @{ Gen = { param($k) ('ab c ' * (60000 * $k)) + 'git push origin main' }; Needle = 'longer than 64 KB'; Size = '300/600 KB' }
+    '${x}a'        = @{ Gen = { param($k) ('${x}a' * (60000 * $k)) + ' git push origin main' }; Needle = 'longer than 64 KB'; Size = '300/600 KB' }
+    'long word'    = @{ Gen = { param($k) ('a' * (300000 * $k)) + ' ; git push origin main' }; Needle = 'longer than 64 KB'; Size = '300/600 KB' }
+    '-q flags'     = @{ Gen = { param($k) 'git push' + (' -q' * (5325 * $k)) + ' origin main' }; Needle = 'review is recorded'; Size = '5325/10650 x -q' }
+    'spaces'       = @{ Gen = { param($k) 'git push' + (' ' * (32700 * $k)) + 'origin main' }; Needle = 'review is recorded'; Size = '32700/65400 spaces' }
+    'SOH a'        = @{ Gen = { param($k) ("$([char]1)a" * (150000 * $k)) + ' git push origin main' }; Needle = 'longer than 64 KB'; Size = '300/600 KB' }
+    'U+2018'       = @{ Gen = { param($k) ([string][char]0x2018 * (100000 * $k)) + ' git push origin main' }; Needle = 'longer than 64 KB'; Size = '300/600 KB' }
+}
+$linI = 0
+foreach ($ln in $lin.Keys) {
+    $linI++
+    $sh = $lin[$ln]
+    $cmdN = & $sh.Gen 1; $cmd2N = & $sh.Gen 2
+    $t1 = Measure-GateShape "rlin${linI}a" $cmdN
+    Assert-GateDeny "REQ-004 S.3-bis s $ln at n ($($sh.Size)): decided in $t1 ms (limit 5000)" @($sh.Needle) ($t1 -lt 5000)
+    $t2 = Measure-GateShape "rlin${linI}b" $cmd2N
+    Assert-GateDeny "REQ-004 S.3-bis s $ln at 2n ($($sh.Size)): decided in $t2 ms (limit 10000)" @($sh.Needle) ($t2 -lt 10000)
+    Assert "REQ-004 S.3-bis s $ln is linear: t(2n) $t2 ms < 3 x t(n) $t1 ms + 200" ($t2 -lt 3 * $t1 + 200)
+}
+$cmdN = $null; $cmd2N = $null
 
 # item 4 (S.3-bis i): mixed-separator UNC directories are decided before any filesystem access
 $swUnc = [Diagnostics.Stopwatch]::StartNew()

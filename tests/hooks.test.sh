@@ -3602,9 +3602,20 @@ gate_real_marker() {
 }
 
 gate_now_ms() {
-  if [ -n "${EPOCHREALTIME:-}" ]; then local t="${EPOCHREALTIME/[.,]/}"; printf '%s\n' "$((t / 1000))"
-  else printf '%s000\n' "$(date +%s)"; fi
+  # bash 3.2 / BSD date have neither EPOCHREALTIME nor date +%N: perl, then python3, then seconds
+  # (the tool is chosen once, below: callers run this in $(...), so a cache set here would be lost)
+  local t
+  if [ -n "${EPOCHREALTIME:-}" ]; then t="${EPOCHREALTIME/[.,]/}"; printf '%s\n' "$((t / 1000))"; return 0; fi
+  case "$GATE_MS_TOOL" in
+    perl) perl -MTime::HiRes -e 'printf "%d\n", Time::HiRes::time()*1000' ;;
+    python3) python3 -c 'import time; print(int(time.time()*1000))' ;;
+    *) printf '%s000\n' "$(date +%s)" ;;
+  esac
 }
+
+if command -v perl >/dev/null 2>&1 && perl -MTime::HiRes -e 1 >/dev/null 2>&1; then GATE_MS_TOOL=perl
+elif command -v python3 >/dev/null 2>&1 && python3 -c 'import time' >/dev/null 2>&1; then GATE_MS_TOOL=python3
+else GATE_MS_TOOL="date"; fi
 
 gate_mkbin() {
   # gate_mkbin <dir> <tool>...: a PATH directory holding exec wrappers for exactly these tools
@@ -3815,26 +3826,33 @@ section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE001] 201-row command decision table (d
   gate_row_ps 88 M plain 'foreach ($b in @("main")) { git push origin $b }'
   gate_row_ps 89 M plain '. { git push origin main }'
   gate_row_ps 90 M plain 'iex "git push origin main"'
-  gate_row_ps 91 X none "Set-Location '$oth_w'; git push origin main" 'main vs origin/main'
-  gate_row_ps 92 X none "cd $oth_w; git push origin main" 'main vs origin/main'
-  gate_row_ps 93 X none "git -C $oth_w push origin main" 'main vs origin/main'
+  # S.3-bis (m): in the PowerShell dialect a <dir> beginning with / is not plain, so on a
+  # POSIX host (no cygpath -w, oth_w is /tmp/...) rows 91-93 expect W_PLAIN; a Windows drive path is plain
+  case "$oth_w" in
+    /*) oth_exp=plain; oth_x="" ;;
+    *) oth_exp=none; oth_x="main vs origin/main" ;;
+  esac
+  gate_row_ps 91 X "$oth_exp" "Set-Location '$oth_w'; git push origin main" "$oth_x"
+  gate_row_ps 92 X "$oth_exp" "cd $oth_w; git push origin main" "$oth_x"
+  gate_row_ps 93 X "$oth_exp" "git -C $oth_w push origin main" "$oth_x"
+  # 91b: a PowerShell ~\ location prefix moves the review target on every host (HOME is GF_HOME)
+  GATE_HOME="$GF_HOME"
+  gate_row_ps 91b X none 'cd ~\other; git push origin main' 'main vs origin/main'
+  GATE_HOME=""
   gate_row_ps 94 M loc 'git -C C:\nope\x push origin main'
   gate_row_ps 95 M plain $'echo hi\rgit push origin main'
   gate_row_ps 96 M none 'git push origin “main”'
 
   # rows 97-133: POSIX completeness, refspec forms, redirection, caps
-  r115=$(cat <<'EOF'
-echo $'\'' ; git push origin main ; echo \'
-EOF
-)
+  # r115 and r119 are plain double-quoted assignments: bash 3.2 (macOS /bin/bash) does not see
+  # here-doc bodies inside $(...) and rewrites $'..' to its single-quoted value (the old blocks
+  # used <<'EOF')
+  r115="echo \$'\\'' ; git push origin main ; echo \\'"
   r118=$(cat <<'EOF'
 bash -c "bash -c 'git push origin main'"
 EOF
 )
-  r119=$(cat <<'EOF'
-git $'push' origin main
-EOF
-)
+  r119="git \$'push' origin main"
   gate_row 97 M plain 'f() { git push origin main; }; f'
   gate_row 98 M plain 'git push -u origin "$(git branch --show-current)"'
   gate_row 99 X plain 'git push -u origin "$(git branch --show-current)"'
@@ -4231,7 +4249,7 @@ GCASES
   gate_run rqa18 "$GF_X/.git" 'git push origin HEAD:main'
   gate_assert_deny "REQ-004 S.3-bis cwd inside .git is gated: W_LOC" 'does not exist or is not a git work tree'
 
-  # S.3-bis k: the deadline is checked inside the argument loops
+  # S.3-bis k, T.6: the at-cap -q push through FORM and the token stage; the deadline is checked after the token stage
   q_cmd="git push$(i=0; while [ "$i" -lt 21300 ]; do printf ' -q'; i=$((i + 1)); done)"
   tq0=$(gate_now_ms)
   gate_run_big rqa19 "$GF_X" "$q_cmd"
@@ -4270,31 +4288,220 @@ GCASES
   # item 2: the candidate test strips U+201A, U+201B and U+201E too
   GATE_TOOL=PowerShell
   gate_run rqb2 "$GF_M" $'git pu\xe2\x80\x9e\xe2\x80\x9esh origin main'
-  gate_assert_deny "REQ-004 S.1 PowerShell git pu<U+201E><U+201E>sh is a candidate (the tokenizer maps it to push: judged)" 'review is recorded'
+  gate_assert_deny "REQ-004 S.1 PowerShell git pu<U+201E><U+201E>sh is a candidate and not plain (T.7a: a quoted keyword)" "$GATE_PLAIN"
   gate_run rqb2b "$GF_M" $'git pu\xe2\x80\x9a\xe2\x80\x9bsh origin main'
-  gate_assert_deny "REQ-004 S.1 PowerShell git pu<U+201A><U+201B>sh is a candidate (judged)" 'review is recorded'
+  gate_assert_deny "REQ-004 S.1 PowerShell git pu<U+201A><U+201B>sh is a candidate and not plain (T.7a)" "$GATE_PLAIN"
   GATE_TOOL=Bash
   gate_run rqb2c "$GF_M" $'git pu\xe2\x80\x9e\xe2\x80\x9esh origin main'
   gate_assert_deny "REQ-004 S.1 Bash git pu<U+201E><U+201E>sh is a candidate and not plain" "$GATE_PLAIN"
   gate_run rqb2d "$GF_M" $'git pu\xe2\x80\x9a\xe2\x80\x9bsh origin main'
   gate_assert_deny "REQ-004 S.1 Bash git pu<U+201A><U+201B>sh is a candidate and not plain" "$GATE_PLAIN"
 
-  # item 3 (S.3-bis s): the candidate test is linear; 300 KB of short words ending in a push
-  big2="$(awk 'BEGIN { for (i = 0; i < 75000; i++) printf "ab c "; printf "git push origin main" }')"
-  t_big0=$(gate_now_ms)
-  gate_run_big rqb3 "$GF_M" "$big2"
-  t_big=$(( $(gate_now_ms) - t_big0 ))
-  if [ "$t_big" -lt 5000 ]; then gate_assert_deny "REQ-004 S.3-bis s 300 KB of short words ending in git push: W_SIZE in ${t_big} ms (limit 5000)" 'longer than 64 KB'
-  else _fail "REQ-004 S.3-bis s 300 KB candidate" "took ${t_big} ms (limit 5000)"; fi
+  # decision T: the regex grammar's refinements (T.7), the default-value spellings (T.2)
+  # and the token-stage ambiguities (T.4); the same rows and labels as tests/hooks.test.ps1
+  gate_run rt7a1 "$GF_M" '"git" push origin main'
+  gate_assert_deny 'REQ-004 T.7a: "git" push origin main is not plain (quoted keyword)' "$GATE_PLAIN"
+  GATE_TOOL=PowerShell
+  gate_run rt7a2 "$GF_M" 'git pu""sh origin main'
+  gate_assert_deny 'REQ-004 T.7a: PowerShell git pu""sh origin main is not plain (quoted keyword)' "$GATE_PLAIN"
+  GATE_TOOL=Bash
+  gate_run rt7a3 "$GF_M" 'git "push" origin main'
+  gate_assert_deny 'REQ-004 T.7a: git "push" origin main is not plain' "$GATE_PLAIN"
+  GATE_TOOL=PowerShell
+  gate_run rt7b "$GF_X" "gh pr create --title 'it''s'"
+  gate_assert_deny "REQ-004 T.7b: PowerShell 'it''s' (a doubled quote) is not plain" "$GATE_PLAIN"
+  gate_run rt7c "$GF_X" "gh pr create --title a'x'\"y\""
+  gate_assert_deny "REQ-004 T.7c: PowerShell a'x'\"y\" (two adjacent quoted strings) is not plain" "$GATE_PLAIN"
+  gate_run rt7c2 "$GF_X" "gh pr create --title a'x'b"
+  gate_assert_deny "REQ-004 T.7c: PowerShell a'x'b (one quoted string inside a bare word) stays plain: judged" 'feat/x vs main' 'review is recorded'
+  gate_run rt7d "$GF_X" "gh pr create --title @'x'"
+  gate_assert_deny "REQ-004 T.7d: PowerShell @'x' is not plain" "$GATE_PLAIN"
+  gate_run rt7d2 "$GF_X" 'gh pr create --title @'
+  gate_assert_deny 'REQ-004 T.7d: PowerShell bare @ stays plain: judged' 'feat/x vs main' 'review is recorded'
+  GATE_TOOL=Bash
+  gate_run rt7e1 "$GF_X" 'gh pr create --fill > "out file"'
+  gate_assert_deny 'REQ-004 T.7e: a quoted redirection target is not plain' "$GATE_PLAIN"
+  gate_run rt7e2 "$GF_X" "gh pr create --fill > ''"
+  gate_assert_deny "REQ-004 T.7e: an empty quoted redirection target is not plain" "$GATE_PLAIN"
+  gate_run rt7e3 "$GF_X" 'gh pr create --fill > out.txt'
+  gate_assert_deny 'REQ-004 T.7e: a bare redirection target stays plain: judged' 'feat/x vs main' 'review is recorded'
+  # shellcheck disable=SC2016
+  gate_run rt7f1 "$GF_M" 'echo git${a-push'
+  gate_assert_allow 'REQ-004 T.7f: an unclosed ${ removes the rest of spelling 1: echo git${a-push is not a candidate'
+  # shellcheck disable=SC2016
+  gate_run rt7f2 "$GF_M" 'echo ${ git push origin main'
+  gate_assert_deny 'REQ-004 T.7f: spelling 2 still sees the tail after an unclosed ${: a candidate, not plain' "$GATE_PLAIN"
+  gate_run rt7g1 "$GF_M" $'git stash\r\npush -m wip'
+  gate_assert_allow 'REQ-004 T.7g: CR and LF are both separators: git stash CRLF push stays exempt'
+  gate_run rt7g2 "$GF_M" $'echo x\r\ngit push origin main'
+  gate_assert_deny 'REQ-004 T.7g: a push after a CRLF is a candidate and not plain' "$GATE_PLAIN"
+  # shellcheck disable=SC2016
+  gate_run rt2a "$GF_M" 'git pu${a:-s}h origin main'
+  gate_assert_deny 'REQ-004 T.2: git pu${a:-s}h origin main is a candidate (spelling 3), not plain' "$GATE_PLAIN"
+  # shellcheck disable=SC2016
+  gate_run rt2b "$GF_M" 'git pu${a-s}h origin main'
+  gate_assert_deny 'REQ-004 T.2: git pu${a-s}h origin main is a candidate (spelling 3), not plain' "$GATE_PLAIN"
+  # shellcheck disable=SC2016
+  gate_run rt2c "$GF_M" 'g${a:-i}t push origin main'
+  gate_assert_deny 'REQ-004 T.2: g${a:-i}t push origin main is a candidate (spelling 3), not plain' "$GATE_PLAIN"
+  # shellcheck disable=SC2016
+  gate_run rt2d "$GF_M" 'git pu${a:-${b}}sh origin main'
+  gate_assert_deny 'REQ-004 T.2: git pu${a:-${b}}sh origin main is a candidate (spelling 3), not plain' "$GATE_PLAIN"
+  gate_run rt4a "$GF_M" 'git push -o -n origin main'
+  gate_assert_deny 'REQ-004 T.4: git push -o -n origin main on main is judged (-n is the -o value, not a dry run)' 'main vs origin/main' 'review is recorded'
+  gate_run rt4b "$GF_X" 'gh pr create --title --base develop'
+  gate_assert_deny 'REQ-004 T.4: --title --base develop: --title consumes --base, the default base is used' 'feat/x vs main' 'review is recorded'
+  gate_run rt4c "$GF_X" 'gh pr create --base a --base b'
+  gate_assert_deny 'REQ-004 T.4: --base a --base b: the last base wins' 'feat/x vs b' 'review is recorded'
+  gate_run rt4d "$GF_X" 'gh pr create --title " --base x" --base dev --head=me --base last'
+  gate_assert_deny 'REQ-004 T.4: a quoted " --base x" is the title; head me, base last' 'source me is not HEAD' 'feat/x vs last'
+  gate_run rt4e "$GF_X" 'gh pr create --title "a > b" 2>&1'
+  gate_assert_deny 'REQ-004 T.4: gh pr create --title "a > b" 2>&1 is plain (the quoted > is data): judged' 'feat/x vs main' 'review is recorded'
+  gate_run rt4f "$GF_X" 'gh pr create --head'
+  gate_assert_deny 'REQ-004 T.4: a trailing --head leaves the source empty: judged at HEAD' 'feat/x vs main' 'review is recorded'
+  gate_run rt4g "$GF_M" 'git push origin main -o'
+  gate_assert_deny 'REQ-004 T.4: a trailing -o is an unread option: not plain' "$GATE_PLAIN"
+  gate_run rt4h "$GF_M" 'git push a b c'
+  gate_assert_deny 'REQ-004 T.4: a third positional is not plain' "$GATE_PLAIN"
+  gate_run rt4i "$GF_M" 'git push origin ""'
+  gate_assert_deny 'REQ-004 T.4: an empty positional is not plain' "$GATE_PLAIN"
+  gate_run rt4j "$GF_M" 'git push -o ci.skip --dry-run origin main'
+  gate_assert_allow 'REQ-004 T.4: -o ci.skip --dry-run origin main is a dry run (allowed)'
+  GATE_TOOL=PowerShell
+  gate_run rt4k "$GF_M" 'git push -o "a b" origin main'
+  gate_assert_deny 'REQ-004 T.4: PowerShell -o value outside the push alphabet is not plain' "$GATE_PLAIN"
+  GATE_TOOL=Bash
+  gate_run rt4l "$GF_M" 'git push -o "a b" origin main'
+  gate_assert_deny 'REQ-004 T.4: Bash -o value is any literal: judged' 'main vs origin/main' 'review is recorded'
+  gate_run rt4m "$GF_X" 'gh pr create --body "" -H feat/x'
+  gate_assert_deny 'REQ-004 T.4: --body "" consumes the empty word; -H feat/x is HEAD: judged' 'feat/x vs main' 'review is recorded'
+  gate_run rt4n "$GF_SUB" 'cd sub;git push origin main'
+  gate_assert_deny 'REQ-004 T.4: cd sub;git push origin main (no blanks around ;) is plain: judged in sub' 'main vs origin/main' 'review is recorded'
+  gate_run rt4o "$GF_M" 'cd "a;b" && git push origin main'
+  gate_assert_deny 'REQ-004 T.4: cd "a;b" && ...: the quoted ; is data (no such directory: W_LOC)' 'does not exist or is not a git work tree'
+  gate_run rt4p "$GF_M" $'git push origin main\r'
+  gate_assert_deny 'REQ-004 T.3: a trailing CR is trailing white space: judged' 'main vs origin/main' 'review is recorded'
+  # 32 KB and 64 KB texts reach jq on stdin (gate_run_big): no argv length limit
+  rt_big="git push origin main$(i=0; while [ "$i" -lt 32768 ]; do printf ' '; i=$((i + 1)); done)"
+  gate_run_big rt4q "$GF_M" "$rt_big"
+  gate_assert_deny 'REQ-004 T.3: a 32 KB trailing blank run is plain: judged' 'main vs origin/main' 'review is recorded'
+  gate_run rt4r "$GF_X" $'gh pr create --title caf\xc3\xa9'
+  gate_assert_deny 'REQ-004 T.3: Bash bare high byte is plain: judged' 'feat/x vs main' 'review is recorded'
+  GATE_TOOL=PowerShell
+  gate_run rt4s "$GF_X" $'gh pr create --title caf\xc3\xa9'
+  gate_assert_deny 'REQ-004 T.3: PowerShell bare high byte is not plain' "$GATE_PLAIN"
+  GATE_TOOL=Bash
+  rt_big="git push origin main $(i=0; while [ "$i" -lt 21846 ]; do printf '\342\200\230'; i=$((i + 1)); done)"
+  gate_run_big rt4t "$GF_M" "$rt_big"
+  gate_assert_deny 'REQ-004 T.2: 21,846 x U+2018 after a push (65,559 bytes) is over 64 KB by bytes: W_SIZE' 'longer than 64 KB'
+  rt_big=""
+  gate_run rt4u "$GF_M" 'cd ~"/x" && git push origin main'
+  gate_assert_deny 'REQ-004 T.5: Bash cd ~"/x" (raw text not ~/...) is not plain (TILDE)' "$GATE_PLAIN"
+
+  # item 3 (S.3-bis s, T.6): the grammar stages are linear. Shapes 1-3, 6 and 7 time the
+  # S.1 tr | sed | grep pipeline (over the cap), shapes 4 and 5 and the at-cap -q row time
+  # FORM plus the token stage. An earlier scanning implementation measured 6.0 s for 300 KB
+  # on macOS CI. Each shape is timed at n and 2n: it must finish within 5000 ms at
+  # n and t(2n) < 3 * t(n) + 200 ms (the constant absorbs timer noise on a shared runner).
+  gate_lin() {
+    # gate_lin <id> <label> <needle> <text at n> <text at 2n>
+    local id="$1" lab="$2" needle="$3" tn t2n t0
+    t0=$(gate_now_ms); gate_run_big "${id}n" "$GF_M" "$4"; tn=$(( $(gate_now_ms) - t0 ))
+    gate_assert_deny "REQ-004 S.3-bis s $lab at n: decided in ${tn} ms" "$needle"
+    t0=$(gate_now_ms); gate_run_big "${id}d" "$GF_M" "$5"; t2n=$(( $(gate_now_ms) - t0 ))
+    gate_assert_deny "REQ-004 S.3-bis s $lab at 2n: decided in ${t2n} ms" "$needle"
+    # absolute limits first: a ratio alone could pass a 15 s result (past the hook timeout)
+    if [ "$tn" -ge 5000 ] || [ "$t2n" -ge 10000 ]; then
+      _fail "REQ-004 S.3-bis s $lab linearity" "t(n)=${tn} ms (limit 5000), t(2n)=${t2n} ms (limit 10000)"
+    elif [ "$GATE_MS_TOOL" = date ] && [ -z "${EPOCHREALTIME:-}" ]; then
+      # seconds-only clock: tn 0 / t2n 1000 is quantisation, not growth
+      _pass "REQ-004 S.3-bis s $lab: t(n) ${tn} ms < 5000, t(2n) ${t2n} ms < 10000 (ratio check skipped: only a 1 s clock on this host)"
+    elif [ "$t2n" -lt $(( 3 * tn + 200 )) ]; then
+      _pass "REQ-004 S.3-bis s $lab is linear: t(n) ${tn} ms < 5000, t(2n) ${t2n} ms < 10000 and < 3 * t(n) + 200"
+    else _fail "REQ-004 S.3-bis s $lab linearity" "t(n)=${tn} ms, t(2n)=${t2n} ms (limit $(( 3 * tn + 200 )))"; fi
+  }
+  # 300 KB / 600 KB of short words ending in a push
+  big2="$(awk 'BEGIN { for (i = 0; i < 60000; i++) printf "ab c "; printf "git push origin main" }')"
+  big3="$(awk 'BEGIN { for (i = 0; i < 120000; i++) printf "ab c "; printf "git push origin main" }')"
+  gate_lin rqb3 "short words ending in git push (300/600 KB)" 'longer than 64 KB' "$big2" "$big3"
+  # 300 KB / 600 KB of ${x}a ending in a push: the ${...} deletion must stay linear too
+  big2="$(awk 'BEGIN { for (i = 0; i < 60000; i++) printf "${x}a"; printf " git push origin main" }')"
+  big3="$(awk 'BEGIN { for (i = 0; i < 120000; i++) printf "${x}a"; printf " git push origin main" }')"
+  gate_lin rqb3b "\${x}a ending in git push (300/600 KB)" 'longer than 64 KB' "$big2" "$big3"
+  # one 300 KB / 600 KB word, then a push: the word buffer must not grow with the word
+  big2="$(awk 'BEGIN { printf "echo "; for (i = 0; i < 300000; i++) printf "a"; printf " ; git push origin main" }')"
+  big3="$(awk 'BEGIN { printf "echo "; for (i = 0; i < 600000; i++) printf "a"; printf " ; git push origin main" }')"
+  gate_lin rqb3c "one long word then git push (300/600 KB)" 'longer than 64 KB' "$big2" "$big3"
+  # ~16 KB / ~32 KB of -q flags (under the 64 KB cap, so FORM and the token stage run): a plain push, judged
+  big2="$(awk 'BEGIN { printf "git push"; for (i = 0; i < 5325; i++) printf " -q"; printf " origin main" }')"
+  big3="$(awk 'BEGIN { printf "git push"; for (i = 0; i < 10650; i++) printf " -q"; printf " origin main" }')"
+  gate_lin rqb3d "git push with 5325 / 10650 x -q" 'review is recorded' "$big2" "$big3"
+  # three more shapes: a long blank run inside a push (one lexer blank run), \001-separated
+  # records (SOH mapped to STX) and one repeated curly quote (the S1_CURLY deletion)
+  big2="$(awk 'BEGIN { printf "git push"; for (i = 0; i < 32000; i++) printf " "; printf "origin main" }')"
+  big3="$(awk 'BEGIN { printf "git push"; for (i = 0; i < 64000; i++) printf " "; printf "origin main" }')"
+  gate_lin rqb3e "git push with a 32 / 64 KB blank run" 'review is recorded' "$big2" "$big3"
+  big2="$(awk 'BEGIN { for (i = 0; i < 150000; i++) printf "\001a"; printf " git push origin main" }')"
+  big3="$(awk 'BEGIN { for (i = 0; i < 300000; i++) printf "\001a"; printf " git push origin main" }')"
+  gate_lin rqb3f "\001a records ending in git push (300/600 KB)" 'longer than 64 KB' "$big2" "$big3"
+  big2="$(awk 'BEGIN { for (i = 0; i < 100000; i++) printf "\342\200\230"; printf " git push origin main" }')"
+  big3="$(awk 'BEGIN { for (i = 0; i < 200000; i++) printf "\342\200\230"; printf " git push origin main" }')"
+  gate_lin rqb3g "U+2018 ending in git push (300/600 KB)" 'longer than 64 KB' "$big2" "$big3"
+  # a push with flags AT the cap (21800 x -q = 65420 bytes, 116 under 65536): the
+  # FORM and the token stage run on the whole text; absolute limit only (no ratio row at this size)
+  big2="$(awk 'BEGIN { printf "git push"; for (i = 0; i < 21800; i++) printf " -q"; printf " origin main" }')"
+  t0=$(gate_now_ms); gate_run_big rqb3h "$GF_M" "$big2"; tcap=$(( $(gate_now_ms) - t0 ))
+  gate_assert_deny "REQ-004 S.3-bis s git push with 21800 x -q (65.4 KB, at the cap): no-review deny, decided in ${tcap} ms" 'review is recorded'
+  if [ "$tcap" -lt 5000 ]; then _pass "REQ-004 S.3-bis s at-cap -q push decided in ${tcap} ms (limit 5000)"
+  else _fail "REQ-004 S.3-bis s at-cap -q push" "took ${tcap} ms (limit 5000)"; fi
+  big2=""; big3=""
+  # T.6: an S.1 tool (sed or grep) fails (exit 2) or prints garbage: over 64 KB is denied as
+  # unresolvable, under the cap fails open exactly as before (a crashing tool must not allow an
+  # oversize text). The shim stands in for the tool only in the S.1 pipeline: sed -n and
+  # grep -c are S.1's calls (FORM is grep -q, the token stage sed without -n).
+  big2="$(awk 'BEGIN { for (i = 0; i < 14000; i++) printf "ab c "; printf "git push origin main" }')"
+  for s1_tool in sed grep; do
+    for s1_kind in exit2 garbage; do
+      s1_real="$(command -v "$s1_tool")"
+      s1_flag=-n; [ "$s1_tool" = grep ] && s1_flag=-c
+      if [ -n "$s1_real" ] && mkdir -p "$workdir/s1bin"; then
+        case $s1_kind in
+          exit2) s1_act='cat >/dev/null; exit 2' ;;
+          *) s1_act='cat >/dev/null; echo bogus; exit 0' ;;
+        esac
+        printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = %s ] && { %s; }; done\nexec "%s" "$@"\n' "$s1_flag" "$s1_act" "$s1_real" > "$workdir/s1bin/$s1_tool"
+        chmod +x "$workdir/s1bin/$s1_tool"
+        RUN_OUT="$(printf '%s' "$big2" | MSYS2_ARG_CONV_EXCL='*' jq -Rsc --arg s "rqb3i$s1_tool$s1_kind" --arg c "$GF_M" '{session_id:$s,cwd:$c,tool_name:"Bash",tool_input:{command:.}}' \
+          | PATH="$workdir/s1bin:$PATH" CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"; RUN_RC=$?
+        gate_assert_deny "REQ-004 T.6 S.1 $s1_tool shim ($s1_kind), 70 KB command ending in git push: denied as unresolvable" 'longer than 64 KB'
+        RUN_OUT="$(gate_payload "rqb3j$s1_tool$s1_kind" "$GF_M" 'git push origin main' | PATH="$workdir/s1bin:$PATH" CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"; RUN_RC=$?
+        gate_assert_allow "REQ-004 T.6 S.1 $s1_tool shim ($s1_kind), under-cap git push origin main: fail-open unchanged (exit 0, no output)"
+        rm -f "$workdir/s1bin/$s1_tool"
+      else
+        _fail "REQ-004 T.6 S.1 $s1_tool shim ($s1_kind)" "could not build the shim bin dir"
+      fi
+    done
+  done
+  # T.6: a FORM or token-stage tool failure denies W_PLAIN (fail closed): grep -q (FORM)
+  # and sed -E without -n (token stage) exit 2
+  for s1_tool in grep sed; do
+    s1_real="$(command -v "$s1_tool")"
+    s1_flag=-q; [ "$s1_tool" = sed ] && s1_flag=-E
+    if [ -n "$s1_real" ] && mkdir -p "$workdir/s1bin"; then
+      if [ "$s1_tool" = sed ]; then
+        printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -n ] && exec "%s" "$@"; done\nfor a in "$@"; do [ "$a" = -E ] && { cat >/dev/null; exit 2; }; done\nexec "%s" "$@"\n' "$s1_real" "$s1_real" > "$workdir/s1bin/sed"
+      else
+        printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -q ] && { cat >/dev/null; exit 2; }; done\nexec "%s" "$@"\n' "$s1_real" > "$workdir/s1bin/grep"
+      fi
+      chmod +x "$workdir/s1bin/$s1_tool"
+      RUN_OUT="$(gate_payload "rqb3k$s1_tool" "$GF_M" 'git push origin main' | PATH="$workdir/s1bin:$PATH" CLAUDE_STATE_DIR="$GATE_STATE" sh "$GATE" 2>&1)"; RUN_RC=$?
+      gate_assert_deny "REQ-004 T.6 $s1_tool shim ($s1_flag exits 2), git push origin main: FORM / token stage failure denies W_PLAIN" "$GATE_PLAIN"
+      rm -f "$workdir/s1bin/$s1_tool"
+    else
+      _fail "REQ-004 T.6 $s1_tool shim ($s1_flag)" "could not build the shim bin dir"
+    fi
+  done
   big2=""
-  # 300 KB of ${x}a ending in a push: the ${...} deletion must stay linear too (S.3-bis s)
-  big3="$(awk 'BEGIN { for (i = 0; i < 60000; i++) printf "${x}a"; printf " git push origin main" }')"
-  t_big0=$(gate_now_ms)
-  gate_run_big rqb3b "$GF_M" "$big3"
-  t_big=$(( $(gate_now_ms) - t_big0 ))
-  if [ "$t_big" -lt 5000 ]; then gate_assert_deny "REQ-004 S.3-bis s 300 KB of \${x}a ending in git push: W_SIZE in ${t_big} ms (limit 5000)" 'longer than 64 KB'
-  else _fail "REQ-004 S.3-bis s 300 KB brace candidate" "took ${t_big} ms (limit 5000)"; fi
-  big3=""
 
   # item 4 (S.3-bis i): mixed-separator UNC directories are decided before any filesystem access
   t_unc0=$(gate_now_ms)
@@ -4591,10 +4798,10 @@ section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE007] fail-open on anything the gate ca
   # the control run adds jq to the same set and must deny.
   real_sh="$(command -v sh)"
   e7_payload="$(gate_payload e7 "$workdir/r" "$cmd")"
-  if gate_mkbin "$workdir/nojq" cat tr sed awk git && gate_mkbin "$workdir/withjq" cat tr sed awk git jq; then
+  if gate_mkbin "$workdir/nojq" cat tr sed grep git && gate_mkbin "$workdir/withjq" cat tr sed grep git jq; then
     RUN_OUT="$( (printf '%s' "$e7_payload" | PATH="$workdir/nojq" CLAUDE_STATE_DIR="$GATE_STATE" "$real_sh" "$GATE") 2>&1)"
     RUN_RC=$?
-    gate_assert_allow "EDGE-007 jq absent from PATH (cat tr sed awk git present): exit 0, no output"
+    gate_assert_allow "EDGE-007 jq absent from PATH (cat tr sed grep git present): exit 0, no output"
     RUN_OUT="$( (printf '%s' "$e7_payload" | PATH="$workdir/withjq" CLAUDE_STATE_DIR="$GATE_STATE" "$real_sh" "$GATE") 2>&1)"
     RUN_RC=$?
     gate_assert_deny "EDGE-007 control: the same PATH plus jq denies" 'review is recorded'
