@@ -169,6 +169,10 @@ M_DD=$CR
 # remove two. Elsewhere nothing changes.
 crlf=0
 case $tool in *"$CR") crlf=1; tool=${tool%"$CR"} ;; esac
+# the translation touches the command only where it holds an LF, which shows up as a CR in
+# cmd: a command with no CR needs no undo, so neither the -b re-run nor the strip runs for it
+# (saves one jq spawn on every Windows command that merely contains a g)
+if [ "$crlf" = 1 ]; then case $cmd in *"$CR"*) ;; *) crlf=0 ;; esac; fi
 if [ "$crlf" = 1 ]; then
   # preferred: the same program with -b on the same input; no CR reaches the grammar
   if parsed_b=$(printf '%s' "$parse_in" | jq -b -j "$jq_prog" 2>/dev/null) && [ -n "$parsed_b" ]; then
