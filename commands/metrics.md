@@ -136,13 +136,13 @@ Only agent records (those with a `tool_use_id` and no `agent_type`; a `subagent-
 
 ### 4. Review metrics
 
-Primary source is the agent records; the verdict is parsed from the sub-agent's hand-back report in its transcript (or from `last_assistant_message` on older builds) and merged onto the launch record at SubagentStop. Reviewers are `peer-review-critic` and `spec-compliance-reviewer`; a session counts only when at least one of its reviewer records carries a verdict (a launch that was denied, is pending, or ran in the background without a parsed report does not count as a non-approval), and its outcome is the verdict of its last such record; `cycles` counts only verdict-bearing records, the same unit as the marker fallback's `.verdict-sources` lines.
+Primary source is the agent records; the verdict is parsed from the sub-agent's hand-back report in its transcript (or from `last_assistant_message` on older builds) and merged onto the launch record at SubagentStop. Reviewers are `peer-review-critic`, `spec-compliance-reviewer` and `code-review-gatekeeper`; a session counts only when at least one of its reviewer records carries a verdict (a launch that was denied, is pending, or ran in the background without a parsed report does not count as a non-approval), and its outcome is the verdict of its last such record; `cycles` counts only verdict-bearing records, the same unit as the marker fallback's `.verdict-sources` lines.
 
 ```bash
 find "$T" -mindepth 3 -maxdepth 3 -path '*/agents/*.json' -exec jq -c '. + {file: input_filename}' {} + \
  | jq -s --arg cutoff "$CUT" '
   [.[] | select(.tool_use_id and (has("agent_type") | not)
-        and (.agent_name == "peer-review-critic" or .agent_name == "spec-compliance-reviewer")
+        and (.agent_name == "peer-review-critic" or .agent_name == "spec-compliance-reviewer" or .agent_name == "code-review-gatekeeper")
         and ((.started_at // .launched_at // .ended_at // "") >= $cutoff))
       | . + {session: (.file | split("/") | .[-3])}] as $r
   | ($r | group_by(.session)

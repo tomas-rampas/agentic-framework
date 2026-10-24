@@ -11,7 +11,7 @@ A configuration framework for [Claude Code CLI](https://docs.claude.com/en/docs/
 This framework extends Claude Code CLI with:
 
 - **21 Specialized Agents** covering the full development lifecycle
-- **Real Enforcement Hooks** — a blocking peer-review Stop gate and a model-tier guard on sub-agent calls, plus session-context and delegation-hint hooks, registered via the plugin's `hooks/hooks.json` and covered by tests
+- **Real Enforcement Hooks** — a blocking peer-review Stop gate, a blocking code-review push/PR gate that needs a code-review-gatekeeper review, and a model-tier guard on sub-agent calls, plus session-context and delegation-hint hooks, registered via the plugin's `hooks/hooks.json` and covered by tests
 - **Persistent Agent Memory** — every agent keeps its own institutional knowledge across sessions and projects (`memory: user`, under `~/.claude/agent-memory/<agent>/`), browsed, searched and pruned with `/agentic-framework:knowledge`
 - **Local Telemetry** — silent hooks record sessions, token usage and sub-agent invocations under `~/.claude/.state/telemetry/` (no network, pruned after 30 days); `/agentic-framework:metrics` reports usage, estimated cost and review outcomes
 - **Anti-Drift Consistency System** — dynamic validator, doc generator, and CI gate that keep the registry, docs, and filesystem in lockstep
@@ -455,7 +455,9 @@ claude mcp list                                          # What Claude Code sees
 ```
 
 **Hooks fire but nothing is enforced (peer-review gate not blocking):**
-On Linux/macOS, if `jq` is missing from PATH, the hook scripts load and fire (visible in the transcript), but enforcement is disarmed — nothing gets enforced, including the peer-review Stop gate. **Cause:** the POSIX hook implementations depend on `jq` to validate the hook JSON payload; without it, hooks skip enforcement. **Fix:** install `jq` with your system package manager (`apt-get install jq` on Debian/Ubuntu; `brew install jq` on macOS), then restart Claude Code. When `jq` is absent, the `SessionStart` hook prints a `[session-context]` warning line at session start — this confirms the symptom is active.
+On Linux/macOS, if `jq` is missing from PATH, the hook scripts load and fire (visible in the transcript), but enforcement is disarmed — nothing gets enforced, including the peer-review Stop gate and the code-review push/PR gate. A failing or missing `tr` also disarms the code-review gate at any size; a failing `sed` or `grep` disarms it for commands under its 64 KB size cap. **Cause:** the POSIX hook implementations depend on `jq` to validate the hook JSON payload; without it, hooks skip enforcement. **Fix:** install `jq` with your system package manager (`apt-get install jq` on Debian/Ubuntu; `brew install jq` on macOS), then restart Claude Code. When `jq` is absent, the `SessionStart` hook prints a `[session-context]` warning line at session start — this confirms the symptom is active.
+
+**Code-review gate denies a PR or push**: run the `code-review-gatekeeper` sub-agent on the branch against its destination after the last commit, then retry the plain command (`gh pr create ...` or `git push origin main`); `AF_CODE_REVIEW_GATE=off` in the launch environment (restart needed) is the only bypass.
 
 **Harmless "sh: not found" stderr on Windows without Git Bash:**
 When Git Bash is not installed, the hook chain's `sh` command fails with a "not found" error line in the transcript. This is harmless — the `||` arm runs the PowerShell `.ps1` script directly. (Installing Git Bash removes the noise and speeds hooks up: `sh` then exists and `dispatch.sh` detects MINGW*/MSYS*/CYGWIN*, running the POSIX `.sh` implementation directly when `jq` is on PATH — which skips a pwsh cold start of roughly 1–2 seconds on every hook fire — and routing to the same PowerShell script otherwise.)

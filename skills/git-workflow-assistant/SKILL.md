@@ -21,11 +21,11 @@ Structured guidance for git operations in this framework: branching strategy, co
 
 Committed work on a feature branch is not "done" until it has been peer reviewed. Follow this order:
 
-1. Implement and commit on a feature branch (never commit directly to main; branch first).
-2. Run `code-review-gatekeeper` (Task tool) for quality validation and testing.
-3. Run `peer-review-critic` (Task tool, `subagent_type: peer-review-critic`) — the mandatory final gatekeeper. It performs an independent, diff-scoped critical review of the branch against its base.
-4. Resolve every BLOCKER/MAJOR finding (commit the fixes, re-review), or obtain explicit user sign-off.
-5. Only then open the PR or declare the task done.
+1. Commit the work on a feature branch (never commit directly to main; branch first).
+2. Run `peer-review-critic` (Task tool, `subagent_type: peer-review-critic`) — the mandatory final gatekeeper. It performs an independent, diff-scoped critical review of the branch against its base.
+3. Resolve every BLOCKER/MAJOR finding and commit the fixes (re-review as needed), or obtain explicit user sign-off.
+4. Run `code-review-gatekeeper` (Task tool) on the final HEAD against the destination. This records the verdict that unlocks the push/PR gate.
+5. Open the PR with a plain `gh pr create`, or declare the task done.
 
 Any commit made after the gatekeeper review stales its push/PR-gate marker, including the `peer-review-critic` fix commits from step 4, because the gate matches the HEAD. Run `code-review-gatekeeper` last, after the final commit, before `gh pr create`.
 
