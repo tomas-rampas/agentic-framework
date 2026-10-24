@@ -237,5 +237,5 @@ VERDICT: CHANGES_REQUIRED
 ## Delegation
 
 - `security-specialist` - depth on a security `[Blocker]` when the review alone cannot settle exploitability.
-- `comprehensive-analyst` on `sonnet` - the executor when an orchestrator session applies this skill to a diff over the large-diff threshold (Model Tiering Policy in CLAUDE.md); the delegation states the depth budget, and with none stated the executor reviews the whole diff in depth, so a delegated review is not partial by arithmetic. The orchestrator reviews the returned report.
+- `comprehensive-analyst` on `sonnet` - the executor when an orchestrator session applies this skill to a diff over the large-diff threshold (Model tiering in POLICY.md); the delegation states the depth budget, and with none stated the executor reviews the whole diff in depth, so a delegated review is not partial by arithmetic. The orchestrator reviews the returned report.
 - The skill runs inline in whichever agent applies it: the invoking session, or the delegated analyst on a large diff.

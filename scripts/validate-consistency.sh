@@ -623,11 +623,11 @@ section "[7] Model parity (agents/<a>.md frontmatter model: == claude.json model
 #   (c) for the textual "### Category (N agents)" sections, the stated N equals
 #       the actual number of agents listed beneath that header.
 # This catches the missing-row / wrong-header-count drift without generating
-# the prose. Sub-check 9c additionally pins the CLAUDE.md table's "Default
-# tier" column (the row's LAST cell) to claude.json .sub_agents[<a>].model - see
+# the prose. Sub-check 9c additionally pins the POLICY.md table's "Tier"
+# column (the row's second cell) to claude.json .sub_agents[<a>].model - see
 # that sub-check's own header comment for why.
 _check_on 9 && {
-section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents roster/categories)"
+section "[9] Roster-presence for prose tables (POLICY.md table + list-agents roster/categories)"
   ok=1
 
   # _roster_compare <label> <newline-list-of-agents-extracted>
@@ -670,38 +670,52 @@ section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents ros
     fi
   }
 
-  # --- 9a: CLAUDE.md "AVAILABLE IMPLEMENTATION AGENTS" table ----------------
-  # Rows look like:  | **agent-name** | Implementation domain |
-  # Scope the extraction to the table by only matching that exact row shape; the
-  # routing guidelines below use "- **Rust development**" (no leading pipe) so
-  # they cannot leak in.
-  claude_md="$ROOT/CLAUDE.md"
-  if [[ -f "$claude_md" ]]; then
-    cmd_roster="$(grep -oE '^\| \*\*[a-z0-9-]+\*\* \|' "$claude_md" \
-                  | sed -E 's/^\| \*\*//; s/\*\* \|$//')"
+  # --- 9a: POLICY.md "## Agents" table --------------------------------------
+  # Rows look like:  | agent-a, agent-b | tier | effort | domain |
+  # (several agents may share one row; the first cell is split on commas).
+  # _policy_agent_rows prints "agent<TAB>tier" per agent, scoped to the table
+  # under the "## Agents" heading so other tables in the file cannot leak in.
+  _policy_agent_rows() {
+    awk -F'|' '
+      /^## / { insec = ($0 ~ /^## Agents[[:space:]\r]*$/); next }
+      insec && /^\|/ {
+        c1 = $2; c2 = $3
+        gsub(/\r/, "", c1); gsub(/\r/, "", c2)
+        gsub(/^[ \t]+|[ \t]+$/, "", c1); gsub(/^[ \t]+|[ \t]+$/, "", c2)
+        if (c1 == "Agent" || c1 ~ /^-+$/ || c1 == "") next
+        n = split(c1, names, ",")
+        for (i = 1; i <= n; i++) {
+          nm = names[i]; gsub(/^[ \t]+|[ \t]+$/, "", nm)
+          if (nm != "") print nm "\t" c2
+        }
+      }' "$1"
+  }
+  policy_md="$ROOT/POLICY.md"
+  if [[ -f "$policy_md" ]]; then
+    cmd_roster="$(_policy_agent_rows "$policy_md" | cut -f1)"
     if [[ -z "$cmd_roster" ]]; then
-      ok=0; fail "CLAUDE.md: could not locate any agent table rows"
+      ok=0; fail "POLICY.md: could not locate any agent table rows"
     else
-      _roster_compare "CLAUDE.md agent table" "$cmd_roster"
+      _roster_compare "POLICY.md agent table" "$cmd_roster"
     fi
   else
-    ok=0; fail "CLAUDE.md not found at $claude_md"
+    ok=0; fail "POLICY.md not found at $policy_md"
   fi
 
-  # --- 9c: CLAUDE.md "Default tier" column vs claude.json (BLOCKING) --------
+  # --- 9c: POLICY.md "Tier" column vs claude.json (BLOCKING) --------
   # The third column of the agent table is what the orchestrator reads AT
   # DECISION TIME to pick a model for a delegated call (model-tiering policy);
   # claude.json .sub_agents[<a>].model is the single source of truth for that
   # tier. A prose column has no round-trip generator (see the header comment
   # for check 9), so nothing else catches it drifting from the registry: an
   # editor could bump one agent's frontmatter/registry tier and simply forget
-  # to touch the CLAUDE.md row, and the table would keep reporting a stale
+  # to touch the POLICY.md row, and the table would keep reporting a stale
   # tier forever. We reuse fact_models (agent<TAB>model from claude.json) and
   # the same legal-shorthand set as check 7, so a typo'd tier value here is
   # caught the same way an invalid model shorthand is caught there. Rows for
   # an unknown/unregistered agent are 9a's job (unknown-row) - skip them here
   # rather than double-reporting the same defect under two check numbers.
-  if [[ -f "$claude_md" ]]; then
+  if [[ -f "$policy_md" ]]; then
     # Registry tiers, "agent<TAB>tier".
     reg_tiers="$(fact_models)"
     # Legal tier names (reuse check 7's derivation from the same list so
@@ -710,45 +724,41 @@ section "[9] Roster-presence for prose tables (CLAUDE.md table + list-agents ros
                      "$FACTS_CLAUDE_JSON" 2>/dev/null | LC_ALL=C sort)"
     if [[ -z "$tier_9c_valid" ]]; then
       ok=0
-      fail "CLAUDE.md agent table (9c): .consistency.model_tiers is empty or missing (no legal tier values defined)"
+      fail "POLICY.md agent table (9c): .consistency.model_tiers is empty or missing (no legal tier values defined)"
     else
       _9c_is_valid_tier() { printf '%s\n' "$tier_9c_valid" | grep -qxF -- "$1"; }
       tier_9c_ok=1
       tier_9c_checked=0
-      # Row shape matches 9a exactly: "| **agent-name** | ... | <last-cell> |".
-      # Strip a trailing CR (jq/CLAUDE.md may carry CRLF on Windows checkouts)
-      # before parsing so the last-cell match is never fooled by a stray \r.
-      while IFS= read -r row; do
-        row="${row%$'\r'}"
-        [[ -z "$row" ]] && continue
-        agent="$(printf '%s' "$row" | grep -oE '^\| \*\*[a-z0-9-]+\*\*' | sed -E 's/^\| \*\*//; s/\*\*$//')"
+      # Rows: "| agent-a, agent-b | <tier> | ... |"; see _policy_agent_rows.
+      # Strip a trailing CR (jq/POLICY.md may carry CRLF on Windows checkouts)
+      # before parsing so the tier-cell match is never fooled by a stray \r.
+      while IFS=$'\t' read -r agent cell; do
+        cell="${cell%$'\r'}"
         [[ -z "$agent" ]] && continue
         # Skip rows for an agent claude.json does not know (9a's job).
         printf '%s\n' "$reg_tiers" | grep -qE "^${agent}"$'\t' || continue
         reg_tier="$(printf '%s\n' "$reg_tiers" | awk -F'\t' -v a="$agent" '$1==a{print $2; exit}')"
-        # Last "| cell |" on the row, trimmed.
-        cell="$(printf '%s' "$row" | grep -oE '\| [^|]+ \|[[:space:]]*$' | sed -E 's/^\| //; s/ \|[[:space:]]*$//')"
         tier_9c_checked=$((tier_9c_checked + 1))
         if [[ -z "$cell" ]] || ! _9c_is_valid_tier "$cell"; then
           tier_9c_ok=0; ok=0
-          fail "CLAUDE.md agent table (9c): $agent Default tier cell '${cell:-<missing>}' is not a valid tier"
+          fail "POLICY.md agent table (9c): $agent Tier cell '${cell:-<missing>}' is not a valid tier"
           detail "expected one of: $(printf '%s' "$tier_9c_valid" | tr '\n' ' ')"
         elif [[ "$cell" != "$reg_tier" ]]; then
           tier_9c_ok=0; ok=0
-          fail "CLAUDE.md agent table (9c): $agent tier mismatch (CLAUDE.md '$cell' != claude.json '$reg_tier')"
+          fail "POLICY.md agent table (9c): $agent tier mismatch (POLICY.md '$cell' != claude.json '$reg_tier')"
         fi
-      done <<< "$(grep -E '^\| \*\*[a-z0-9-]+\*\* \|' "$claude_md")"
+      done <<< "$(_policy_agent_rows "$policy_md")"
 
       # Never pass vacuously: zero rows compared means the table or the registry
       # yielded nothing to check (9a reports a missing table on its own, but 9c
       # must not print a green line for a comparison that never happened).
       if [[ "$tier_9c_checked" -eq 0 ]]; then
         tier_9c_ok=0; ok=0
-        fail "CLAUDE.md agent table (9c): no Default tier cell could be compared (0 rows matched a registered agent)"
+        fail "POLICY.md agent table (9c): no Default tier cell could be compared (0 rows matched a registered agent)"
       fi
 
       if [[ "$tier_9c_ok" -eq 1 ]]; then
-        pass "CLAUDE.md agent table (9c): all $tier_9c_checked Default tier cells match claude.json"
+        pass "POLICY.md agent table (9c): all $tier_9c_checked Tier cells match claude.json"
       fi
     fi
   fi
@@ -1046,14 +1056,14 @@ section "[13] Version sync (claude.json, .claude-plugin/plugin.json)"
 # broadening until every shell command routed through an executor subagent
 # (40k-100k tokens of fixed overhead per call). This check pins the selective
 # policy on the operative surfaces:
-#   (a) phrases that re-broaden the policy must not appear in CLAUDE.md,
+#   (a) phrases that re-broaden the policy must not appear in POLICY.md, CLAUDE.md,
 #       README.md, or any *.md/*.json/*.sh/*.ps1 under agents/, commands/,
 #       skills/, or hooks/ — hook scripts carry prose comments that could
 #       re-teach the policy just as well as docs can. docs/ is exempt
 #       (historical records may quote the old policy); tests/ is exempt
 #       (red-path fixtures inject these very phrases); scripts/ is exempt
 #       (this check names them).
-#   (b) the governing statements must remain present: CLAUDE.md carries the
+#   (b) the governing statements must remain present: POLICY.md carries the
 #       selective section header and the inline-by-default principle, and
 #       both executor agents advertise the compresses-to-a-small-conclusion
 #       delegation trigger in their descriptions.
@@ -1064,7 +1074,7 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
   policy_files=()
   while IFS= read -r f; do policy_files+=("$f"); done < <(
     {
-      printf '%s\n' "$ROOT/CLAUDE.md" "$ROOT/README.md"
+      printf '%s\n' "$ROOT/POLICY.md" "$ROOT/CLAUDE.md" "$ROOT/README.md"
       find "$ROOT/agents" "$ROOT/commands" "$ROOT/skills" "$ROOT/hooks" \
         -type f \( -name '*.md' -o -name '*.json' -o -name '*.sh' -o -name '*.ps1' \) 2>/dev/null
     } | LC_ALL=C sort
@@ -1093,8 +1103,8 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
       fail "$label — literal '$needle' missing from $file"
     fi
   }
-  _policy_require "CLAUDE.md" "Command-line Execution Policy (selective)" "CLAUDE.md keeps the selective policy section"
-  _policy_require "CLAUDE.md" "Run it yourself by default" "CLAUDE.md keeps inline-by-default as the governing principle"
+  _policy_require "POLICY.md" "## Command execution" "POLICY.md keeps the command-execution section"
+  _policy_require "POLICY.md" "Inline is the default" "POLICY.md keeps inline-by-default as the governing principle"
   _policy_require "agents/bash-expert.md" "compresses to a small conclusion" "bash-expert advertises the selective delegation trigger"
   _policy_require "agents/powershell-expert.md" "compresses to a small conclusion" "powershell-expert advertises the selective delegation trigger"
 }
@@ -1133,6 +1143,9 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
 #       the agent never granted is the defensive spelling, and demanding the
 #       agent declare that server in mcpServers to deny it would invert the
 #       intent. Typos are still caught, by existence alone.
+#   (h) token economy (REQ-016, unconditional): omitClaudeMd must be exactly
+#       `true`; disallowedTools must contain `Artifact`; disallowedTools must
+#       contain `Agent` on every agent except system-architect.
 # An entry that names no server at all (a bare 'mcp__') is malformed and is
 # reported (malformed-mcp-entry) rather than silently discarded.
 #
@@ -1355,6 +1368,28 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
       detail "unparseable-disallowedtools: $agent (must be a single-line list)"
     fi
 
+    # --- (h) token-economy invariants (REQ-016) ----------------------------
+    # Every agent runs with the project CLAUDE.md omitted, denies the Artifact
+    # tool, and (system-architect excepted) denies the Agent tool. These run
+    # BEFORE the 'nothing to scan' continue below: an agent that omits the key
+    # entirely must still fail.
+    fm_omit="$(_fm_value "$fm_text" omitClaudeMd)"
+    if [[ "$fm_omit" != "true" ]]; then
+      ok=0
+      fail "$agent: agents/$agent.md omitClaudeMd must be 'true' (found: '${fm_omit:-<missing>}')"
+      detail "missing-omitclaudemd: $agent"
+    fi
+    if ! printf '%s\n' "$dis_entries" | grep -qxF -- "Artifact"; then
+      ok=0
+      fail "$agent: agents/$agent.md disallowedTools is missing 'Artifact'"
+      detail "missing-artifact-denial: $agent"
+    fi
+    if [[ "$agent" != "system-architect" ]] && ! printf '%s\n' "$dis_entries" | grep -qxF -- "Agent"; then
+      ok=0
+      fail "$agent: agents/$agent.md disallowedTools is missing 'Agent' (only system-architect may delegate)"
+      detail "missing-agent-denial: $agent"
+    fi
+
     [[ -n "$tool_entries" || -n "$dis_entries" ]] || continue
 
     # mcp__ entries of BOTH lists, classified against the derived plugin infix.
@@ -1470,7 +1505,7 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   shopt -u nullglob
 
   if [[ "$ok" -eq 1 ]]; then
-    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity with mcpServers declared wherever tools use MCP, disallowedTools servers known to .mcp.json, serena bootstrap present in both spellings, bare/plugin-prefixed twins complete)"
+    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity with mcpServers declared wherever tools use MCP, disallowedTools servers known to .mcp.json, serena bootstrap present in both spellings, bare/plugin-prefixed twins complete, omitClaudeMd true, Artifact denied everywhere, Agent denied except system-architect)"
   fi
 }
 
