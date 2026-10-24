@@ -1,13 +1,23 @@
 #!/bin/sh
 # session-start-context.sh — SessionStart hook (POSIX sh port).
 #
-# Reports the branch / unreviewed-commit state so the model knows whether the
-# peer-review final gate (Stop hook) is armed, plus a one-line routing reminder.
+# Two outputs, both injected into the session context:
+#   1. A branch / unreviewed-commit line so the model knows whether the peer-review
+#      final gate (Stop hook) is armed, plus a one-line routing reminder.
+#   2. The framework policy: the full, unmodified content of POLICY.md at the plugin
+#      root, printed after the branch line on source startup, resume, clear and
+#      compact (any other or absent source prints no policy), unless <cwd>/CLAUDE.md holds the
+#      exact marker line  <!-- agentic-framework: policy inline -->  (REQ-009).
+#      The marker is honoured only in <cwd>/CLAUDE.md; parent and child directories
+#      are not consulted (EDGE-005). A missing POLICY.md prints nothing extra.
+#      The plugin root is CLAUDE_PLUGIN_ROOT, else this script's parent directory.
 # Fail-open: always exit 0. Prints jq warning if jq is missing.
 #
 # Ported from session-start-context.ps1 to POSIX sh.
 
 set -u
+
+MARKER='<!-- agentic-framework: policy inline -->'
 
 # Preflight: check if jq is available on PATH
 if ! command -v jq >/dev/null 2>&1; then
@@ -27,50 +37,77 @@ if ! printf '%s' "$payload" | jq empty >/dev/null 2>&1; then
   exit 0
 fi
 cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null) || cwd=""
+source_kind=$(printf '%s' "$payload" | jq -r '.source // empty' 2>/dev/null) || source_kind=""
 
 # If cwd not provided or invalid, use current directory
 if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
   cwd=$(pwd 2>/dev/null)
 fi
 
-# Check if inside a git work tree
-in_tree=$(git -C "$cwd" rev-parse --is-inside-work-tree 2>/dev/null)
-if [ "$?" -ne 0 ] || [ "$in_tree" != "true" ]; then
-  exit 0
-fi
-
-# Get current branch
-branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ "$?" -ne 0 ] || [ -z "$branch" ]; then
-  exit 0
-fi
-
-# If on main/master/HEAD, report that and exit
-case "$branch" in
-  main|master|HEAD)
-    printf "[session-context] On '%s'. The peer-review Stop gate applies only to feature branches; a push to main/master, and gh pr create or glab mr create, need a code-review-gatekeeper review first (pretooluse-code-review-gate denies them until one is recorded).\n" "$branch"
-    exit 0
-    ;;
-esac
-
-# Find base branch candidate (origin/main, origin/master, main, master)
-base=""
-for candidate in "origin/main" "origin/master" "main" "master"; do
-  if git -C "$cwd" rev-parse --verify --quiet "$candidate" >/dev/null 2>&1; then
-    base="$candidate"
-    break
+# Prints the branch line (if any); returns instead of exiting so the policy follows.
+emit_branch_line() {
+  # Check if inside a git work tree
+  in_tree=$(git -C "$cwd" rev-parse --is-inside-work-tree 2>/dev/null)
+  if [ "$?" -ne 0 ] || [ "$in_tree" != "true" ]; then
+    return 0
   fi
-done
 
-# If base found, check if ahead
-if [ -n "$base" ]; then
-  ahead=$(git -C "$cwd" rev-list --count "$base..HEAD" 2>/dev/null)
-  if [ "$?" -eq 0 ] && [ "$ahead" -gt 0 ]; then
-    printf "[session-context] Branch '%s' is %d commit(s) ahead of %s. The peer-review final gate (Stop hook) blocks ending a session with committed, unreviewed work — run the peer-review-critic subagent before finishing. Route specialist work to the matching subagent (run /agentic-framework:list-agents for routing guidance).\n" "$branch" "$ahead" "$base"
-    exit 0
+  # Get current branch
+  branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [ "$?" -ne 0 ] || [ -z "$branch" ]; then
+    return 0
   fi
-fi
 
-# No ahead commits or no base found
-printf "[session-context] Branch '%s' — no commits ahead of base; peer-review gate idle.\n" "$branch"
+  # If on main/master/HEAD, report that and stop
+  case "$branch" in
+    main|master|HEAD)
+      printf "[session-context] On '%s'. The peer-review Stop gate applies only to feature branches; a push to main/master, and gh pr create or glab mr create, need a code-review-gatekeeper review first (pretooluse-code-review-gate denies them until one is recorded).\n" "$branch"
+      return 0
+      ;;
+  esac
+
+  # Find base branch candidate (origin/main, origin/master, main, master)
+  base=""
+  for candidate in "origin/main" "origin/master" "main" "master"; do
+    if git -C "$cwd" rev-parse --verify --quiet "$candidate" >/dev/null 2>&1; then
+      base="$candidate"
+      break
+    fi
+  done
+
+  # If base found, check if ahead
+  if [ -n "$base" ]; then
+    ahead=$(git -C "$cwd" rev-list --count "$base..HEAD" 2>/dev/null)
+    if [ "$?" -eq 0 ] && [ "$ahead" -gt 0 ]; then
+      printf "[session-context] Branch '%s' is %d commit(s) ahead of %s. The peer-review final gate (Stop hook) blocks ending a session with committed, unreviewed work — run the peer-review-critic subagent before finishing. Route specialist work to the matching subagent (run /agentic-framework:list-agents for routing guidance).\n" "$branch" "$ahead" "$base"
+      return 0
+    fi
+  fi
+
+  # No ahead commits or no base found
+  printf "[session-context] Branch '%s' — no commits ahead of base; peer-review gate idle.\n" "$branch"
+  return 0
+}
+
+# Prints POLICY.md byte for byte unless the marker line is in <cwd>/CLAUDE.md.
+emit_policy() {
+  case "$source_kind" in
+    startup|resume|clear|compact) ;;
+    *) return 0 ;;
+  esac
+  root="${CLAUDE_PLUGIN_ROOT:-}"
+  if [ -z "$root" ]; then
+    root=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd) || return 0
+  fi
+  policy="$root/POLICY.md"
+  [ -f "$policy" ] || return 0
+  if [ -f "$cwd/CLAUDE.md" ] && tr -d '\r' < "$cwd/CLAUDE.md" 2>/dev/null | grep -q -x -F -- "$MARKER"; then
+    return 0
+  fi
+  cat "$policy" 2>/dev/null
+  return 0
+}
+
+emit_branch_line
+emit_policy
 exit 0

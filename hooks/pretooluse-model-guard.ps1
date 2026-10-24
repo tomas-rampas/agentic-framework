@@ -14,6 +14,12 @@
 # non-empty and itself free of "fable"; an unusable floor (empty, or itself
 # "fable") is what routes a built-in call into the rewrite.
 #
+# EXECUTOR CAP: a call whose subagent_type is bash-expert or powershell-expert
+# (bare, or plugin-scoped as <plugin>:<name>) and whose normalised model
+# contains "opus" (any spelling) is denied: executors are capped at sonnet.
+# haiku, sonnet and no model pass through unchanged, as does any other agent
+# type on opus.
+#
 # MEASURED (Claude Code 2.1.278, Agent tool): updatedInput for the Agent tool
 # must echo the COMPLETE original tool_input, not just the changed key — a
 # partial updatedInput (e.g. {"model":"haiku"} alone) replaces the whole
@@ -170,6 +176,12 @@ try {
 
     if ($model -like '*fable*') {
         Write-Deny '[model-guard] Sub-agents must not run on the top model tier. Re-issue this Agent call with model set to opus, sonnet or haiku. Set AF_MODEL_GUARD=off to disable this guard.'
+        exit 0
+    }
+
+    $stypeBase = ($stype -split ':')[-1]
+    if (($stypeBase -eq 'bash-expert' -or $stypeBase -eq 'powershell-expert') -and $model -like '*opus*') {
+        Write-Deny '[model-guard] Executors (bash-expert, powershell-expert) are capped at sonnet. Re-issue this Agent call with model set to sonnet or haiku. Set AF_MODEL_GUARD=off to disable this guard.'
         exit 0
     }
 

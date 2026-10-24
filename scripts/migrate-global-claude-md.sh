@@ -1,0 +1,100 @@
+#!/bin/sh
+# migrate-global-claude-md.sh — remove the legacy framework policy block from the
+# user-level CLAUDE.md (REQ-013). Since 5.2.0 the plugin delivers the policy at
+# session start (hooks/session-start-context), so the copy in ~/.claude/CLAUDE.md is
+# redundant and doubles every session's context.
+#
+# Usage: sh scripts/migrate-global-claude-md.sh [--dry-run] [PATH]
+#   PATH       file to migrate (default: $HOME/.claude/CLAUDE.md)
+#   --dry-run  print the lines that would be removed; change nothing; exit 0
+#
+# The block starts at the first line "# Claude Code CLI - Agent Execution Framework"
+# and ends before the next line starting with "# " that is not part of a shipped
+# policy text. Every byte outside the block, line endings included, is preserved.
+# Before changing anything a copy is written beside the file as
+# CLAUDE.md.bak-<yyyyMMdd-HHmmss>.
+#
+# Exit codes: 0 migrated, dry run, or nothing to do (idempotent)
+#             2 usage / file error
+#             3 refused: the block holds non-blank lines that appear in none of the
+#               bundled reference policies (scripts/legacy-policy/*.md), i.e. the
+#               block was customised; the differing lines are printed, nothing is
+#               changed and no backup is written.
+set -u
+
+TITLE='# Claude Code CLI - Agent Execution Framework'
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd) || exit 2
+REF_DIR="$SCRIPT_DIR/legacy-policy"
+
+dry=0
+path=""
+for a in "$@"; do
+  case "$a" in
+    --dry-run|-n) dry=1 ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    *) path="$a" ;;
+  esac
+done
+[ -n "$path" ] || path="${HOME:-}/.claude/CLAUDE.md"
+
+if [ ! -f "$path" ]; then
+  echo "migrate-global-claude-md: file not found: $path" >&2
+  exit 2
+fi
+set -- "$REF_DIR"/claude-md-v*.md
+if [ ! -f "$1" ]; then
+  echo "migrate-global-claude-md: no reference policies in $REF_DIR" >&2
+  exit 2
+fi
+
+# One pass: the references (stdin, CR stripped) build the known-line set, then the
+# target (file argument) is scanned. Prints START, END (first line after the block)
+# and one BAD line per non-blank block line found in no reference.
+scan=$(cat "$@" | tr -d '\r' | awk -v title="$TITLE" '
+  NR == FNR { if ($0 ~ /[^ \t]/) ref[$0] = 1; next }
+  { l = $0; sub(/\r$/, "", l)
+    if (!start) { if (l == title) start = FNR; next }
+    if (!done) {
+      if (l ~ /^# / && !(l in ref)) { end = FNR; done = 1; next }
+      if (l ~ /[^ \t]/ && !(l in ref)) bad[++nb] = FNR ": " l
+    } }
+  END { print "START " start + 0; print "END " (end ? end : FNR + 1)
+        for (i = 1; i <= nb; i++) print "BAD " bad[i] }' - "$path") || { echo "migrate-global-claude-md: scan failed" >&2; exit 2; }
+
+start=$(printf '%s\n' "$scan" | sed -n 's/^START //p')
+end=$(printf '%s\n' "$scan" | sed -n 's/^END //p')
+bad=$(printf '%s\n' "$scan" | sed -n 's/^BAD //p')
+
+if [ "${start:-0}" -eq 0 ]; then
+  echo "nothing to do: no framework policy block in $path"
+  exit 0
+fi
+
+if [ -n "$bad" ]; then
+  echo "REFUSED: the framework block in $path (lines $start-$((end - 1))) holds lines found in none of the shipped policies; nothing changed, no backup written."
+  echo "Differing lines (line number: text):"
+  printf '%s\n' "$bad"
+  exit 3
+fi
+
+if [ "$dry" -eq 1 ]; then
+  echo "dry run: would remove lines $start-$((end - 1)) ($((end - start)) lines) from $path:"
+  sed -n "${start},$((end - 1))p" "$path"
+  exit 0
+fi
+
+ts=$(date +%Y%m%d-%H%M%S)
+backup="$path.bak-$ts"
+cp -p "$path" "$backup" || { echo "migrate-global-claude-md: backup failed" >&2; exit 2; }
+
+tmp="$path.migrate-tmp.$$"
+{
+  head -n "$((start - 1))" "$path"
+  tail -n "+$end" "$path"
+} > "$tmp" || { rm -f "$tmp"; echo "migrate-global-claude-md: write failed" >&2; exit 2; }
+cat "$tmp" > "$path" || { rm -f "$tmp"; echo "migrate-global-claude-md: write failed; restore from $backup" >&2; exit 2; }
+rm -f "$tmp"
+
+echo "migrated: removed lines $start-$((end - 1)) ($((end - start)) lines) from $path"
+echo "backup: $backup"
+exit 0

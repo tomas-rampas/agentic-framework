@@ -411,6 +411,90 @@ section "[SESSION-START-CONTEXT] silent outside a git worktree"
   rm -rf "$workdir"
 }
 
+section "[SESSION-START-POLICY] policy printed after the branch line unless <cwd>/CLAUDE.md carries the marker"
+{
+  policy_file="$SRC_REPO/POLICY.md"
+  marker='<!-- agentic-framework: policy inline -->'
+  hook="$SRC_REPO/hooks/session-start-context.sh"
+  run_policy() { # <source> <cwd> -> RUN_OUT, RUN_RC (CLAUDE_PLUGIN_ROOT = repo)
+    RUN_OUT="$(printf '{"session_id":"p1","hook_event_name":"SessionStart","source":"%s","cwd":"%s"}' "$1" "$2" | CLAUDE_PLUGIN_ROOT="$SRC_REPO" sh "$hook" 2>&1; printf x)"
+    RUN_OUT="${RUN_OUT%x}"
+    RUN_RC=0
+  }
+  # policy must follow the branch line byte for byte; $1 = RUN_OUT, $2 = number of leading lines to skip
+  out_is_policy_after() {
+    printf '%s' "$1" | tail -n "+$(($2 + 1))" | cmp -s - "$policy_file"
+  }
+
+  workdir="$(make_work_dir)" || exit 2
+  repo="$workdir/repo"; mkdir -p "$repo"; make_test_repo "$repo"
+  plain="$workdir/plain"; mkdir -p "$plain/sub"
+
+  # no CLAUDE.md, outside git: output is exactly the policy
+  run_policy startup "$plain"
+  if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "startup, scratch dir: stdout byte-identical to POLICY.md"
+  else _fail "startup, scratch dir: stdout byte-identical to POLICY.md"; fi
+
+  # inside git: branch line first, policy after it
+  run_policy startup "$repo"
+  if printf '%s' "$RUN_OUT" | head -n 1 | grep -q 'ahead of' && out_is_policy_after "$RUN_OUT" 1; then _pass "startup, git repo: branch line, then POLICY.md byte-identical"
+  else _fail "startup, git repo: branch line, then POLICY.md byte-identical"; fi
+
+  # EDGE-005: resume, clear and compact fire the policy again
+  for src in resume clear compact; do
+    run_policy "$src" "$plain"
+    if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "source $src prints the policy"
+    else _fail "source $src prints the policy"; fi
+  done
+
+  # other or absent source prints no policy
+  run_policy other "$plain"
+  if [ -z "$RUN_OUT" ]; then _pass "unknown source prints no policy"; else _fail "unknown source prints no policy"; fi
+
+  # marker in <cwd>/CLAUDE.md suppresses the policy, branch line stays
+  printf '# proj\n%s\n' "$marker" > "$repo/CLAUDE.md"
+  run_policy startup "$repo"
+  if printf '%s' "$RUN_OUT" | grep -q 'ahead of' && ! printf '%s' "$RUN_OUT" | grep -q 'Agentic Framework Policy'; then _pass "marker in <cwd>/CLAUDE.md: no policy, branch line kept"
+  else _fail "marker in <cwd>/CLAUDE.md: no policy, branch line kept"; fi
+
+  # CRLF CLAUDE.md still honours the marker
+  printf '# proj\r\n%s\r\n' "$marker" > "$plain/CLAUDE.md"
+  run_policy resume "$plain"
+  if [ -z "$RUN_OUT" ]; then _pass "marker with CRLF line endings is honoured"; else _fail "marker with CRLF line endings is honoured"; fi
+
+  # CLAUDE.md without the marker (and a near-miss line) does not suppress
+  printf '# proj\n<!-- agentic-framework: policy inline --> trailing\n' > "$plain/CLAUDE.md"
+  run_policy startup "$plain"
+  if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "near-miss marker line does not suppress the policy"
+  else _fail "near-miss marker line does not suppress the policy"; fi
+  rm -f "$plain/CLAUDE.md"
+
+  # marker only in a child directory's CLAUDE.md: still printed
+  printf '%s\n' "$marker" > "$plain/sub/CLAUDE.md"
+  run_policy startup "$plain"
+  if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "marker only in <cwd>/sub/CLAUDE.md: policy printed"
+  else _fail "marker only in <cwd>/sub/CLAUDE.md: policy printed"; fi
+
+  # marker only in a parent directory's CLAUDE.md: still printed
+  printf '%s\n' "$marker" > "$workdir/CLAUDE.md"
+  run_policy startup "$plain"
+  if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "marker only in the parent's CLAUDE.md: policy printed"
+  else _fail "marker only in the parent's CLAUDE.md: policy printed"; fi
+
+  # missing POLICY.md: nothing extra, exit 0
+  emptyroot="$workdir/emptyroot"; mkdir -p "$emptyroot"
+  RUN_OUT="$(printf '{"source":"startup","cwd":"%s"}' "$plain" | CLAUDE_PLUGIN_ROOT="$emptyroot" sh "$hook" 2>&1)"; RUN_RC=$?
+  assert_rc_zero "missing POLICY.md hook exits 0"
+  assert_out_empty "missing POLICY.md prints nothing extra"
+
+  # unset CLAUDE_PLUGIN_ROOT falls back to the script's parent directory
+  RUN_OUT="$(printf '{"source":"startup","cwd":"%s"}' "$plain" | env -u CLAUDE_PLUGIN_ROOT sh "$hook" 2>&1; printf x)"; RUN_OUT="${RUN_OUT%x}"
+  if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "unset CLAUDE_PLUGIN_ROOT falls back to the script's parent directory"
+  else _fail "unset CLAUDE_PLUGIN_ROOT falls back to the script's parent directory"; fi
+
+  rm -rf "$workdir"
+}
+
 section "[SESSION-START-CONTEXT] fail-open on malformed stdin"
 {
   RUN_OUT="$(printf 'not json' | sh "$SRC_REPO/hooks/session-start-context.sh" 2>&1)"
@@ -2382,6 +2466,34 @@ section "[PRETOOLUSE-MODEL-GUARD-EDGE-002] mixed-case model value denied like fa
   done
 }
 
+section "[PRETOOLUSE-MODEL-GUARD-REQ-007] executors are capped at sonnet"
+{
+  for pair in "bash-expert|opus" "agentic-framework:powershell-expert|claude-opus-5-5" "bash-expert|Opus" "bash-expert|OPUS" "bash-expert|opus-5-5"; do
+    st="${pair%%|*}"; mv="${pair#*|}"
+    RUN_OUT="$(run_guard "{\"tool_input\":{\"subagent_type\":\"$st\",\"model\":\"$mv\"}}")"
+    RUN_RC=$?
+    assert_rc_zero "executor $st + $mv hook exits 0"
+    assert_out_contains "executor $st + $mv denied" '"permissionDecision":"deny"'
+    assert_out_contains "executor $st + $mv reason names the cap" "capped at sonnet"
+  done
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"bash-expert","model":"sonnet"}}')"
+  RUN_RC=$?
+  assert_rc_zero "executor + sonnet hook exits 0"
+  assert_out_empty "executor + sonnet allowed"
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"bash-expert"}}')"
+  RUN_RC=$?
+  assert_rc_zero "executor with no model hook exits 0"
+  assert_out_empty "executor with no model allowed and not rewritten"
+  RUN_OUT="$(run_guard '{"tool_input":{"subagent_type":"rust-expert","model":"opus"}}')"
+  RUN_RC=$?
+  assert_rc_zero "non-executor + opus hook exits 0"
+  assert_out_empty "non-executor + opus allowed"
+  RUN_OUT="$(printf '%s' '{"tool_input":{"subagent_type":"bash-expert","model":"opus"}}' | env -u CLAUDE_CODE_SUBAGENT_MODEL AF_MODEL_GUARD=off sh "$SRC_REPO/hooks/pretooluse-model-guard.sh" 2>&1)"
+  RUN_RC=$?
+  assert_rc_zero "executor + opus with AF_MODEL_GUARD=off hook exits 0"
+  assert_out_empty "executor + opus with AF_MODEL_GUARD=off allowed"
+}
+
 section "[PRETOOLUSE-MODEL-GUARD-B] rewrites built-in agent with no model and no floor"
 {
   test_payload='{"tool_input":{"subagent_type":"Explore"}}'
@@ -3479,7 +3591,8 @@ section "[TELEMETRY-AGENT-HB-3] SubagentStop without a launch record: subagent r
   tel telemetry-agent-run "$(jq -n --arg t "$workdir/t3.jsonl" '{session_id:"hb3",agent_id:"zz98",agent_type:"peer-review-critic",hook_event_name:"SubagentStop",agent_transcript_path:$t}')"
   assert_jq "non-object message line: verdict still parsed from the hand-back" "$d/subagent-zz98.json" '.verdict=="CHANGES_REQUIRED"'
   assert_jq "tool_use_id null, started_at is the first timestamp, verdict from hand-back" "$d/subagent-zz99.json" '.tool_use_id==null and .started_at=="2026-10-22T17:44:49.753Z" and .verdict=="CHANGES_REQUIRED"'
-  assert_jq "duration_s = ended_at - first timestamp (fractional part stripped)" "$d/subagent-zz99.json" '.duration_s == ((.ended_at|fromdateiso8601) - (.started_at|sub("\\.[0-9]+";"")|fromdateiso8601))'
+  exp_span=$(jq -rs 'def ts: sub("\\.[0-9]+";"")|fromdateiso8601; [.[]|.timestamp?|select(type=="string")] | (.[-1]|ts) - (.[0]|ts)' "$workdir/t.jsonl")
+  assert_jq "duration_s = last - first transcript timestamp (fractional part stripped; fixture span $exp_span s)" "$d/subagent-zz99.json" ".duration_s == $exp_span and .duration_s == 745"
   rm -rf "$workdir"
 }
 
