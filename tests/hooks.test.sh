@@ -4645,6 +4645,58 @@ GCASES
   gate_run rt11e2 "$GF_M" 'git pu\'$'\r\r\n''sh origin HEAD:main'
   gate_assert_allow 'REQ-004 T.11e: Bash git pu + backslash + CR CR LF + sh origin HEAD:main is not a candidate'
 
+  # T.11(e) fallback: a jq without -b (exit 2 on -b) forces the detect-and-undo path. On a host
+  # whose jq does not translate (not Windows), the wrapper reproduces the Windows translation
+  # exactly (every LF of jq's output becomes CR LF; perl, else sed). The control swaps in a sed
+  # that rejects -b and, off Windows, drops one CR before each LF like Git for Windows' text-mode
+  # sed: the two CR CR LF allow rows then turn into W_PLAIN, proving the rows catch a double strip.
+  fb_dir="$(make_work_dir)" || exit 2
+  fb_jq="$(command -v jq)"; fb_sed="$(command -v sed)"; fb_perl="$(command -v perl 2>/dev/null)"
+  fb_xl=0
+  [ "$(( $(MSYS2_ARG_CONV_EXCL='*' jq -nj '"\n"' | wc -c) ))" -ge 2 ] || fb_xl=1
+  if gate_mkbin "$fb_dir/fb" cat tr sed grep git && gate_mkbin "$fb_dir/ctl" cat tr sed grep git; then
+    for fb_v in fb ctl; do
+      {
+        printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -b ] && exit 2; done\n'
+        if [ "$fb_xl" = 0 ]; then printf 'exec "%s" "$@"\n' "$fb_jq"
+        elif [ -n "$fb_perl" ]; then printf '"%s" "$@" | "%s" -pe '"'"'s/\\n/\\r\\n/g'"'"'\n' "$fb_jq" "$fb_perl"
+        else printf '"%s" "$@" | "%s" '"'"'s/$/\\r/'"'"'\n' "$fb_jq" "$fb_sed"; fi
+      } > "$fb_dir/$fb_v/jq"
+      chmod +x "$fb_dir/$fb_v/jq"
+    done
+    {
+      printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -b ] && exit 2; done\n'
+      if [ "$fb_xl" = 0 ]; then printf 'exec "%s" "$@"\n' "$fb_sed"
+      else printf '"%s" '"'"'s/\\r$//'"'"' | "%s" "$@"\n' "$fb_sed" "$fb_sed"; fi
+    } > "$fb_dir/ctl/sed"
+    chmod +x "$fb_dir/ctl/sed"
+    gate_run_path() {
+      # gate_run_path <bindir> <sid> <cwd> <command>: the hook runs with PATH = that directory only
+      RUN_OUT="$(gate_payload "$2" "$3" "$4" | PATH="$1" CLAUDE_STATE_DIR="$GATE_STATE" "$(command -v sh)" "$GATE" 2>&1)"
+      RUN_RC=$?
+    }
+    GATE_TOOL=PowerShell
+    gate_run_path "$fb_dir/fb" rt11f1 "$GF_M" "git pu${bt}"$'\r\n'"sh origin main"
+    gate_assert_deny 'REQ-004 T.11e fallback: PowerShell git pu + backtick + CRLF + sh origin main (jq without -b) is not plain' "$GATE_PLAIN"
+    gate_run_path "$fb_dir/fb" rt11f2 "$GF_M" "x${bt}"$'\r\r\n'"git push origin main"
+    gate_assert_deny 'REQ-004 T.11e fallback: PowerShell x + backtick + CR CR LF + git push origin main (jq without -b) is not plain' "$GATE_PLAIN"
+    gate_run_path "$fb_dir/fb" rt11f3 "$GF_M" "git pu${bt}"$'\r\r\n'"sh origin HEAD:main"
+    gate_assert_allow 'REQ-004 T.11e fallback: PowerShell git pu + backtick + CR CR LF + sh origin HEAD:main (jq without -b) exits 0, no output'
+    GATE_TOOL=Bash
+    gate_run_path "$fb_dir/fb" rt11f4 "$GF_M" 'git pu\'$'\r\r\n''sh origin HEAD:main'
+    gate_assert_allow 'REQ-004 T.11e fallback: Bash git pu + backslash + CR CR LF + sh origin HEAD:main (jq without -b) exits 0, no output'
+    GATE_TOOL=PowerShell
+    gate_run_path "$fb_dir/ctl" rt11f5 "$GF_M" "git pu${bt}"$'\r\r\n'"sh origin HEAD:main"
+    gate_assert_deny 'REQ-004 T.11e fallback control: with a sed that rejects -b the double strip turns the PowerShell CR CR LF allow row into W_PLAIN' "$GATE_PLAIN"
+    GATE_TOOL=Bash
+    gate_run_path "$fb_dir/ctl" rt11f6 "$GF_M" 'git pu\'$'\r\r\n''sh origin HEAD:main'
+    gate_assert_deny 'REQ-004 T.11e fallback control: with a sed that rejects -b the double strip turns the Bash CR CR LF allow row into W_PLAIN' "$GATE_PLAIN"
+  else
+    _fail 'REQ-004 T.11e fallback: building the wrapper PATH directories' 'gate_mkbin failed'
+  fi
+  rm -rf "$fb_dir"
+  GATE_TOOL=Bash
+
   # inherited GV_X_CD must not change the verdict (g_load unsets the selectors)
   mkdir -p "$GF_M/sub" 2>/dev/null
   gate_run rgv0 "$GF_M" 'cd sub && git push origin feat/x'

@@ -860,7 +860,9 @@ gate_equiv "gate deny: empty expansion in a keyword" ge19 'git pu$()sh origin ma
 gate_equiv "gate deny: PowerShell stop-parsing token" ge20 'gh pr create --% -B dev -t x' none '' PowerShell
 # the seventh argument is the raw JSON text of the command: a lone surrogate escape (backslash-u D800)
 gate_equiv "gate deny: lone surrogate escape" ge21 '' none '' Bash 'git push origin main #\ud800'
-# on Windows jq writes every LF as CRLF: this exercises the exact undo (T.11e); elsewhere plain parity
+# on Windows jq writes every LF as CRLF: on a jq 1.7+ host this exercises the -b re-run (T.11e);
+# the fallback undo for a jq without -b is covered by the "T.11e fallback" section of hooks.test.sh;
+# elsewhere plain parity
 gate_equiv "gate deny: Windows CRLF payload" ge22 $'git pu`\r\nsh origin main' none '' PowerShell
 
 # gate_equiv_allow <label> <sid> <command> [tool]: both implementations exit 0, silent
@@ -886,7 +888,8 @@ gate_equiv_allow() {
 }
 # shellcheck disable=SC2016
 gate_equiv_allow "gate allow: unclosed brace text" ga1 'echo git${a-push'
-# CR CR LF is not a continuation pair: one stripped CR too many or too few changes the verdict
+# CR CR LF is not a continuation pair: one CR stripped too many (two stripped, CR LF left) turns
+# this allow into a deny; the other direction (too few) is caught by the in-word CR LF deny rows
 gate_equiv_allow "gate allow: CR CR LF continuation is not a pair" ga2 $'git pu`\r\r\nsh origin HEAD:main' PowerShell
 
 # decision T.1: the grammar block is byte-identical in the two hooks (the .ps1 is the
