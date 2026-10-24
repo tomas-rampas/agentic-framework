@@ -3,9 +3,15 @@
 #
 # Events: PreToolUse + PostToolUse (matcher Task|Agent) and SubagentStop.
 #   Pre  -> <telemetry>/<session>/agents/<tool_use_id>.json  (agent, model tier, start)
-#   Post -> same file updated with ended_at, duration_s, status ("launched" for a background agent: Post fires at launch, so duration_s is launch latency), and the reviewer verdict
-#           (created from the payload when the Pre record is missing)
-#   Stop -> <telemetry>/<session>/agents/subagent-<agent_id>.json  (actual model, tokens)
+#   Post -> same file updated (created from the payload when the Pre record is missing).
+#           Launch acknowledgement (an object response with status async_launched or isAsync true, or text
+#           starting "Async agent launched successfully" and followed by an "agentId:" line; the Agent tool returns at launch):
+#           status "launched", launched_at, agent_id (cleaned, max 64 characters); no duration. The over-cap tail window drops its partial first line.
+#           Any other response (older builds): ended_at, duration_s, status completed, reviewer verdict.
+#   Stop -> <telemetry>/<session>/agents/subagent-<agent_id>.json  (actual model, tokens, tool_use_id,
+#           started_at/duration_s from the transcript span) and the launch record with the same
+#           agent_id is completed (ended_at, duration_s, model_actual, verdict from the transcript's
+#           SubagentHandback report, read from the LAST 16 MiB; tokens from the first 16 MiB). An untyped event without a transcript writes nothing.
 # Silent by design: an empty PreToolUse output allows the tool call, so nothing is ever
 # printed. sh-only advisory hook; no network; fail-open (exits 0 on every path).
 set -u
@@ -28,7 +34,7 @@ clean() {
 fields=$(printf '%s' "$payload" | jq -r '
   (.agent_type // "" | tostring | sub("^agentic-framework:"; "")) as $an
   | (.tool_input | if type == "object" then . else {} end) as $ti
-  | @sh "sid_raw=\(.session_id // "" | tostring) event=\(.hook_event_name // "" | tostring) tool=\(.tool_name // "" | tostring) tuid_raw=\(.tool_use_id // "" | tostring) agent=\((($ti.subagent_type | strings | .[0:100]) // "")) requested=\((($ti.model | strings | .[0:100]) // "")) aid_raw=\(.agent_id // "" | tostring) atype=\(.agent_type // "" | tostring) tpath=\(.agent_transcript_path // "" | tostring) lam=\(if $an == "peer-review-critic" or $an == "spec-compliance-reviewer" then (.last_assistant_message // "" | tostring) else "" end)"') || exit 0
+  | @sh "sid_raw=\(.session_id // "" | tostring) event=\(.hook_event_name // "" | tostring) tool=\(.tool_name // "" | tostring) tuid_raw=\(.tool_use_id // "" | tostring) agent=\((($ti.subagent_type | strings | .[0:100]) // "")) requested=\((($ti.model | strings | .[0:100]) // "")) aid_raw=\(.agent_id // "" | tostring) atype=\(.agent_type // "" | tostring) tpath=\(.agent_transcript_path // "" | tostring) lam=\(if $an == "peer-review-critic" or $an == "spec-compliance-reviewer" or $an == "code-review-gatekeeper" then (.last_assistant_message // "" | tostring) else "" end)"') || exit 0
 eval "$fields"
 sid=$(clean "$(printf '%s' "${sid_raw:-}" | tr -d '\r')")
 [ -z "$sid" ] && exit 0
@@ -44,7 +50,7 @@ parse_verdict() {
   tr -d '\r' | grep -E '^[[:space:]]*VERDICT:[[:blank:]]*(APPROVED|CHANGES_REQUIRED)[[:blank:]]*$' \
     | tail -n 1 | sed -E 's/.*VERDICT:[[:blank:]]*([A-Z_]+).*/\1/'
 }
-is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer) return 0 ;; esac; return 1; }
+is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer|code-review-gatekeeper) return 0 ;; esac; return 1; }
 
 # Token totals + last model over a transcript file (read through a 16 MiB cap into $work/lines), as one
 # compact JSON object. Parsed line by line (a malformed line is skipped); usage is counted
@@ -118,16 +124,28 @@ case "$event" in
       printf '%s' "$rec" | write_record "$dest"
       exit 0
     fi
+    # Response text (string, array of blocks, or {content}); a launch acknowledgement is detected on it.
+    printf '%s' "$payload" | jq -r '
+      ([.tool_response, .tool_output] | map(select(. != null and . != "")) | .[0] // "")
+      | if type == "string" then .
+        else (if type == "array" then . elif type == "object" and (.content | type) == "array" then .content
+              elif type == "object" and (.content | type) == "string" then [.content]
+              elif type == "object" then [.] else [] end)
+             | [.[] | if type == "string" then . elif type == "object" and (.text | type) == "string" then .text else empty end]
+             | join("\n") end' | tr -d '\r' > "$work/resp.txt" || : > "$work/resp.txt"
+    launch=0
+    laid=""
+    if [ "$(printf '%s' "$payload" | jq -r '([.tool_response, .tool_output] | map(select(. != null and . != "")) | .[0] // "") | type == "object" and ((.status == "async_launched") or (.isAsync == true))' | tr -d '\r')" = "true" ]; then
+      launch=1
+      laid=$(clean "$(printf '%s' "$payload" | jq -r '([.tool_response, .tool_output] | map(select(. != null and . != "")) | .[0] // {}) | .agentId | strings' | tr -d '\r')" | cut -c1-64)
+    elif grep -m1 -E '[^[:space:]]' "$work/resp.txt" | grep -qE '^[[:space:]]*Async agent launched successfully' \
+         && grep -E '[^[:space:]]' "$work/resp.txt" | sed -n 2p | grep -qE '^agentId:[[:blank:]]*[A-Za-z0-9._-]+'; then
+      launch=1
+      laid=$(grep -E '[^[:space:]]' "$work/resp.txt" | sed -n 2p | sed -nE 's/^agentId:[[:blank:]]*([A-Za-z0-9._-]+).*/\1/p' | head -n 1 | cut -c1-64)
+    fi
     verdict=""
-    if is_reviewer "$name"; then
-      verdict=$(printf '%s' "$payload" | jq -r '
-        ([.tool_response, .tool_output] | map(select(. != null and . != "")) | .[0] // "")
-        | if type == "string" then .
-          else (if type == "array" then . elif type == "object" and (.content | type) == "array" then .content
-                elif type == "object" and (.content | type) == "string" then [.content]
-                elif type == "object" then [.] else [] end)
-               | [.[] | if type == "string" then . elif type == "object" and (.text | type) == "string" then .text else empty end]
-               | join("\n") end' | parse_verdict)
+    if [ "$launch" = 0 ] && is_reviewer "$name"; then
+      verdict=$(parse_verdict < "$work/resp.txt")
     fi
     # Records go to jq through files (--slurpfile), never the command line: a large
     # value would exceed the Windows 32 K command-line limit and the update would fail.
@@ -135,33 +153,99 @@ case "$event" in
     : > "$work/old.json"
     if [ -f "$dest" ] && jq -e 'type == "object"' "$dest" >/dev/null; then cp "$dest" "$work/old.json" || exit 0; fi
     printf '%s' "$payload" | jq -c --slurpfile rec "$work/rec.json" --slurpfile old "$work/old.json" --arg now "$now" \
-      --arg verdict "$verdict" '
+      --arg verdict "$verdict" --arg launch "$launch" --arg laid "$laid" '
       (if ($old | length) > 0 then $old[0] else $rec[0] + {started_at: null} end) as $base
-      | $base + {ended_at: $now, status: (if $base.background == true then "launched" else "completed" end),
-          duration_s: (if (.duration_ms | type) == "number" then (.duration_ms / 1000)
-                       else (try (($now | fromdateiso8601) - ($base.started_at | fromdateiso8601)) catch null) end)}
+      | $base
+        + (if $launch == "1"
+           then {status: "launched", launched_at: $now, agent_id: (if $laid == "" then null else $laid end)}
+           else {ended_at: $now, status: (if $base.background == true then "launched" else "completed" end),
+                 duration_s: (if (.duration_ms | type) == "number" then (.duration_ms / 1000)
+                              else (try (($now | fromdateiso8601) - ($base.started_at | fromdateiso8601)) catch null) end)}
+           end)
         + (if $verdict == "" then {} else {verdict: $verdict} end)' \
       | write_record "$dest"
     ;;
   SubagentStop)
     aid=$(clean "$(printf '%s' "${aid_raw:-}" | tr -d '\r')")
     [ -z "$aid" ] && exit 0
-    mkwork
     atype=$(printf '%s' "${atype:-}" | tr -d '\r')
+    tpath=$(printf '%s' "${tpath:-}" | tr -d '\r')
+    readable=0
+    if [ -n "$tpath" ] && [ -f "$tpath" ] && [ -r "$tpath" ]; then readable=1; fi
+    # Untyped event without a transcript (classifier sidechain): nothing a report or a cost can use.
+    if [ -z "$atype" ] && [ "$readable" = 0 ]; then exit 0; fi
+    mkwork
     name=${atype#agentic-framework:}
+    sums='{}'
+    first_ts=""
+    hb=""
+    if [ "$readable" = 1 ]; then
+      sums=$(sum_transcript "$tpath") || sums='{}'
+      if [ -f "$work/lines" ]; then
+        first_ts=$(jq -r -n -R 'first(inputs | fromjson? | objects) | .timestamp | strings' "$work/lines" | tr -d '\r')
+        if is_reviewer "$name"; then
+          hb_src="$work/lines"
+          tsize=$(wc -c < "$tpath" 2>/dev/null | tr -d '[:space:]')
+          case "$tsize" in ''|*[!0-9]*) tsize=0 ;; esac
+          if [ "$tsize" -gt 16777216 ]; then
+            # the report is the file's tail, beyond the capped head read
+            if tail -c 16777216 -- "$tpath" | sed 1d | tr -d '\r' > "$work/tail"; then hb_src="$work/tail"; fi
+          fi
+          hb=$(jq -r -n -R '
+            def blocks: (.message | if type == "object" then .content else null end) | if type == "array" then . else [] end;
+            [inputs | fromjson? | objects | select(.type == "assistant")] as $a
+            | ([$a[] | [blocks[] | select(type == "object" and .type == "tool_use" and .name == "SubagentHandback" and (.input | type) == "object")
+                        | .input.message | strings] | last // empty] | last)
+              // ([$a[] | [blocks[] | if type == "string" then . elif type == "object" and .type == "text" and (.text | type) == "string" then .text else empty end]
+                        | select(length > 0) | join("\n")] | last)
+              // ""' "$hb_src")
+        fi
+      fi
+    fi
+    [ -z "$sums" ] && sums='{}'
     verdict=""
     if is_reviewer "$name"; then
       verdict=$(printf '%s' "${lam:-}" | parse_verdict)
+      [ -z "$verdict" ] && verdict=$(printf '%s' "$hb" | parse_verdict)
     fi
-    tpath=$(printf '%s' "${tpath:-}" | tr -d '\r')
-    sums='{}'
-    if [ -n "$tpath" ] && [ -f "$tpath" ] && [ -r "$tpath" ]; then sums=$(sum_transcript "$tpath") || sums='{}'; fi
-    [ -z "$sums" ] && sums='{}'
+    # Link to the launch record of this agent_id (status launched or completed); first match wins.
+    linked=""
+    # (resumed agent: a completed record keeps its link, so a second stop re-merges onto it)
+    aid_link=$(printf '%s' "$aid" | cut -c1-64)
+    # names relative to $adir (no spaces by construction): an absolute path may hold one
+    for f in $(cd "$adir" && grep -lF -- "\"agent_id\":\"$aid_link\"" ./*.json 2>/dev/null); do
+      case ${f##*/} in subagent-*) continue ;; esac
+      f="$adir/${f#./}"
+      if jq -e --arg a "$aid_link" 'type == "object" and .agent_id == $a and (.status == "launched" or .status == "completed")' "$f" >/dev/null; then linked=$f; break; fi
+    done
+    printf '%s' "$sums" > "$work/sums.json" || exit 0
+    tuid_link=""
+    if [ -n "$linked" ]; then
+      cp "$linked" "$work/old.json" || exit 0
+      tuid_link=$(jq -r '.tool_use_id // empty' "$work/old.json" | tr -d '\r')
+      jq -n -c --slurpfile old "$work/old.json" --slurpfile sums "$work/sums.json" --arg now "$now" \
+        --arg first "$first_ts" --arg verdict "$verdict" '
+        def ts: sub("\\.[0-9]+"; "") | fromdateiso8601;
+        ($now | ts) as $n
+        | (try ($old[0].started_at | ts) catch null) as $s
+        | (try ($first | ts) catch null) as $f
+        | $old[0]
+          + {status: "completed", ended_at: $now,
+             duration_s: (if $s != null then $n - $s elif $f != null then $n - $f else null end)}
+          + (if $verdict == "" then {} else {verdict: $verdict} end)
+          + (if $sums[0].model != null then {model_actual: $sums[0].model} else {} end)' \
+        | write_record "$linked"
+    fi
     jq -n -c --arg id "$aid" --arg type "$atype" --arg name "$name" --arg now "$now" \
-      --arg verdict "$verdict" --argjson sums "$sums" '
-      {agent_id: $id, agent_type: $type, agent_name: $name, ended_at: $now}
+      --arg verdict "$verdict" --arg first "$first_ts" --arg tuid "$tuid_link" --slurpfile sums "$work/sums.json" '
+      def ts: sub("\\.[0-9]+"; "") | fromdateiso8601;
+      (try ($first | ts) catch null) as $f
+      | {agent_id: $id, agent_type: $type, agent_name: $name, ended_at: $now,
+         tool_use_id: (if $tuid == "" then null else $tuid end),
+         started_at: (if $f != null then $first else null end),
+         duration_s: (if $f != null then (($now | ts) - $f) else null end)}
       + (if $verdict == "" then {} else {verdict: $verdict} end)
-      + (if $sums.tokens then {model_actual: $sums.model, tokens: $sums.tokens} else {} end)' \
+      + (if $sums[0].tokens then {model_actual: $sums[0].model, tokens: $sums[0].tokens} else {} end)' \
       | write_record "$adir/subagent-$aid.json"
     ;;
 esac

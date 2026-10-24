@@ -21,7 +21,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not $branch) { exit 0 }
 
     if ($branch -in @('main', 'master', 'HEAD')) {
-        Write-Output "[session-context] On '$branch'. The peer-review Stop gate applies only to feature branches."
+        Write-Output "[session-context] On '$branch'. The peer-review Stop gate applies only to feature branches; a push to main/master, and gh pr create or glab mr create, need a code-review-gatekeeper review first (pretooluse-code-review-gate denies them until one is recorded)."
         exit 0
     }
 

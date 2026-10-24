@@ -48,7 +48,7 @@ fi
 # If on main/master/HEAD, report that and exit
 case "$branch" in
   main|master|HEAD)
-    printf "[session-context] On '%s'. The peer-review Stop gate applies only to feature branches.\n" "$branch"
+    printf "[session-context] On '%s'. The peer-review Stop gate applies only to feature branches; a push to main/master, and gh pr create or glab mr create, need a code-review-gatekeeper review first (pretooluse-code-review-gate denies them until one is recorded).\n" "$branch"
     exit 0
     ;;
 esac

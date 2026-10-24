@@ -28,13 +28,14 @@ Claude Code executes only hooks registered in a settings file's `hooks` block. T
 | Hook Name | Event | Matcher | Role |
 |-----------|-------|---------|------|
 | `stop-peer-review-gate` (.ps1/.sh pair) | `Stop` | — | Blocking peer-review final gate |
-| `record-subagent-run` (.ps1/.sh pair) | `PostToolUse` + `SubagentStop` | `Task\|Agent` / — | Records peer-review-critic runs and parses the report's `VERDICT:` line into the session marker (`APPROVED` unlocks the gate) |
+| `record-subagent-run` (.ps1/.sh pair) | `PostToolUse` + `SubagentStop` | `Task\|Agent` / — | Records peer-review-critic runs (marker in `peer-review/`) and code-review-gatekeeper runs (marker in `code-review/` with the `Target:` line) and parses each report's `VERDICT:` line into the marker, reading the report from the stop payload or the sub-agent transcript's hand-back message; a PostToolUse launch acknowledgement records nothing |
 | `session-start-context` (.ps1/.sh pair) | `SessionStart` | — | Injects branch/review status into context |
 | `pretooluse-delegation-hint` (.ps1/.sh pair) | `PreToolUse` | `Write\|Edit` | Advisory specialist-agent hint |
 | `pretooluse-model-guard` (.ps1/.sh pair) | `PreToolUse` | `Task\|Agent` | Blocking and rewriting model-tier ceiling: denies a sub-agent call whose `model` names the top tier (`fable`) and every `fork`; rewrites a built-in agent call with no `model` to `haiku` (`Explore`) or `sonnet` (the rest) unless `CLAUDE_CODE_SUBAGENT_MODEL` holds a usable tier (non-empty and not naming the top tier) |
+| `pretooluse-code-review-gate` (.ps1/.sh pair) | `PreToolUse` | `Bash\|PowerShell` | Blocking push/PR gate: a PR/MR creation or a push to main/master needs a recorded code-review-gatekeeper `VERDICT: APPROVED` for the current HEAD and destination; every other command that mentions one is denied and asked to be split into plain commands |
 | `telemetry-session-start` (.sh only) | `SessionStart` | — | Silent: records session, project, branch and start time under `~/.claude/.state/telemetry/`; prunes records older than 30 days |
 | `telemetry-session-stop` (.sh only) | `Stop` + `SessionEnd` | — | Silent: stamps end time and duration, counts turns, sums transcript token usage incrementally |
-| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` + `SubagentStop` | `Task\|Agent` / `Task\|Agent` / — | Silent: records each sub-agent invocation (agent, model tier, duration, reviewer verdict, sub-agent tokens) for `/agentic-framework:metrics` |
+| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` + `SubagentStop` | `Task\|Agent` / `Task\|Agent` / — | Silent: records each sub-agent invocation (agent, model tier, launch and completion with the duration from PreToolUse start to SubagentStop, reviewer verdict from the hand-back report, sub-agent tokens) for `/agentic-framework:metrics` |
 
 ## Command-line execution
 Run short shell commands inline — git/gh calls, jq one-liners, quick checks.
@@ -85,7 +86,7 @@ Hook Architecture Validation
 
 Checking hook registration parity (hooks/hooks.json <-> hooks/*.ps1)...
 
-OK: 5 .ps1 + 6 .sh hook script(s) registered across 5 event(s); dispatch chains coherent; all events valid
+OK: 6 .ps1 + 10 .sh hook script(s) registered across 6 event(s); dispatch chains coherent; all events valid
 
 Checking for deprecated agent references in hooks/...
 

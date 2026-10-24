@@ -18,14 +18,16 @@ so it loads as `agentic-framework:code-review` and is invoked as
 
 - The user asks to review a PR, a branch, a diff, uncommitted work, or named files.
 - A session or agent wants a review procedure without launching a reviewer agent.
-- It does not replace `code-review-gatekeeper` or `peer-review-critic`; those
-  gates keep their own methodology and their own verdict handling. The Stop
-  gate's recorder hook records only `peer-review-critic` runs, so this skill's
-  output never satisfies or unlocks the gate.
-- `code-scoring-loop` applies it each round as a second evaluator; there, an
-  open `[Blocker]` holds the loop open until the round cap and partial
-  coverage is a scoring limitation, read from the findings rather than from
-  the verdict line.
+- It does not replace `peer-review-critic`, whose Stop gate keeps its own
+  methodology and verdict handling.
+- `code-review-gatekeeper` applies this skill as its procedure for a gate
+  review: a branch against its base before `gh pr create`/`glab mr create`, or
+  the commits about to be pushed to `main`/`master`. The recorder hook records
+  that run's `VERDICT:` and `Target:` into the marker the push/PR gate
+  (`pretooluse-code-review-gate`) checks. Only a `code-review-gatekeeper`
+  sub-agent run unlocks the push/PR gate, and it never satisfies the Stop
+  gate; applied inline or by any other agent, this skill's output unlocks
+  nothing.
 
 ## Scope
 

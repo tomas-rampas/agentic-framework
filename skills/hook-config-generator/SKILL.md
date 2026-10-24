@@ -13,7 +13,7 @@ Hooks in this framework are real Claude Code hooks: gates and advisory hooks are
 - Output: nothing (allow silently), or one compressed JSON object on stdout.
   - Blocking (Stop-like gates only): `@{ decision = 'block'; reason = $reason } | ConvertTo-Json -Compress`
   - Advisory: `@{ suppressOutput = $true; systemMessage = "[hint] ..." } | ConvertTo-Json -Compress`
-  - Blocking a tool call (PreToolUse only): `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}` — build it from an `[ordered]` hashtable with `-Depth 5` so key order matches the `.sh`; keep the reason ASCII with no quotes, angle brackets or ampersands, because `ConvertTo-Json` escapes those and `jq` does not, which breaks byte-equivalence. `hooks/pretooluse-model-guard.ps1`/`.sh` is the reference pair.
+  - Blocking a tool call (PreToolUse only): `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}` — build it from an `[ordered]` hashtable with `-Depth 5` so key order matches the `.sh`; keep the reason ASCII with no quotes, angle brackets or ampersands, because `ConvertTo-Json` escapes those and `jq` does not, which breaks byte-equivalence. `hooks/pretooluse-model-guard.ps1`/`.sh` is the reference pair for that `[ordered]`/`ConvertTo-Json` construction. `hooks/pretooluse-code-review-gate.ps1`/`.sh` is the second deliberate PreToolUse deny: its `.ps1` writes the same JSON shape by hand (string concatenation, not `ConvertTo-Json`), and the byte-equivalence requirement applies to both.
   - Rewriting a tool call (PreToolUse only): `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{...}}}`, optionally with a top-level `systemMessage`. Measured on Claude Code 2.1.278 for the `Agent` tool: `updatedInput` REPLACES the tool input, so it must carry every original field plus the change — a partial object drops `prompt` and `description` and the call is rejected, whatever the docs say about partial updates. No `permissionDecision` is needed for the rewrite to take effect; leave it out so the hook does not override the user's permission rules. Echoing means the two implementations must round-trip every value losslessly: read stdin as UTF-8 bytes, never pass the payload through `ConvertFrom-Json`/`ConvertTo-Json` (a string that looks like an ISO date comes back as a reformatted DateTime), and compare the two implementations as canonical JSON (`jq -S -c .`), not as raw bytes, because their string escaping legitimately differs. The same guard pair is the reference.
 - Exit code: always `0`. Fail-open is mandatory — wrap the entire body in `try { ... } catch { exit 0 }`. A hook must never break the session on error, malformed stdin, or non-git context.
 
@@ -29,7 +29,7 @@ Rules every hook script must follow:
 6. Persist per-session state (dedupe markers, "fired once" flags) under `$env:CLAUDE_STATE_DIR`, falling back to `Join-Path $HOME '.claude/.state'`. Prune files older than ~7 days.
 7. For Stop hooks: check `$payload.stop_hook_active` first and `exit 0` if true (loop safety), and bound repeat blocks with a `.fired` marker — an empty marker for a fire-once gate, or a counter file when a bounded number of re-fires is intended (the peer-review gate uses a counter: 1 block with no review, up to 3 on a `CHANGES_REQUIRED` verdict).
 8. Never reference retired agent or file names — `bash scripts/validate-hooks.sh` scans hook scripts for deprecated names and fails on any hit.
-9. Blocking output is reserved for gates: Stop-like gates (`decision: block`) and a deliberate PreToolUse ceiling that denies one tool call (`permissionDecision: deny`, as `pretooluse-model-guard` does). Everything else must be advisory (`systemMessage`) or silent.
+9. Blocking output is reserved for gates: Stop-like gates (`decision: block`) and a deliberate PreToolUse ceiling that denies one tool call (`permissionDecision: deny`, as `pretooluse-model-guard` does), and the push/PR gate `pretooluse-code-review-gate` is the second deliberate PreToolUse deny. Everything else must be advisory (`systemMessage`) or silent.
 10. Output JSON only — any error in the script → `exit 0`, never partial output or stderr.
 
 ## Step 2: Write hooks/<name>.sh
@@ -67,7 +67,7 @@ Open `hooks/dispatch.sh` and add your hook name to the case statement (this matc
 ```sh
 hook=${1:-}
 case "$hook" in
-  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard|your-new-hook) ;;
+  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard|pretooluse-code-review-gate|your-new-hook) ;;
   *) exit 0 ;;
 esac
 ```
@@ -232,7 +232,7 @@ Also add the name to the case statement in `hooks/dispatch.sh`:
 
 ```sh
 case "$hook" in
-  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard|posttooluse-agent-edit-hint) ;;
+  stop-peer-review-gate|record-subagent-run|session-start-context|pretooluse-delegation-hint|pretooluse-model-guard|pretooluse-code-review-gate|posttooluse-agent-edit-hint) ;;
   *) exit 0 ;;
 esac
 ```

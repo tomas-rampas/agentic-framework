@@ -1,6 +1,6 @@
 ---
 name: git-workflow-assistant
-description: Git branching, commit, PR, conflict-resolution, and release guidance integrated with the framework's peer-review final gate — use when planning branches, writing commit messages, preparing or opening PRs, resolving merge conflicts, cutting releases, or when the Stop gate blocks a session over unreviewed committed work.
+description: Git branching, commit, PR, conflict-resolution, and release guidance integrated with the framework's review gates — use when planning branches, writing commit messages, preparing or opening PRs, resolving merge conflicts, cutting releases, when the Stop gate blocks a session over unreviewed committed work, or when the push/PR gate denies a PR, MR or push to main/master.
 ---
 
 # Git Workflow Assistant
@@ -15,16 +15,20 @@ Structured guidance for git operations in this framework: branching strategy, co
 - Resolving merge conflicts or cleaning up history
 - Planning a versioned release
 - Responding when the peer-review Stop gate blocks the end of a session
+- Responding when the push/PR gate denies a PR, MR or push to main/master
 
 ## Review Pipeline (enforced by the framework)
 
 Committed work on a feature branch is not "done" until it has been peer reviewed. Follow this order:
 
-1. Implement and commit on a feature branch (never commit directly to main; branch first).
-2. Run `code-review-gatekeeper` (Task tool) for quality validation and testing.
+1. Commit the work on a feature branch (never commit directly to main; branch first).
+2. Run `code-review-gatekeeper` (Task tool) for the first-pass quality review of the committed branch.
 3. Run `peer-review-critic` (Task tool, `subagent_type: peer-review-critic`) — the mandatory final gatekeeper. It performs an independent, diff-scoped critical review of the branch against its base.
-4. Resolve every BLOCKER/MAJOR finding (commit the fixes, re-review), or obtain explicit user sign-off.
-5. Only then open the PR or declare the task done.
+4. Resolve every BLOCKER/MAJOR finding and commit the fixes (re-review as needed), or obtain explicit user sign-off.
+5. If HEAD moved since step 2, run `code-review-gatekeeper` again on the final HEAD against the destination: that run records the verdict that unlocks the push/PR gate.
+6. Open the PR with a plain `gh pr create`, or declare the task done.
+
+Any commit made after the gatekeeper review stales its push/PR-gate marker, including the `peer-review-critic` fix commits from step 4, because the gate matches the HEAD. Run `code-review-gatekeeper` last, after the final commit, before `gh pr create`.
 
 ### The Stop gate
 
@@ -33,14 +37,26 @@ The agentic-framework plugin's `stop-peer-review-gate` hook (.ps1/.sh pair, regi
 - The current branch is a feature branch (not main/master, not detached HEAD).
 - It has commits ahead of its base (first of `origin/main`, `origin/master`, `main`, `master` that resolves).
 - The working tree is clean — the gate only guards committed, "done"-looking states.
-- The latest `peer-review-critic` run this session did not record `VERDICT: APPROVED` (the recorder `hooks/record-subagent-run.ps1` parses the review's verdict line into a per-session marker; a marker with no parseable verdict counts as reviewed — fail-open).
+- The latest `peer-review-critic` run this session did not record `VERDICT: APPROVED` (the recorder `hooks/record-subagent-run.ps1` parses the review's verdict line into a per-session marker, reading the report from the stop payload or from the sub-agent transcript's hand-back message; a marker with no parseable verdict counts as reviewed — fail-open).
 
 What to expect and do:
 
 - The gate blocks a bounded number of times: once when no review ran, up to 3 blocks total while the recorded verdict is `CHANGES_REQUIRED`. It is loop-safe (`stop_hook_active`) and fail-open — errors and non-git contexts never block.
 - When blocked, launch `peer-review-critic` to review the branch diff against its base, resolve every BLOCKER/MAJOR finding, and re-run it until the review ends with `VERDICT: APPROVED` — that is what unlocks the next Stop.
 - Uncommitted changes do not trigger the gate; committing feature-branch work is what arms it.
-- Do not work around the gate by leaving the tree dirty or committing to main — run the review, or ask the user to explicitly waive the gate.
+- Do not work around the gate by leaving the tree dirty. Committing to main is not an exit either: a push to main or master is itself gated by the push/PR gate, so the review still applies before that commit leaves the machine. Run the review, or ask the user to explicitly waive the gate.
+
+### The push/PR gate
+
+- Hook: `pretooluse-code-review-gate` (`.ps1`/`.sh` pair), `PreToolUse` on the shell tools (`Bash|PowerShell`).
+- Allows a push or a PR/MR creation only as a plain single command with literal names: `git push [options] [<remote> [<refspec>]]`, `gh pr create` (alias `gh pr new`), `glab mr create` (alias `glab mr new`), optionally after one location form: `cd <dir> &&`, `cd <dir>;`, or (PowerShell) `Set-Location <dir>;`; the push may also be written `git -C <dir> push ...`. Every other command that mentions one is denied, chains included, and the deny asks for it to be split into plain commands.
+- A PR/MR body with newlines, `$`, backticks or the `--body "$(cat <<'EOF' ...)"` idiom is not a plain command and is denied. Write the body to a file and pass `--body-file <path>`, or use `--fill`. A plain push's destination is resolved the way git resolves it (explicit refspec, `remote.<r>.push`, `push.default`, upstream); a push whose destination is `main` or `master` (force included), and every PR/MR creation, is gated.
+- Unlocked by a `code-review-gatekeeper` sub-agent run that applies `agentic-framework:code-review` and ends with `VERDICT: APPROVED`. `record-subagent-run` stores the verdict and the review's `Target:` line in `code-review/<session>`; the gate matches it against the current HEAD and the destination base. A per-todo review of uncommitted work, a `peer-review-critic` approval, or a review of another base does not unlock it. The approval is bound to the reviewed range: the marker's `head=` must equal the current HEAD, and the `Target:` range `(<merge-base>..<head-sha>)` must end at the current HEAD and start at a merge-base that is an ancestor of the destination. A commit after the review stales the record, and so does a review that finished after a later commit. Re-run the gatekeeper after any commit, before `gh pr create`.
+- The gate stacks on the Stop gate with no cross-unlock.
+- `git add && git commit && git push` chains are denied by the gate; push as a separate command.
+- It is a best-effort guardrail over direct Bash and PowerShell commands, not a sandbox. Its limitations are: scripts, aliases, `gh api`, shell-capable tools outside the matcher, forged local state (a remote-tracking ref, the marker file or the sub-agent transcript the recorder reads), hosts slower than the 8 s budget, git older than 2.31, SHA-256 repositories, a host without `jq` on the POSIX path, escape sequences or string building inside a command word, and a `CDPATH` that redirects a relative `cd` (decision N of the spec). The executor agents' no-push rule and the Stop gate remain the other layers.
+- Threat model: the gate guards against a review that was skipped or forgotten in an ordinary session, not against a model that deliberately evades it by forging the local state it reads (a remote-tracking ref, the marker file or the sub-agent transcript the recorder reads), which is outside its model exactly as it is for the Stop gate.
+- The only sanctioned bypass: `AF_CODE_REVIEW_GATE=off` in the environment Claude Code was launched with. An inline assignment on the command does nothing, and the variable takes effect after a restart.
 
 If the gate is not firing after installing the agentic-framework plugin, verify: (1) the plugin is installed with `/plugin list`, (2) Claude Code has been restarted (hooks load at session start), (3) you have committed work on a non-main branch with `/agentic-framework:validate-hooks` showing no errors.
 
@@ -88,8 +104,8 @@ Pre-PR checklist:
 
 1. Update the branch: `git fetch origin main && git rebase origin/main`.
 2. Run the full test suite locally.
-3. Run `code-review-gatekeeper`, then `peer-review-critic`; resolve BLOCKER/MAJOR findings and commit the fixes.
-4. Open the PR with `gh pr create` using this structure:
+3. Run `code-review-gatekeeper` as a sub-agent on the branch against its base. The push/PR gate (`pretooluse-code-review-gate`) denies `gh pr create` until that review's `VERDICT: APPROVED` is recorded at the current HEAD. Then run `peer-review-critic`; resolve BLOCKER/MAJOR findings and commit the fixes. Those fix commits stale the marker, so run `code-review-gatekeeper` again after the last commit; it must run last before `gh pr create`, which runs as its own plain command.
+4. Open the PR with `gh pr create --body-file <path>`, writing the body to a file first (a multi-line `--body` is denied by the push/PR gate; `--fill` is the alternative). Use this structure for the body file:
 
 ```markdown
 ## Summary
