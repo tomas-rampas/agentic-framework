@@ -1,6 +1,7 @@
 # Design: model-tiering
 
-**Status: implemented** — `CLAUDE.md`'s "### 🧠 Model Tiering Policy (token economy)" section,
+**Status: implemented** — the "Model tiering" and "Effort" sections of `POLICY.md` (until 5.1.0 the
+"### 🧠 Model Tiering Policy (token economy)" section of `CLAUDE.md`),
 the re-tiered `agents/{rust,csharp,go,java,python,typescript}-expert.md` and
 `agents/mql-trading-dev.md` (now `model: sonnet`), the `hooks/pretooluse-model-guard.ps1` +
 `hooks/pretooluse-model-guard.sh` pair registered in `hooks/hooks.json`, and the
@@ -59,7 +60,7 @@ caller's own record of its tool call still shows no `model`: the rewrite is invi
 1. **Frontmatter default tier.** Each agent's `model:` line is its default — the value
    `claude.json` `.sub_agents[<a>].model` agrees with (validator check 7). This is a
    default, not a ceiling by itself.
-2. **Runtime one-tier moves by the orchestrator.** CLAUDE.md's policy lets the orchestrator
+2. **Runtime one-tier moves by the orchestrator.** `POLICY.md` lets the orchestrator
    pass the Agent tool's `model` parameter to move one tier down (mechanical, single-file,
    exact-spec work) or one tier up (concurrency/unsafe code, auth/crypto, cross-file
    refactors, two failed review rounds), stating the reason on an up-move. This layer is
@@ -71,7 +72,10 @@ caller's own record of its tool call still shows no `model`: the rewrite is invi
    ignores the override, so no rewrite can help; (b) it DENIES a `model` that contains
    `fable` — the alias in any case, a full model id such as `claude-fable-5-1`, or a
    suffixed form — because silently replacing a tier the caller asked for would hide the
-   mistake; (c) it REWRITES a call whose `subagent_type` is empty or one of
+   mistake; (b2) since 5.2.0 it DENIES a `model` containing `opus` (any spelling) on a call
+   whose `subagent_type` is `bash-expert` or `powershell-expert`, bare or plugin-scoped
+   (`<plugin>:<name>`): executors are capped at sonnet, and `haiku`, `sonnet` or no `model`
+   pass through unchanged, as does any other agent type on opus; (c) it REWRITES a call whose `subagent_type` is empty or one of
    `Explore`/`Plan`/`general-purpose`/`claude` with no `model`, while
    `CLAUDE_CODE_SUBAGENT_MODEL` is unset or itself names the top tier: it echoes the whole
    `tool_input` back as `updatedInput` with `model` set to `haiku` for `Explore` and
@@ -97,7 +101,20 @@ against reviewable diffs, not leveraged one-shot decisions. `code-review-gatekee
 `peer-review-critic`, `spec-compliance-reviewer`, `security-specialist` and
 `system-architect` stay on opus: a false PASS from a review gate, or a wrong call on
 security or system design, costs more than the tokens the lower tier would save.
-`effort:` values are unchanged.
+
+### Effort tiers (5.2.0)
+
+Each agent's frontmatter `effort:` follows its role: reviewers and gates `high`
+(`code-review-gatekeeper`, `peer-review-critic`, `spec-compliance-reviewer` and
+`security-specialist` moved from `xhigh`), `system-architect` and `comprehensive-analyst`
+`high`, implementers `medium` (the language experts, `database-specialist`,
+`devops-orchestrator` and `frontend-specialist` moved from `high`; `product-owner`,
+`technical-docs-writer` and `uiux-specialist` were already `medium`), executors `low`. The
+orchestrator passes a per-call `effort: low` on mechanical delegations (rename, scaffolding,
+formatting, a single-file edit with an exact spec, a reviewer's one-line finding); a per-call
+override never lowers a reviewer below `high`. Executors are the only agents with a hard
+tier cap (sonnet, enforced by the guard in (b2)); every other effort and tier rule is
+orchestrator policy.
 
 ## Rejected options
 
@@ -226,8 +243,8 @@ security or system design, costs more than the tokens the lower tier would save.
   folded (it is not a valid model name, so the call fails on its own), and built-in agents
   with a fixed model of their own (`statusline-setup`, `claude-code-guide`) are not in the
   list because they never inherit.
-- The one-tier-move policy in CLAUDE.md is advisory wherever the hook does not reach: the
-  hook enforces only the Fable ban and the built-in-agent floor, not the "move only one
+- The one-tier-move policy in `POLICY.md` is advisory wherever the hook does not reach: the
+  hook enforces only the Fable ban, the executor cap on opus and the built-in-agent floor, not the "move only one
   tier" or "state the reason" rules, which rely on the orchestrator following the policy.
 - The framework records tier names, never model ids. Until 4.5.1 `claude.json` carried a
   `.consistency.model_shorthand_map` from each alias to a concrete id. Measured: nothing

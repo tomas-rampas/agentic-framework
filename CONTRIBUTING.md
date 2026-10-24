@@ -34,16 +34,21 @@ description: <one-paragraph summary + examples>
 model: <tier-shorthand>            # opus | sonnet | haiku (must match claude.json, see check 7)
                                     # this is the agent's DEFAULT tier only — the orchestrator
                                     # may move one tier up or down per call via the Agent
-                                    # tool's `model` parameter (see CLAUDE.md's Model Tiering
-                                    # Policy). `fable` is never a valid subagent tier: it is
+                                    # tool's `model` parameter (see the Model tiering section of
+                                    # POLICY.md). `fable` is never a valid subagent tier: it is
                                     # not listed in `.consistency.model_tiers`, and the
                                     # pretooluse-model-guard hook denies it at call time.
 memory: user                       # required: persistent per-agent memory (~/.claude/agent-memory/<name>/)
 color: <color-name>
 effort: <reasoning-effort>         # optional: low | medium | high | xhigh | max
+                                    # by role: reviewers high, implementers medium, executors low
+omitClaudeMd: true                 # required (check 15): the agent loads no CLAUDE.md; the
+                                    # delegation brief's `Project rules` block is its carrier
 mcpServers: [<server-name>, ...]   # optional: MCP servers available to the agent
 tools: <tool1>,<tool2>,...         # optional: comma-separated explicit tool allowlist
-disallowedTools: <tool1>,...       # optional: comma-separated tool denylist
+disallowedTools: Agent, Artifact   # required (check 15): must contain Artifact, and Agent unless
+                                    # the agent may delegate (only system-architect); extend the
+                                    # list with any further denied tools
 ---
 
 ## Core Expertise
@@ -181,7 +186,7 @@ Run it during development and before pushing. CI (`.github/workflows/consistency
   - `--write`: regenerate all `<!-- BEGIN GENERATED: ... -->` marker regions from claude.json + facts
   - `--check`: verify regions are up to date; fails if any are stale
 - **Machine-owned regions**: do not hand-edit content between the markers (the validator enforces freshness)
-- **Coverage:** currently generates the `commands/list-agents.md` JSON summary block, the README `framework-stats` footer, and the `docs/team-presentation.md` `team-presentation-stats` block. Prose tables (README "## Agents", CLAUDE.md roster, list-agents.md textual categories) are hand-written and guarded by roster-presence checks instead (better structural flexibility).
+- **Coverage:** currently generates the `commands/list-agents.md` JSON summary block, the README `framework-stats` footer, and the `docs/team-presentation.md` `team-presentation-stats` block. Prose tables (README "## Agents", POLICY.md roster, list-agents.md textual categories) are hand-written and guarded by roster-presence checks instead (better structural flexibility).
 
 Always run `--write` after editing `claude.json`, then validate.
 

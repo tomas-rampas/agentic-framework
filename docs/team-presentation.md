@@ -146,6 +146,7 @@ mindmap
 ```
 
 - **Model tiers scale with stakes**: `opus` = review gates, security & architecture · `sonnet` = language implementation, domain & infrastructure specialists, analysis & planning · `haiku` = executors, docs & UI/UX. The orchestrator moves one tier per task at most, and no sub-agent ever runs on the top tier (Fable).
+- **Frontmatter carries more than routing** (5.2.0): `omitClaudeMd: true` on all 21 agents (sub-agents load no CLAUDE.md, a consumer project's own included; the delegation brief's `Project rules` block carries it), `disallowedTools` with `Artifact` everywhere and `Agent` on all but `system-architect` (a need outside an agent's domain goes in its hand-back), and `effort` by role: reviewers `high`, implementers `medium`, executors `low`. Executors are capped at sonnet by the model guard.
 - **peer-review-critic runs a curated toolset** (no Agent, and no Write/Edit beyond what the memory feature adds for its own memory directory) that narrows its default surface; it is read-only toward the code under review by conduct, and its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
 - Agents have full tool access in their domain and can invoke each other for cross-domain work.
 
@@ -176,12 +177,12 @@ The only component that can **say no**: gate and advisory hook scripts implement
 | `stop-peer-review-gate` | `Stop` | **The session gate** — no session ends with committed, unreviewed work |
 | `pretooluse-code-review-gate` | `PreToolUse` (`Bash\|PowerShell`) | **The push/PR gate** — a PR/MR creation, or a push to main/master, is allowed only as a plain single command with literal names (every other command that mentions one is denied and must be split), and needs a code-review-gatekeeper review approved for that exact range |
 | `record-subagent-run` | `PostToolUse` + `SubagentStop` | Records peer-review-critic and code-review-gatekeeper runs and parses each review's `VERDICT:` line (from the stop payload or the sub-agent transcript's hand-back report) — `APPROVED` is what unlocks the Stop gate and the push/PR gate respectively |
-| `session-start-context` | `SessionStart` | Injects branch + review status into context at startup |
+| `session-start-context` | `SessionStart` | Injects branch + review status into context at startup, then prints the framework policy (`POLICY.md`) on `startup`, `resume`, `clear` and `compact`, unless the project's `CLAUDE.md` holds the line `<!-- agentic-framework: policy inline -->` |
 | `pretooluse-delegation-hint` | `PreToolUse` | Suggests the matching specialist when a `.rs`/`.py`/`.cs`/… file is written |
-| `pretooluse-model-guard` | `PreToolUse` | **The model-tier ceiling, automatic** (nothing to configure; POSIX hosts need `jq`) — denies a sub-agent call whose `model` names the top tier (`fable`) and every `fork`; rewrites a built-in agent call with no `model` to `haiku` (`Explore`) or `sonnet` (the rest) |
+| `pretooluse-model-guard` | `PreToolUse` | **The model-tier ceiling, automatic** (nothing to configure; POSIX hosts need `jq`) — denies a sub-agent call whose `model` names the top tier (`fable`) and every `fork`, and opus (any spelling) for the executors `bash-expert` and `powershell-expert` (capped at sonnet); rewrites a built-in agent call with no `model` to `haiku` (`Explore`) or `sonnet` (the rest) |
 | `telemetry-session-start` (.sh only) | `SessionStart` | Silent — records session, project, branch, start time under `~/.claude/.state/telemetry/`; prunes after 30 days |
 | `telemetry-session-stop` (.sh only) | `Stop` + `SessionEnd` | Silent — end time, duration, turns, incremental transcript token totals |
-| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` + `SubagentStop` | Silent — per-invocation agent, tier, launch-to-stop duration, reviewer verdict, sub-agent tokens; read by `/agentic-framework:metrics` |
+| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` + `SubagentStop` | Silent — per-invocation agent, tier, duration (the transcript's first-to-last timestamp span), reviewer verdict, sub-agent output tokens (final usage lines, with an `output_final` flag); read by `/agentic-framework:metrics` |
 
 The gate's lifecycle:
 
@@ -328,6 +329,8 @@ sequenceDiagram
 /agentic-framework:analyze-framework
 ```
 
+The framework policy (agent table, routing, model tiering, gate order) reaches every session through the `SessionStart` hook; nothing needs copying into `~/.claude/CLAUDE.md`. If an earlier version put the framework block there, remove it once with `scripts/migrate-global-claude-md.sh` (or `.ps1`); see [README.md](README.md#policy-delivery-and-the-claudemd-marker).
+
 The six MCP servers are part of the plugin and connect at session start. To set their two optional environment variables:
 ```
 /agentic-framework:setup
@@ -351,7 +354,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Commands | 13 management commands |
 | MCP servers | 6 (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph) |
 | Validator checks | 15, all derived at runtime |
-| Test suites | 8 automated suites under tests/ |
+| Test suites | 10 automated suites under tests/ |
 | CI jobs | 4 (consistency, lint, hooks-macos, hooks-windows) |
 <!-- END GENERATED: team-presentation-stats -->
 
