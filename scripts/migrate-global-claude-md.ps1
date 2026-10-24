@@ -29,7 +29,9 @@ pwsh -NoProfile -File scripts/migrate-global-claude-md.ps1 -DryRun
 [CmdletBinding()]
 param(
     [string]$Path = (Join-Path $HOME '.claude/CLAUDE.md'),
-    [switch]$DryRun
+    [switch]$DryRun,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,6 +57,13 @@ function Get-LineText {
     return $Segment.TrimEnd("`n").TrimEnd("`r")
 }
 
+if ($Rest -and $Rest.Count -gt 0) {
+    [Console]::Error.WriteLine("migrate-global-claude-md: unexpected argument: $($Rest -join ' ')")
+    exit 2
+}
+# One resolution for every API below: a relative -Path must mean the same file to
+# Test-Path, Copy-Item and the .NET file calls (the .NET current directory can differ).
+$Path = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Path)
 if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     [Console]::Error.WriteLine("migrate-global-claude-md: file not found: $Path")
     exit 2
@@ -113,6 +122,10 @@ if ($DryRun) {
 }
 
 $backup = '{0}.bak-{1}' -f $Path, (Get-Date -Format 'yyyyMMdd-HHmmss')
+if (Test-Path -LiteralPath $backup) {
+    [Console]::Error.WriteLine("migrate-global-claude-md: backup already exists, refusing to overwrite: $backup")
+    exit 2
+}
 Copy-Item -LiteralPath $Path -Destination $backup -ErrorAction Stop
 $sb = [System.Text.StringBuilder]::new()
 for ($i = 0; $i -lt $segs.Count; $i++) {

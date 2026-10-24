@@ -148,7 +148,7 @@ mindmap
 - **Model tiers scale with stakes**: `opus` = review gates, security & architecture · `sonnet` = language implementation, domain & infrastructure specialists, analysis & planning · `haiku` = executors, docs & UI/UX. The orchestrator moves one tier per task at most, and no sub-agent ever runs on the top tier (Fable).
 - **Frontmatter carries more than routing** (5.2.0): `omitClaudeMd: true` on all 21 agents (sub-agents load no CLAUDE.md, a consumer project's own included; the delegation brief's `Project rules` block carries it), `disallowedTools` with `Artifact` everywhere and `Agent` on all but `system-architect` (a need outside an agent's domain goes in its hand-back), and `effort` by role: reviewers `high`, implementers `medium`, executors `low`. Executors are capped at sonnet by the model guard.
 - **peer-review-critic runs a curated toolset** (no Agent, and no Write/Edit beyond what the memory feature adds for its own memory directory) that narrows its default surface; it is read-only toward the code under review by conduct, and its independence rests on diff-scoped review by a separate instance, with the Stop-gate hook enforcing the verdict.
-- Agents have full tool access in their domain and can invoke each other for cross-domain work.
+- Agents have full tool access in their domain and report cross-domain needs in the hand-back.
 
 ### 3.2 Commands — the operations console (13)
 
@@ -329,7 +329,7 @@ sequenceDiagram
 /agentic-framework:analyze-framework
 ```
 
-The framework policy (agent table, routing, model tiering, gate order) reaches every session through the `SessionStart` hook; nothing needs copying into `~/.claude/CLAUDE.md`. If an earlier version put the framework block there, remove it once with `scripts/migrate-global-claude-md.sh` (or `.ps1`); see [README.md](README.md#policy-delivery-and-the-claudemd-marker).
+The framework policy (agent table, routing, model tiering, gate order) reaches every session through the `SessionStart` hook; nothing needs copying into `~/.claude/CLAUDE.md`. If an earlier version put the framework block there, remove it once with `scripts/migrate-global-claude-md.sh` (or `.ps1`); see [README.md](../README.md#policy-delivery-and-the-claudemd-marker).
 
 The six MCP servers are part of the plugin and connect at session start. To set their two optional environment variables:
 ```

@@ -28,14 +28,25 @@ REF_DIR="$SCRIPT_DIR/legacy-policy"
 
 dry=0
 path=""
+have_path=0
+endopts=0
 for a in "$@"; do
-  case "$a" in
-    --dry-run|-n) dry=1 ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
-    *) path="$a" ;;
-  esac
+  if [ "$endopts" -eq 0 ]; then
+    case "$a" in
+      --) endopts=1; continue ;;
+      --dry-run|-n) dry=1; continue ;;
+      -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+      -?*) echo "migrate-global-claude-md: unknown option: $a" >&2; exit 2 ;;
+    esac
+  fi
+  if [ "$have_path" -eq 1 ]; then
+    echo "migrate-global-claude-md: unexpected extra argument: $a" >&2
+    exit 2
+  fi
+  path="$a"; have_path=1
 done
 [ -n "$path" ] || path="${HOME:-}/.claude/CLAUDE.md"
+case "$path" in -*) path="./$path" ;; esac   # only reachable after --; keeps awk from reading it as an option
 
 if [ ! -f "$path" ]; then
   echo "migrate-global-claude-md: file not found: $path" >&2
@@ -79,18 +90,22 @@ fi
 
 if [ "$dry" -eq 1 ]; then
   echo "dry run: would remove lines $start-$((end - 1)) ($((end - start)) lines) from $path:"
-  sed -n "${start},$((end - 1))p" "$path"
+  sed -n "${start},$((end - 1))p" -- "$path"
   exit 0
 fi
 
 ts=$(date +%Y%m%d-%H%M%S)
 backup="$path.bak-$ts"
-cp -p "$path" "$backup" || { echo "migrate-global-claude-md: backup failed" >&2; exit 2; }
+if [ -e "$backup" ]; then
+  echo "migrate-global-claude-md: backup already exists, refusing to overwrite: $backup" >&2
+  exit 2
+fi
+cp -p -- "$path" "$backup" || { echo "migrate-global-claude-md: backup failed" >&2; exit 2; }
 
-tmp="$path.migrate-tmp.$$"
+tmp=$(mktemp "$path.migrate-tmp.XXXXXX") || { echo "migrate-global-claude-md: cannot create temp file" >&2; exit 2; }
 {
-  head -n "$((start - 1))" "$path"
-  tail -n "+$end" "$path"
+  head -n "$((start - 1))" -- "$path"
+  tail -n "+$end" -- "$path"
 } > "$tmp" || { rm -f "$tmp"; echo "migrate-global-claude-md: write failed" >&2; exit 2; }
 cat "$tmp" > "$path" || { rm -f "$tmp"; echo "migrate-global-claude-md: write failed; restore from $backup" >&2; exit 2; }
 rm -f "$tmp"

@@ -361,7 +361,7 @@ Besides `name`, `description`, `model`, `tools` and `memory: user`, each `agents
 | `disallowedTools` | `Artifact` on every agent; `Agent` on all but `system-architect` | Agents cannot publish artifacts, and cannot delegate onward. A need outside an agent's domain is reported in its hand-back, and the orchestrator routes it. Executors carry `Agent, Artifact`; `peer-review-critic` and `spec-compliance-reviewer` merged both into their existing deny list. |
 | `effort` | reviewers and gates `high`, `system-architect` and `comprehensive-analyst` `high`, implementers `medium`, executors `low` | Default reasoning effort per role. The orchestrator may pass a per-call `effort: low` on mechanical delegations, never below `high` for a reviewer. |
 
-The language experts no longer list `Agent` in `tools:`. The two reviewers record per-project false-positive patterns in their memory, so a later re-review does not re-derive a rejected finding.
+The language experts no longer list `Agent` in `tools:`. The four reviewers record per-project false-positive patterns in their memory, so a later re-review does not re-derive a rejected finding.
 
 ## Model tiering
 
@@ -374,7 +374,7 @@ The most capable model orchestrates; the cheapest model that can do the job does
 - **Fresh agent for every fix round and re-review.** A finished agent is never resumed with `SendMessage`. A new agent gets a brief with five items: (a) the reviewer findings verbatim with file and line, (b) the diff or commit range since the last round, not the whole branch, (c) the acceptance criteria to keep green and the test command, (d) the todo's pinned decisions, (e) the `Project rules` block.
 - **`Project rules` block.** Each brief carries the scratch directory, commit message rules, test and build commands and the conventions of the files touched, taken from the project's `CLAUDE.md`, because sub-agents load none (see [Policy delivery](#policy-delivery-and-the-claudemd-marker)).
 - **Effort per call.** The orchestrator passes `effort: low` on a rename, scaffolding, formatting, a single-file edit with an exact spec, or applying a reviewer's one-line finding; otherwise the agent's frontmatter effort applies.
-- **Security pass on a trigger list.** `security-specialist` runs when the final diff touches authentication, cryptography, secrets, network endpoints, dependencies, hooks or CI, permissions or tool grants (`tools:` and `disallowedTools:` included), shell command construction, or a trust boundary. The earlier skip class for docs and config changes is gone: a docs or config diff that touches none of the nine runs no pass, and the commit message and summary say `security pass: skipped (no trigger)`. The pass is skipped, never run at a lower tier, and the gatekeeper confirms the no-trigger claim.
+- **Security pass on a trigger list.** `security-specialist` runs when the final diff touches authentication, cryptography, secrets, network endpoints, dependencies, hooks or CI, permissions or tool grants (`tools:` and `disallowedTools:` included), shell command construction, a trust boundary, or loosens a guardrail, gate, validation or security setting (deletions included). The earlier skip class for docs and config changes is gone: a docs or config diff that touches none of the ten runs no pass, and the commit message and summary say `security pass: skipped (no trigger)`. The pass is skipped, never run at a lower tier, and the gatekeeper confirms the no-trigger claim.
 
 ---
 

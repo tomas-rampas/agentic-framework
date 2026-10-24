@@ -1,4 +1,4 @@
-<!-- Printed by the agentic-framework plugin's SessionStart hook. A project CLAUDE.md that contains the policy-inline marker line suppresses it (see README). -->
+<!-- This is the agentic-framework plugin's POLICY.md (`${CLAUDE_PLUGIN_ROOT}/POLICY.md`), printed by its SessionStart hook. A project CLAUDE.md that contains the policy-inline marker line suppresses it (see README). -->
 # Agentic Framework Policy
 ## Agents
 Default tier and effort come from each agent's frontmatter; the orchestrator overrides per call (Model tiering, Effort).
@@ -51,7 +51,7 @@ Default tier and effort come from each agent's frontmatter; the orchestrator ove
 - Never resume a finished agent with SendMessage for a fix round or a re-review. Start a fresh agent whose brief carries: (a) reviewer findings verbatim with file and line, (b) the diff or commit range since the last round, not the whole branch, (c) the acceptance criteria to keep green and the test command, (d) the todo's pinned decisions, (e) the project rules.
 - Agents do not load CLAUDE.md. The brief's Project rules block is the only carrier: scratch directory, commit message rules, test and build commands, conventions of the files touched.
 ## Memory
-- Every agent has `memory: user`, stored in `~/.claude/agent-memory/<agent>/`; the first 200 lines of MEMORY.md load each run, detail goes in topic files.
+- Every agent has `memory: user`, stored in `~/.claude/agent-memory/agentic-framework-<agent>/`; the first 200 lines of MEMORY.md load each run, detail goes in topic files.
 - Scope is user-wide: every project-specific fact names its project.
 - Verify a memory against the current checkout before applying it; correct or delete it when the code contradicts it.
 - Never store secrets, or anything one grep of the repository shows.
@@ -59,6 +59,6 @@ Default tier and effort come from each agent's frontmatter; the orchestrator ove
 - peer-review-critic and spec-compliance-reviewer write only inside their memory directory; code and spec stay read-only to them.
 ## Gate order
 - Per todo: code-review-gatekeeper; spec-compliance-reviewer when building against a spec; then the security pass; commit.
-- The security pass runs when the final diff touches authentication, cryptography, secrets, network endpoints, dependencies, hooks or CI, permissions or tool grants (`tools:` and `disallowedTools:` included), shell command construction, or a trust boundary. Otherwise it is skipped and the commit message and summary say `security pass: skipped (no trigger)`.
+- The security pass runs when the final diff touches authentication, cryptography, secrets, network endpoints, dependencies, hooks or CI, permissions or tool grants (`tools:` and `disallowedTools:` included), shell command construction, a trust boundary, or loosens a guardrail, gate, validation or security setting (deletions included). Otherwise it is skipped and the commit message and summary say `security pass: skipped (no trigger)`.
 - Last: peer-review-critic on the committed branch diff, and resolve every BLOCKER and MAJOR finding. If fixes move HEAD, rerun code-review-gatekeeper on the final HEAD before a PR or a push to main.
-- Hook documentation: see `README.md` (Enforcement Hooks) and `docs/team-presentation.md` (section 3.3).
+- Hook documentation: see the plugin's `README.md` (Enforcement Hooks) and `docs/team-presentation.md` (section 3.3) at `${CLAUDE_PLUGIN_ROOT}` or https://github.com/tomas-rampas/agentic-framework.

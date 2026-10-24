@@ -673,20 +673,21 @@ section "[9] Roster-presence for prose tables (POLICY.md table + list-agents ros
   # --- 9a: POLICY.md "## Agents" table --------------------------------------
   # Rows look like:  | agent-a, agent-b | tier | effort | domain |
   # (several agents may share one row; the first cell is split on commas).
-  # _policy_agent_rows prints "agent<TAB>tier" per agent, scoped to the table
+  # _policy_agent_rows prints "agent<TAB>tier<TAB>effort" per agent, scoped to the table
   # under the "## Agents" heading so other tables in the file cannot leak in.
   _policy_agent_rows() {
     awk -F'|' '
       /^## / { insec = ($0 ~ /^## Agents[[:space:]\r]*$/); next }
       insec && /^\|/ {
-        c1 = $2; c2 = $3
-        gsub(/\r/, "", c1); gsub(/\r/, "", c2)
+        c1 = $2; c2 = $3; c3 = $4
+        gsub(/\r/, "", c1); gsub(/\r/, "", c2); gsub(/\r/, "", c3)
         gsub(/^[ \t]+|[ \t]+$/, "", c1); gsub(/^[ \t]+|[ \t]+$/, "", c2)
+        gsub(/^[ \t]+|[ \t]+$/, "", c3)
         if (c1 == "Agent" || c1 ~ /^-+$/ || c1 == "") next
         n = split(c1, names, ",")
         for (i = 1; i <= n; i++) {
           nm = names[i]; gsub(/^[ \t]+|[ \t]+$/, "", nm)
-          if (nm != "") print nm "\t" c2
+          if (nm != "") print nm "\t" c2 "\t" c3
         }
       }' "$1"
   }
@@ -729,10 +730,11 @@ section "[9] Roster-presence for prose tables (POLICY.md table + list-agents ros
       _9c_is_valid_tier() { printf '%s\n' "$tier_9c_valid" | grep -qxF -- "$1"; }
       tier_9c_ok=1
       tier_9c_checked=0
+      effort_9c_checked=0
       # Rows: "| agent-a, agent-b | <tier> | ... |"; see _policy_agent_rows.
       # Strip a trailing CR (jq/POLICY.md may carry CRLF on Windows checkouts)
       # before parsing so the tier-cell match is never fooled by a stray \r.
-      while IFS=$'\t' read -r agent cell; do
+      while IFS=$'\t' read -r agent cell eff_cell; do
         cell="${cell%$'\r'}"
         [[ -z "$agent" ]] && continue
         # Skip rows for an agent claude.json does not know (9a's job).
@@ -747,6 +749,19 @@ section "[9] Roster-presence for prose tables (POLICY.md table + list-agents ros
           tier_9c_ok=0; ok=0
           fail "POLICY.md agent table (9c): $agent tier mismatch (POLICY.md '$cell' != claude.json '$reg_tier')"
         fi
+        # Effort cell vs the agent's frontmatter `effort:` (read inline: the
+        # frontmatter helpers are defined further down, after this check).
+        # Only a registered agent with an agents/<agent>.md file is compared.
+        if [[ -f "$ROOT/agents/$agent.md" ]]; then
+          fm_effort_9c="$(grep -m1 -E '^effort:' "$ROOT/agents/$agent.md" \
+            | sed -E 's/^effort:[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]+$//; s/\r$//; s/^["'\'']//; s/["'\'']$//')"
+          eff_cell="${eff_cell%$'\r'}"
+          effort_9c_checked=$((effort_9c_checked + 1))
+          if [[ "$eff_cell" != "$fm_effort_9c" ]]; then
+            tier_9c_ok=0; ok=0
+            fail "POLICY.md agent table (9c): $agent effort mismatch (POLICY.md '${eff_cell:-<missing>}' != agents/$agent.md effort '${fm_effort_9c:-<missing>}')"
+          fi
+        fi
       done <<< "$(_policy_agent_rows "$policy_md")"
 
       # Never pass vacuously: zero rows compared means the table or the registry
@@ -758,7 +773,7 @@ section "[9] Roster-presence for prose tables (POLICY.md table + list-agents ros
       fi
 
       if [[ "$tier_9c_ok" -eq 1 ]]; then
-        pass "POLICY.md agent table (9c): all $tier_9c_checked Tier cells match claude.json"
+        pass "POLICY.md agent table (9c): all $tier_9c_checked Tier cells match claude.json and all $effort_9c_checked Effort cells match agent frontmatter"
       fi
     fi
   fi

@@ -138,6 +138,33 @@ run_suite() { # impl
   mig "$impl" "$d4/CLAUDE.md"
   assert_eq "$impl CRLF run exits 0" 0 "$RC"
   tail -n "+$GUIDE_LINE" "$d4/orig" | cmp -s - "$d4/CLAUDE.md"; assert "$impl CRLF tail is byte-identical" $?
+
+  # 7. user content BEFORE the title survives byte-identical (the block is not at line 1)
+  d5="$HARNESS_ROOT/$impl-prefix"; rm -rf "$d5"; mkdir -p "$d5"
+  printf '# My own notes\n\nkeep this line exactly\n  indented line with trailing space \nlast user line\n\n' > "$d5/prefix"
+  { cat "$d5/prefix"; cat "$FIXTURE"; } > "$d5/CLAUDE.md"
+  mig "$impl" "$d5/CLAUDE.md"
+  assert_eq "$impl prefix run exits 0" 0 "$RC"
+  { cat "$d5/prefix"; tail -n "+$GUIDE_LINE" "$FIXTURE"; } | cmp -s - "$d5/CLAUDE.md"; assert "$impl user content before the block is byte-identical and the block is gone" $?
+
+  # 8. usage errors exit 2 and change nothing: extra argument, unknown flag
+  d6="$HARNESS_ROOT/$impl-usage"; rm -rf "$d6"; mkdir -p "$d6"
+  cp "$FIXTURE" "$d6/CLAUDE.md"
+  if [ "$impl" = sh ]; then
+    OUT=$(sh "$SH_SCRIPT" "$d6/CLAUDE.md" "$d6/other.md" 2>&1); RC=$?
+  else
+    OUT=$(pwsh -NoProfile -File "$(to_native "$PS_SCRIPT")" -Path "$(to_native "$d6/CLAUDE.md")" "$(to_native "$d6/other.md")" 2>&1); RC=$?
+  fi
+  assert_eq "$impl second path argument exits 2" 2 "$RC"
+  cmp -s "$FIXTURE" "$d6/CLAUDE.md"; assert "$impl second path argument leaves the file unchanged" $?
+  if [ "$impl" = sh ]; then
+    OUT=$(sh "$SH_SCRIPT" --dry-run-please "$d6/CLAUDE.md" 2>&1); RC=$?
+  else
+    OUT=$(pwsh -NoProfile -File "$(to_native "$PS_SCRIPT")" -Path "$(to_native "$d6/CLAUDE.md")" -DryRunPlease 2>&1); RC=$?
+  fi
+  assert_eq "$impl unknown flag exits 2" 2 "$RC"
+  cmp -s "$FIXTURE" "$d6/CLAUDE.md"; assert "$impl unknown flag leaves the file unchanged" $?
+  assert_eq "$impl usage errors write no backup" 0 "$(backups "$d6")"
 }
 
 run_suite sh

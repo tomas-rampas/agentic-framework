@@ -406,8 +406,8 @@ section "[8] Roster drift: delete an agent row from the POLICY.md table -> non-z
   _verify_copy "$copy"
   # Drop go-expert from its multi-agent row (shape: | a, go-expert, b | ... |); sed
   # on the stable "go-expert, " token leaves everything else byte-identical.
-  grep -qF ", java-expert" "$copy/POLICY.md" && ! grep -qF "go-expert, " "$copy/POLICY.md" || { echo "case 8 fixture edit did not apply" >&2; exit 1; }
-  grep -qF "go-expert" "$copy/POLICY.md" && grep -qF ", java-expert" "$copy/POLICY.md" && ! grep -qF "go-expert, " "$copy/POLICY.md" || { echo "case 8 fixture edit did not apply" >&2; exit 1; }
+  sed -i.bak 's/go-expert, //' "$copy/POLICY.md" && rm -f "$copy/POLICY.md.bak"
+  ! grep -qF "go-expert" "$copy/POLICY.md" || { echo "case 8 fixture edit did not apply" >&2; exit 1; }
   run_validate "$copy" 9
   assert_rc_nonzero "validator fails when an agent row is missing from POLICY.md table"
   assert_out_contains "reports missing-row for go-expert" "missing-row: go-expert"
@@ -1290,6 +1290,19 @@ section "[27] POLICY.md Tier column: diverged + invalid tier -> non-zero (check 
   run_validate "$copy" 9
   assert_rc_nonzero "validator fails on an invalid Tier value in POLICY.md"
   assert_out_contains "reports the invalid tier naming product-owner" "product-owner Tier cell 'sonnett' is not a valid tier"
+  rm -rf "$copy"
+
+  # --- 27c: flip product-owner's Effort cell (medium -> high) away from its
+  # frontmatter `effort:` (medium). Only the POLICY.md<->frontmatter effort
+  # column breaks, so the failure must come from the 9c effort sub-assertion.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/^(\| product-owner \| sonnet \| )medium( \|)/\1high\2/' \
+    "$copy/POLICY.md" && rm -f "$copy/POLICY.md.bak"
+  grep -qE '^\| product-owner \| sonnet \| high \|' "$copy/POLICY.md" || { echo "case 27c fixture edit did not apply" >&2; exit 1; }
+  run_validate "$copy" 9
+  assert_rc_nonzero "validator fails when POLICY.md's effort cell diverges from frontmatter"
+  assert_out_contains "reports an effort mismatch naming product-owner and both values" "product-owner effort mismatch (POLICY.md 'high' != agents/product-owner.md effort 'medium')"
   rm -rf "$copy"
 }
 

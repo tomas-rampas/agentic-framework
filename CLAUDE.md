@@ -1,7 +1,9 @@
 <!-- agentic-framework: policy inline -->
+@POLICY.md
+
 # Developing the agentic-framework plugin
 
-The framework rules (agent table, routing, command execution, model tiering, effort, fix rounds, memory, gate order) live in `POLICY.md`. This repository's `CLAUDE.md` holds the marker above, so the plugin does not print `POLICY.md` a second time, and carries only what developing the framework needs.
+The framework rules (agent table, routing, command execution, model tiering, effort, fix rounds, memory, gate order) live in `POLICY.md`, imported above, so sessions in this repository load them once through this file. The marker on line 1 tells the plugin's SessionStart hook not to print `POLICY.md` a second time. The rest of this file carries only what developing the framework needs.
 
 ## Registry, frontmatter and validators
 - `claude.json` is the registry and the source of truth for each agent's tier. `scripts/validate-consistency.sh` keeps the registry and `agents/*.md` frontmatter in step; `scripts/generate-docs.sh --check` verifies the generated README footer block.

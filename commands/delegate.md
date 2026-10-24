@@ -31,7 +31,7 @@ spans domains. Available specialists:
 - **Quality / docs:** `code-review-gatekeeper`, `peer-review-critic`, `technical-docs-writer`
 
 ### Model tier — choose it on every delegation
-Apply the **Model tiering** rules in `POLICY.md`. Each agent's frontmatter `model:` is its
+Apply the **Model tiering** rules in the plugin's `POLICY.md` (printed at session start). Each agent's frontmatter `model:` is its
 default tier; the Agent tool's `model` parameter overrides it for one call.
 
 - **Default:** omit `model` for framework agents and let the frontmatter tier apply.
@@ -196,7 +196,8 @@ report a clean state that isn't real.
 - **Security pass triggers.** `security-specialist` runs when the todo's final diff
   touches any of: authentication, cryptography, secrets, network endpoints,
   dependencies, hooks or CI, permissions or tool grants (agent `tools:` and
-  `disallowedTools:` included), shell command construction, or a trust boundary.
+  `disallowedTools:` included), shell command construction, a trust boundary,
+  or loosens a guardrail, gate, validation or security setting (deletions included).
   Otherwise the pass is skipped, and the commit message and summary say
   `security pass: skipped (no trigger)`. Skipped, never run at a lower tier. The
   trigger test is judged on the final diff, fixes included; the gatekeeper's brief
