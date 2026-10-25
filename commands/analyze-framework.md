@@ -71,7 +71,7 @@ Analyzes every registered agent using the canonical categories from `${CLAUDE_PL
 - Agent file exists (`${CLAUDE_PLUGIN_ROOT}/agents/{agent}.md`)
 - Agent registered in `${CLAUDE_PLUGIN_ROOT}/claude.json`
 - YAML frontmatter valid; `model:` tier matches the registry (check 7)
-- Agent appears in the prose rosters (README, CLAUDE.md, list-agents — checks 9/10)
+- Agent appears in the prose rosters (README, `${CLAUDE_PLUGIN_ROOT}/POLICY.md`, list-agents — checks 9/10)
 
 ### 3. Hook Architecture Analysis
 
@@ -96,7 +96,7 @@ ${CLAUDE_PLUGIN_ROOT}/
 ├── scripts/                 ✓ (install + validation + doc generation)
 ├── tests/                   ✓ (consistency + hook harnesses)
 ├── docs/design/             ✓ (hook architecture rationale)
-├── CLAUDE.md                ✓ (agent execution rules)
+├── POLICY.md                ✓ (agent execution rules)
 ├── README.md                ✓ (documentation)
 ├── claude.json              ✓ (agent registry)
 ├── hooks/hooks.json         ✓ (hook registration)

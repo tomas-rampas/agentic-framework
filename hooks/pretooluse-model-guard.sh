@@ -15,6 +15,12 @@ set -u
 # non-empty and itself free of "fable"; an unusable floor (empty, or itself
 # "fable") is what routes a built-in call into the rewrite.
 #
+# EXECUTOR CAP: a call whose subagent_type is bash-expert or powershell-expert
+# (bare, or plugin-scoped as <plugin>:<name>) and whose normalised model
+# contains "opus" (any spelling) is denied: executors are capped at sonnet.
+# haiku, sonnet and no model pass through unchanged, as does any other agent
+# type on opus.
+#
 # MEASURED (Claude Code 2.1.278, Agent tool): updatedInput for the Agent tool
 # must echo the COMPLETE original tool_input, not just the changed key — a
 # partial updatedInput (e.g. {"model":"haiku"} alone) replaces the whole
@@ -68,8 +74,8 @@ set -u
 # sanitised copy that still fails to parse, missing jq) keeps the true
 # fail-open exit-0-silent behaviour.
 #
-# Ported from pretooluse-model-guard.ps1 to POSIX sh. All THREE deny shapes
-# (fork, fable, and the rewrite-fallback deny above) are byte-identical
+# Ported from pretooluse-model-guard.ps1 to POSIX sh. All FOUR deny shapes
+# (fork, fable, the executor cap, and the rewrite-fallback deny above) are byte-identical
 # between the two implementations, since none of them echo caller-supplied
 # text verbatim. REWRITE cases may legitimately differ in JSON escaping of
 # echoed strings (jq emits raw UTF-8, .NET's Utf8JsonWriter may differ on
@@ -120,6 +126,19 @@ case "$model" in
     jq -cn --arg reason "[model-guard] Sub-agents must not run on the top model tier. Re-issue this Agent call with model set to opus, sonnet or haiku. Set AF_MODEL_GUARD=off to disable this guard." \
       '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$reason}}'
     exit 0
+    ;;
+esac
+
+stype_base=${stype##*:}
+case "$stype_base" in
+  bash-expert|powershell-expert)
+    case "$model" in
+      *opus*)
+        jq -cn --arg reason "[model-guard] Executors (bash-expert, powershell-expert) are capped at sonnet. Re-issue this Agent call with model set to sonnet or haiku. Set AF_MODEL_GUARD=off to disable this guard." \
+          '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":$reason}}'
+        exit 0
+        ;;
+    esac
     ;;
 esac
 

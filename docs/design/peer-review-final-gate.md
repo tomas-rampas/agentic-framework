@@ -111,4 +111,4 @@ loops; the per-session semantic matches the documented contract in CLAUDE.md.
 
 Every BLOCKER and MAJOR finding from peer-review-critic resolved (or explicit user
 sign-off) and a `VERDICT: APPROVED` review recorded before the work is declared done — see
-CLAUDE.md "Final Quality Gate".
+POLICY.md "Gate order" and CLAUDE.md "Gates (mechanics)".

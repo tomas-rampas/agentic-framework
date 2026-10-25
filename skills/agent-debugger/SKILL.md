@@ -62,11 +62,11 @@ Also confirm the agent appears in exactly one `.agent_categories` category (chec
 
 ## Playbook: Task Routed to the Wrong Agent
 
-Routing is driven by the `description` frontmatter of each agent (Claude Code matches the task against it) plus the routing tables in `CLAUDE.md` and the `/agentic-framework:delegate` command logic in `commands/delegate.md`.
+Routing is driven by the `description` frontmatter of each agent (Claude Code matches the task against it) plus the routing tables in the plugin's `POLICY.md` (printed at session start) and the `/agentic-framework:delegate` command logic in `commands/delegate.md`.
 
 1. Read the `description` of both the expected agent and the one that won. Overlapping trigger phrasing is the usual cause.
 2. Sharpen the losing agent's description with concrete technologies, file types, and example triggers; remove ambiguous claims from the winner.
-3. Check `CLAUDE.md`'s routing table lists the agent under the right domain, and that `.agent_categories` places it in the correct category.
+3. Check the plugin's `POLICY.md` (`${CLAUDE_PLUGIN_ROOT}/POLICY.md`) agent table lists the agent under the right domain, and that `.agent_categories` places it in the correct category.
 4. For a one-off, add an explicit routing hint in the task itself ("use rust-expert").
 
 Remember the review chain: `code-review-gatekeeper` reviews first; `peer-review-critic` is the mandatory final reviewer of branch-vs-base before work is declared done. Routing review work anywhere else is a routing bug.

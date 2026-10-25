@@ -25,7 +25,9 @@ Launch the `spec-compliance-reviewer` subagent (Task tool) with:
 - the scope to judge: the branch diff against its base if on a feature
   branch, otherwise the working tree,
 - any Spec coverage section a previous `/agentic-framework:build` produced (as a claim to
-  verify, not to trust).
+  verify, not to trust),
+- Project rules: the project's invariants the spec's acceptance depends on (test commands,
+  conventions); the reviewer does not load CLAUDE.md.
 
 ## Relay
 

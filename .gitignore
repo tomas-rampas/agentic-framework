@@ -4,6 +4,7 @@
 # But not these files
 !/claude.json
 !/CLAUDE.md
+!/POLICY.md
 !/.gitignore
 !/.gitattributes
 !/LICENSE

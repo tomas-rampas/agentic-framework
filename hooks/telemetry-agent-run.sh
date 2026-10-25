@@ -9,7 +9,10 @@
 #           status "launched", launched_at, agent_id (cleaned, max 64 characters); no duration. The over-cap tail window drops its partial first line.
 #           Any other response (older builds): ended_at, duration_s, status completed, reviewer verdict.
 #   Stop -> <telemetry>/<session>/agents/subagent-<agent_id>.json  (actual model, tokens, tool_use_id,
-#           started_at/duration_s from the transcript span) and the launch record with the same
+#           started_at/duration_s from the transcript's first-to-last timestamp span, verdict (null when
+#           no VERDICT line), output_final: tokens.output counts, per message.id, the line with a non-null
+#           stop_reason; output_final is false when some message had none and its largest count was used)
+#           and the launch record with the same
 #           agent_id is completed (ended_at, duration_s, model_actual, verdict from the transcript's
 #           SubagentHandback report, read from the LAST 16 MiB; tokens from the first 16 MiB). An untyped event without a transcript writes nothing.
 # Silent by design: an empty PreToolUse output allows the tool call, so nothing is ever
@@ -50,6 +53,13 @@ parse_verdict() {
   tr -d '\r' | grep -E '^[[:space:]]*VERDICT:[[:blank:]]*(APPROVED|CHANGES_REQUIRED)[[:blank:]]*$' \
     | tail -n 1 | sed -E 's/.*VERDICT:[[:blank:]]*([A-Z_]+).*/\1/'
 }
+# Transcript read cap in bytes; AF_TELEMETRY_TRANSCRIPT_CAP overrides it (tests use a small cap).
+cap=${AF_TELEMETRY_TRANSCRIPT_CAP:-16777216}
+case "$cap" in *[!0-9]*) cap=16777216 ;; esac
+cap=$(printf '%s' "$cap" | sed -E 's/^0+//')   # strip leading zeros: "00" -> empty -> default
+case "$cap" in ''|0) cap=16777216 ;; esac
+[ "${#cap}" -gt 10 ] && cap=1073741824          # more than 10 digits: beyond any clamp, avoids overflow
+[ "$cap" -gt 1073741824 ] && cap=1073741824     # clamp to 1 GiB
 is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer|code-review-gatekeeper) return 0 ;; esac; return 1; }
 
 # Token totals + last model over a transcript file (read through a 16 MiB cap into $work/lines), as one
@@ -59,7 +69,7 @@ is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer|code-re
 # so sidechain lines are NOT excluded here (unlike the main-transcript accounting).
 sum_transcript() {
   # jq reads a FILE (piping into the native jq.exe is ~7x slower); $work is trap-covered.
-  head -c 16777216 "$1" | tr -d '\r' > "$work/lines" || return 1
+  head -c "$cap" "$1" | tr -d '\r' > "$work/lines" || return 1
   jq -c -n -R '
     [inputs | fromjson? | objects
      | select(.type == "assistant" and (.message | type) == "object"
@@ -67,14 +77,25 @@ sum_transcript() {
      | .message as $m
      | {id: (($m.id | strings | .[0:200]) // ""),
         model: (($m.model | strings | .[0:100]) // null),
+        fin: ($m.stop_reason != null),
         u: {input: ($m.usage.input_tokens | numbers // 0),
             output: ($m.usage.output_tokens | numbers // 0),
             cache_read: ($m.usage.cache_read_input_tokens | numbers // 0),
             cache_creation: ($m.usage.cache_creation_input_tokens | numbers // 0)}}] as $ls
+    # Per id keep the final line (non-null stop_reason: it carries the real output count; earlier
+    # lines hold a placeholder of about 8-11); with no final line, the line with the most output.
     | (reduce $ls[] as $l ([];
-        if $l.id != "" and (.[-1].id == $l.id) then .[-1] = $l else . + [$l] end)) as $m
+        if $l.id != "" and (.[-1].id == $l.id) then
+          (.[-1]) as $p
+          | if $l.fin then .[-1] = $l
+            elif $p.fin then .
+            elif $l.u.output >= $p.u.output then .[-1] = $l
+            else . end
+        else . + [$l] end)) as $m
     | reduce $m[] as $l
-        ({model: null, tokens: {input: 0, output: 0, cache_read: 0, cache_creation: 0}};
+        ({model: null, output_final: true, tokens: {input: 0, output: 0, cache_read: 0, cache_creation: 0}};
+         .output_final = (.output_final and $l.fin)
+         |
          .tokens.input += $l.u.input
          | .tokens.output += $l.u.output
          | .tokens.cache_read += $l.u.cache_read
@@ -178,19 +199,26 @@ case "$event" in
     name=${atype#agentic-framework:}
     sums='{}'
     first_ts=""
+    last_ts=""
     hb=""
     if [ "$readable" = 1 ]; then
       sums=$(sum_transcript "$tpath") || sums='{}'
       if [ -f "$work/lines" ]; then
         first_ts=$(jq -r -n -R 'first(inputs | fromjson? | objects) | .timestamp | strings' "$work/lines" | tr -d '\r')
-        if is_reviewer "$name"; then
-          hb_src="$work/lines"
-          tsize=$(wc -c < "$tpath" 2>/dev/null | tr -d '[:space:]')
-          case "$tsize" in ''|*[!0-9]*) tsize=0 ;; esac
-          if [ "$tsize" -gt 16777216 ]; then
-            # the report is the file's tail, beyond the capped head read
-            if tail -c 16777216 -- "$tpath" | sed 1d | tr -d '\r' > "$work/tail"; then hb_src="$work/tail"; fi
+        last_ts=$(jq -r -n -R '[inputs | fromjson? | objects | .timestamp | strings] | last // empty' "$work/lines" | tr -d '\r')
+        hb_src="$work/lines"
+        tsize=$(wc -c < "$tpath" 2>/dev/null | tr -d '[:space:]')
+        case "$tsize" in ''|*[!0-9]*) tsize=0 ;; esac
+        if [ "$tsize" -gt "$cap" ]; then
+          # beyond the capped head read: the last timestamp (REQ-014) and a reviewer's report
+          # are in the file's tail; the tail window drops its partial first line
+          if tail -c "$cap" -- "$tpath" | sed 1d | tr -d '\r' > "$work/tail"; then
+            hb_src="$work/tail"
+            tail_ts=$(jq -r -n -R '[inputs | fromjson? | objects | .timestamp | strings] | last // empty' "$work/tail" | tr -d '\r')
+            if [ -n "$tail_ts" ]; then last_ts=$tail_ts; fi
           fi
+        fi
+        if is_reviewer "$name"; then
           hb=$(jq -r -n -R '
             def blocks: (.message | if type == "object" then .content else null end) | if type == "array" then . else [] end;
             [inputs | fromjson? | objects | select(.type == "assistant")] as $a
@@ -237,15 +265,17 @@ case "$event" in
         | write_record "$linked"
     fi
     jq -n -c --arg id "$aid" --arg type "$atype" --arg name "$name" --arg now "$now" \
-      --arg verdict "$verdict" --arg first "$first_ts" --arg tuid "$tuid_link" --slurpfile sums "$work/sums.json" '
+      --arg verdict "$verdict" --arg first "$first_ts" --arg last "$last_ts" --arg tuid "$tuid_link" --slurpfile sums "$work/sums.json" '
       def ts: sub("\\.[0-9]+"; "") | fromdateiso8601;
       (try ($first | ts) catch null) as $f
+      | (try ($last | ts) catch null) as $l
       | {agent_id: $id, agent_type: $type, agent_name: $name, ended_at: $now,
          tool_use_id: (if $tuid == "" then null else $tuid end),
          started_at: (if $f != null then $first else null end),
-         duration_s: (if $f != null then (($now | ts) - $f) else null end)}
-      + (if $verdict == "" then {} else {verdict: $verdict} end)
-      + (if $sums[0].tokens then {model_actual: $sums[0].model, tokens: $sums[0].tokens} else {} end)' \
+         duration_s: (if $f != null and $l != null then ($l - $f)
+                      elif $f != null then (($now | ts) - $f) else null end),
+         verdict: (if $verdict == "" then null else $verdict end)}
+      + (if $sums[0].tokens then {model_actual: $sums[0].model, tokens: $sums[0].tokens, output_final: $sums[0].output_final} else {} end)' \
       | write_record "$adir/subagent-$aid.json"
     ;;
 esac

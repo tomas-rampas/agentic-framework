@@ -413,6 +413,55 @@ section "[GATE-C] No marker blocks"
   rm -rf "$workdir"
 }
 
+section "[SESSION-START-POLICY] byte-identical stdout across sh and pwsh"
+{
+  ss_workdir="$(make_work_dir)" || exit 2
+  ss_repo="$ss_workdir/repo"; mkdir -p "$ss_repo"; make_test_repo "$ss_repo"
+  ss_plain="$ss_workdir/plain"; mkdir -p "$ss_plain/sub"
+  ss_marker='<!-- agentic-framework: policy inline -->'
+
+  # check_ss_equiv <label> <source> <cwd>   (compares raw stdout bytes incl. the final newline)
+  check_ss_equiv() {
+    local label="$1" src="$2" cwd="$3" cwd_win payload_sh payload_ps
+    cwd_win="$(cygpath -m "$cwd" 2>/dev/null || printf '%s' "$cwd")"
+    payload_sh=$(printf '{"session_id":"e","hook_event_name":"SessionStart","source":"%s","cwd":"%s"}' "$src" "$cwd")
+    payload_ps=$(printf '{"session_id":"e","hook_event_name":"SessionStart","source":"%s","cwd":"%s"}' "$src" "$cwd_win")
+    printf '%s' "$payload_sh" | CLAUDE_PLUGIN_ROOT="$SRC_REPO" sh "$SRC_REPO/hooks/session-start-context.sh" > "$ss_workdir/o.sh" 2>/dev/null
+    local rc_sh=$?
+    printf '%s' "$payload_ps" | CLAUDE_PLUGIN_ROOT="$(cygpath -m "$SRC_REPO" 2>/dev/null || printf '%s' "$SRC_REPO")" pwsh -NoProfile -File "$SRC_REPO/hooks/session-start-context.ps1" > "$ss_workdir/o.ps" 2>/dev/null
+    local rc_ps=$?
+    if [ "$rc_sh" -eq 0 ] && [ "$rc_ps" -eq 0 ] && cmp -s "$ss_workdir/o.sh" "$ss_workdir/o.ps"; then
+      _pass "$label: stdout byte-identical (sh $(wc -c < "$ss_workdir/o.sh" | tr -d ' ') bytes)"
+    else
+      _fail "$label" "rc sh=$rc_sh ps=$rc_ps, bytes sh=$(wc -c < "$ss_workdir/o.sh" | tr -d ' ') ps=$(wc -c < "$ss_workdir/o.ps" | tr -d ' ')"
+    fi
+  }
+
+  check_ss_equiv "startup, scratch dir" startup "$ss_plain"
+  check_ss_equiv "resume, scratch dir (no output)" resume "$ss_plain"
+  check_ss_equiv "fork, scratch dir (no output)" fork "$ss_plain"
+  check_ss_equiv "clear, git repo (branch line + policy)" clear "$ss_repo"
+  check_ss_equiv "compact, git repo" compact "$ss_repo"
+  check_ss_equiv "unknown source (no output)" other "$ss_plain"
+
+  printf '%s\n' "$ss_marker" > "$ss_repo/CLAUDE.md"
+  check_ss_equiv "marker in <cwd>/CLAUDE.md (branch line only)" startup "$ss_repo"
+  printf '%s\n' "$ss_marker" > "$ss_plain/sub/CLAUDE.md"
+  check_ss_equiv "marker only in a child directory (policy printed)" startup "$ss_plain"
+  printf '# p\r\n%s\r\n' "$ss_marker" > "$ss_plain/CLAUDE.md"
+  check_ss_equiv "marker with CRLF line endings" compact "$ss_plain"
+  printf '\357\273\277%s\n# p\n' "$ss_marker" > "$ss_plain/CLAUDE.md"
+  check_ss_equiv "marker on line 1 after a UTF-8 BOM" startup "$ss_plain"
+  printf '# p\r%s\n' "$ss_marker" > "$ss_plain/CLAUDE.md"
+  check_ss_equiv "bare CR before the marker on the same line" startup "$ss_plain"
+  printf '# p\n%s\n' "${ss_marker%-->}$(printf '\342\200\213')-->" > "$ss_plain/CLAUDE.md"
+  check_ss_equiv "U+200B inside the marker line (policy printed)" startup "$ss_plain"
+  printf '%s\0junk\n' "$ss_marker" > "$ss_plain/CLAUDE.md"
+  check_ss_equiv "NUL byte after the marker on the same line (policy printed)" startup "$ss_plain"
+
+  rm -rf "$ss_workdir"
+}
+
 section "[MODEL-GUARD] byte-identical (deny) / canonical-identical (rewrite) stdout across sh and pwsh"
 {
   # check_guard_equiv <label> <payload> <expect: deny|silent|rewrite> [EXTRA_ENV_VAR=value ...]
@@ -526,6 +575,17 @@ section "[MODEL-GUARD] byte-identical (deny) / canonical-identical (rewrite) std
   # but the top-tier rule still binds even for an unrecognised agent.
   check_guard_equiv "edge016-unknown-agent-silent" '{"tool_input":{"subagent_type":"my-custom-agent"}}' silent
   check_guard_equiv "edge016-unknown-agent-fable" '{"tool_input":{"subagent_type":"my-custom-agent","model":"fable"}}' deny
+
+  # REQ-007 / EDGE-003: executors capped at sonnet
+  check_guard_equiv "req007-bash-opus" '{"tool_input":{"subagent_type":"bash-expert","model":"opus"}}' deny
+  check_guard_equiv "req007-ps-scoped-claude-opus" '{"tool_input":{"subagent_type":"agentic-framework:powershell-expert","model":"claude-opus-5-5"}}' deny
+  check_guard_equiv "req007-bash-Opus" '{"tool_input":{"subagent_type":"bash-expert","model":"Opus"}}' deny
+  check_guard_equiv "req007-bash-OPUS" '{"tool_input":{"subagent_type":"bash-expert","model":"OPUS"}}' deny
+  check_guard_equiv "req007-bash-opus-5-5" '{"tool_input":{"subagent_type":"bash-expert","model":"opus-5-5"}}' deny
+  check_guard_equiv "req007-bash-sonnet" '{"tool_input":{"subagent_type":"bash-expert","model":"sonnet"}}' silent
+  check_guard_equiv "req007-bash-no-model" '{"tool_input":{"subagent_type":"bash-expert"}}' silent
+  check_guard_equiv "req007-rust-opus" '{"tool_input":{"subagent_type":"rust-expert","model":"opus"}}' silent
+  check_guard_equiv "req007-bash-opus-off" '{"tool_input":{"subagent_type":"bash-expert","model":"opus"}}' silent AF_MODEL_GUARD=off
 
   # EDGE-019 rewrite integrity: every original key preserved (019b) and a
   # payload built to catch a lossy .ps1 (019c) — Czech diacritics, an emoji

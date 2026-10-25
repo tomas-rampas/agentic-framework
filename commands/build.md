@@ -57,7 +57,15 @@ Read the **whole spec** before writing anything: every REQ/EDGE item and its
   criterion that cannot be honoured is the blocker in the first bullet of this
   section.
   Frame each delegated task with the REQ-IDs it delivers, their acceptance
-  criteria and the `Pinned decisions` block.
+  criteria, the `Pinned decisions` block and a `Project rules` block. You fill
+  `Project rules` from the project's CLAUDE.md with the items the todo needs: the
+  scratch directory, the commit message rules, the test and build commands, and the
+  conventions the files touched follow; for a review gate or system-architect, the project's
+  invariants and hard rules the diff could violate (for example, in this framework: twin
+  equivalence, gate limits, suite policy; anything the project CLAUDE.md calls a rule); for any agent that edits files, POLICY.md's
+  `Scratch files and shell edits` rules, verbatim. Sub-agents no longer load CLAUDE.md, so the
+  brief is the only carrier of these rules.
+  Per-call `effort` follows `/agentic-framework:delegate`'s Routing → Model tier.
 - Honour the project's quality bar (build/lint/format/tests clean) exactly as
   the `/agentic-framework:delegate` command §4 defines it.
 - For a substantial diff, once the bar is green, the `code-scoring-loop`
@@ -88,6 +96,12 @@ List each applied `Pinned decisions` doc-update item under the ID it pins.
 3. On `VERDICT: CHANGES_REQUIRED` — apply **each** `Fix:` from the report
    (delegating to specialists as in §1), re-run the quality bar, update the
    coverage section, and launch a **fresh** `/agentic-framework:review-spec` review.
+   A finished agent is never resumed with SendMessage for a fix round or a
+   re-review. Each fix round and each re-review starts a fresh agent whose brief
+   carries (a) the reviewer findings verbatim, with file and line, (b) the diff or
+   commit range since the last round, not the whole branch, (c) the acceptance
+   criteria the fix must keep green and the test command, (d) the todo's
+   `Pinned decisions`, (e) the `Project rules` block.
 4. Iteration cap: **3 reviews**. If the third review still fails, stop and
    report — the remaining findings, what you tried, and your best diagnosis
    (usually a spec defect or a genuinely hard fix). Never loop indefinitely

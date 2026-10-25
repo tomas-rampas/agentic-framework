@@ -276,7 +276,7 @@ Works well with:
 Agent information sourced from:
 1. **${CLAUDE_PLUGIN_ROOT}/agents/*.md** - Agent definitions and capabilities
 2. **${CLAUDE_PLUGIN_ROOT}/claude.json** - Agent configuration and models
-3. **${CLAUDE_PLUGIN_ROOT}/CLAUDE.md** - Agent execution rules and routing
+3. **${CLAUDE_PLUGIN_ROOT}/POLICY.md** - Agent execution rules and routing
 
 ## Quick Filters
 

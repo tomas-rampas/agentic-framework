@@ -538,6 +538,86 @@ git -C $scratch checkout -q feature/x
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'c3'; cwd = $workRoot })
 Assert 'silent outside a git worktree' ($r.Code -eq 0 -and -not $r.Out)
 
+$policyText = [IO.File]::ReadAllText((Join-Path $repoRoot 'POLICY.md')).TrimEnd("`n")
+$marker = '<!-- agentic-framework: policy inline -->'
+$polDir = Join-Path $workRoot 'policy-cwd'
+New-Item -ItemType Directory -Force -Path (Join-Path $polDir 'sub') | Out-Null
+$env:CLAUDE_PLUGIN_ROOT = $repoRoot
+
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p1'; source = 'startup'; cwd = $polDir })
+Assert 'policy: startup in scratch dir prints POLICY.md exactly' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p2'; source = 'startup'; cwd = $scratch })
+$lines = $r.Out -split "`n", 2
+Assert 'policy: git repo prints branch line, then POLICY.md exactly' ($r.Code -eq 0 -and $lines[0] -match 'ahead of' -and $lines[1] -ceq $policyText)
+
+foreach ($src in 'clear', 'compact') {
+    $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p3'; source = $src; cwd = $polDir })
+    Assert "policy: source $src prints the policy" ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+}
+foreach ($src in 'resume', 'fork') {
+    $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p3b'; source = $src; cwd = $polDir })
+    Assert "policy: source $src prints nothing" ($r.Code -eq 0 -and -not $r.Out)
+}
+
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p4'; source = 'other'; cwd = $polDir })
+Assert 'policy: unknown source prints no policy' ($r.Code -eq 0 -and -not $r.Out)
+
+Set-Content -Path (Join-Path $scratch 'CLAUDE.md') -Value "# proj`n$marker" -NoNewline
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p5'; source = 'startup'; cwd = $scratch })
+Assert 'policy: marker in <cwd>/CLAUDE.md suppresses the policy, branch line kept' ($r.Code -eq 0 -and $r.Out -match 'ahead of' -and $r.Out -notmatch 'Agentic Framework Policy')
+Remove-Item (Join-Path $scratch 'CLAUDE.md') -Force
+
+[IO.File]::WriteAllText((Join-Path $polDir 'CLAUDE.md'), "# proj`r`n$marker`r`n")
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p6'; source = 'compact'; cwd = $polDir })
+Assert 'policy: marker with CRLF line endings is honoured' ($r.Code -eq 0 -and -not $r.Out)
+
+[IO.File]::WriteAllBytes((Join-Path $polDir 'CLAUDE.md'), [byte[]](0xEF, 0xBB, 0xBF) + [Text.Encoding]::UTF8.GetBytes("$marker`n# proj`n"))
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p6b'; source = 'startup'; cwd = $polDir })
+Assert 'policy: marker on line 1 after a UTF-8 BOM is honoured' ($r.Code -eq 0 -and -not $r.Out)
+
+[IO.File]::WriteAllText((Join-Path $polDir 'CLAUDE.md'), "# proj`r$marker`n")
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p6c'; source = 'startup'; cwd = $polDir })
+Assert 'policy: bare CR before the marker on the same line does not suppress the policy' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+
+[IO.File]::WriteAllText((Join-Path $polDir 'CLAUDE.md'), "# proj`n$marker trailing`n")
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p7'; source = 'startup'; cwd = $polDir })
+Assert 'policy: near-miss marker line does not suppress the policy' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+Remove-Item (Join-Path $polDir 'CLAUDE.md') -Force
+
+Set-Content -Path (Join-Path $polDir 'sub/CLAUDE.md') -Value $marker
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p8'; source = 'startup'; cwd = $polDir })
+Assert 'policy: marker only in <cwd>/sub/CLAUDE.md still prints the policy' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+
+Set-Content -Path (Join-Path $workRoot 'CLAUDE.md') -Value $marker
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p9'; source = 'startup'; cwd = $polDir })
+Assert "policy: marker only in the parent's CLAUDE.md still prints the policy" ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+Remove-Item (Join-Path $workRoot 'CLAUDE.md') -Force
+
+# U+200B inside the marker line: ordinal compare, so it is a different line and the policy prints.
+$zw = $marker.Insert($marker.Length - 4, [string][char]0x200B)
+[IO.File]::WriteAllText((Join-Path $polDir 'CLAUDE.md'), "$zw`n", [Text.UTF8Encoding]::new($false))
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p9b'; source = 'startup'; cwd = $polDir })
+Assert 'policy: marker with U+200B inside does not match, policy printed' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+Remove-Item (Join-Path $polDir 'CLAUDE.md') -Force
+
+# Unreadable <cwd>/CLAUDE.md (opened with no sharing): the read fails, the policy is printed.
+$lockedMd = Join-Path $polDir 'CLAUDE.md'
+[IO.File]::WriteAllText($lockedMd, "$marker`n")
+$fs = [IO.File]::Open($lockedMd, 'Open', 'Read', 'None')
+try {
+    $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p9c'; source = 'startup'; cwd = $polDir })
+} finally { $fs.Dispose() }
+Assert 'policy: unreadable <cwd>/CLAUDE.md prints the policy (stdout equals POLICY.md)' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+Remove-Item $lockedMd -Force
+
+$emptyRoot = Join-Path $workRoot 'policy-emptyroot'
+New-Item -ItemType Directory -Force -Path $emptyRoot | Out-Null
+$env:CLAUDE_PLUGIN_ROOT = $emptyRoot
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p10'; source = 'startup'; cwd = $polDir })
+Remove-Item Env:\CLAUDE_PLUGIN_ROOT
+Assert 'policy: missing POLICY.md prints nothing extra, exit 0' ($r.Code -eq 0 -and -not $r.Out)
+
 $r = Invoke-Hook 'session-start-context.ps1' '{{{'
 Assert 'fail-open on malformed stdin' ($r.Code -eq 0)
 
@@ -572,6 +652,25 @@ try {
     foreach ($mv in 'Fable', 'FABLE') {
         $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'x'; model = $mv } })
         Assert "mixed-case ($mv) denied like fable (EDGE-002)" ($r.Code -eq 0 -and $r.Out -match '"permissionDecision":"deny"')
+    }
+
+    # REQ-007 / EDGE-003: executors are capped at sonnet
+    foreach ($c in @(@('bash-expert','opus'), @('agentic-framework:powershell-expert','claude-opus-5-5'), @('bash-expert','Opus'), @('bash-expert','OPUS'), @('bash-expert','opus-5-5'))) {
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = $c[0]; model = $c[1] } })
+        Assert "executor $($c[0]) + $($c[1]) denied (REQ-007)" ($r.Code -eq 0 -and $r.Out -match '"permissionDecision":"deny"' -and $r.Out -match 'capped at sonnet')
+    }
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'bash-expert'; model = 'sonnet' } })
+    Assert 'executor + sonnet allowed (REQ-007)' ($r.Code -eq 0 -and -not $r.Out)
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'bash-expert' } })
+    Assert 'executor with no model allowed and not rewritten (REQ-007)' ($r.Code -eq 0 -and -not $r.Out)
+    $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'rust-expert'; model = 'opus' } })
+    Assert 'non-executor + opus allowed (REQ-007)' ($r.Code -eq 0 -and -not $r.Out)
+    try {
+        $env:AF_MODEL_GUARD = 'off'
+        $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'bash-expert'; model = 'opus' } })
+        Assert 'executor + opus with AF_MODEL_GUARD=off allowed (REQ-007)' ($r.Code -eq 0 -and -not $r.Out)
+    } finally {
+        Remove-Item Env:\AF_MODEL_GUARD -ErrorAction SilentlyContinue
     }
 
     $r = Invoke-Hook 'pretooluse-model-guard.ps1' (New-Payload @{ tool_input = @{ subagent_type = 'Explore' } })

@@ -58,7 +58,7 @@ For this command the engine run itself is the candidate for delegation: inputs o
 run inline; inputs of hundreds of MB (or many files) take minutes and produce progress output — delegate that
 single run to the executor with the exact command below, ask for the integer exit code plus the last 30 lines of
 stderr, and never accept "it passed" without the code. Runs that may exceed 10 minutes follow the detached
-protocol from `CLAUDE.md` (log file + exit-code marker, confirmed alive by a growing log).
+protocol from `${CLAUDE_PLUGIN_ROOT}/POLICY.md` (log file + exit-code marker, confirmed alive by a growing log).
 
 ## Workflow
 

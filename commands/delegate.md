@@ -31,7 +31,7 @@ spans domains. Available specialists:
 - **Quality / docs:** `code-review-gatekeeper`, `peer-review-critic`, `technical-docs-writer`
 
 ### Model tier — choose it on every delegation
-Apply the **Model Tiering Policy** in CLAUDE.md. Each agent's frontmatter `model:` is its
+Apply the **Model tiering** rules in the plugin's `POLICY.md` (printed at session start). Each agent's frontmatter `model:` is its
 default tier; the Agent tool's `model` parameter overrides it for one call.
 
 - **Default:** omit `model` for framework agents and let the frontmatter tier apply.
@@ -45,6 +45,10 @@ default tier; the Agent tool's `model` parameter overrides it for one call.
 - **One tier up, with the reason stated in the delegation,** for concurrency or unsafe
   code, auth or crypto, a refactor across many files, an executor asked to author rather
   than run, or after two failed review rounds at the default tier.
+- **Effort, per call.** Pass `effort: low` on a delegation that is a rename, scaffolding,
+  formatting, a single-file edit with an exact spec, or applying a reviewer's one-line
+  finding. Omit `effort` otherwise, so the agent's frontmatter default applies. A per-call
+  override never lowers a reviewer below `high`.
 - **Never move a reviewer or gate down. Never pass `model: fable`** — you are the only
   session on the top tier, and the `pretooluse-model-guard` hook denies the call.
 - **Delegation must still pay for itself:** when you already hold the exact text or the
@@ -70,6 +74,20 @@ with JWT issuing/validation + ASP.NET Core identity integration, tests in
   in the delegation itself (see Routing → Model tier), so the reason is on the record.
 - **Pinned decisions:** §3's reconciliation block is a required part of every
   brief for the todo, gate briefs included; a plan or ticket todo reconciles alike.
+- **Project rules:** a block you fill from the project's CLAUDE.md with the items the todo
+  needs: the scratch directory, the commit message rules, the test and build commands, and
+  the conventions the files touched follow; for a review gate or system-architect, the project's
+  invariants and hard rules the diff could violate (for example, in this framework: twin
+  equivalence, gate limits, suite policy; anything the project CLAUDE.md calls a rule); for any agent that edits files, POLICY.md's
+  `Scratch files and shell edits` rules, verbatim. Sub-agents no longer load CLAUDE.md, so the
+  brief is the only carrier of these rules; an item left out of the block does not exist
+  for the agent.
+- **Fresh agent for every later round.** A finished agent is never resumed with
+  SendMessage for a fix round or a re-review. Start a fresh agent whose brief carries
+  (a) the reviewer findings verbatim, with file and line, (b) the diff or commit range
+  since the last round, not the whole branch, (c) the acceptance criteria the fix must keep
+  green and the test command, (d) the todo's `Pinned decisions`, (e) the `Project rules`
+  block.
 
 ---
 
@@ -147,7 +165,7 @@ For each todo, in dependency order:
    carrying the todo's final diff, so the gates review the docs. On that draft,
    confirm the bar's Docs bullet (§4) and re-run the checks its files feed. A
    todo with stale docs is **not** green. (Scope and the two-message rule = §7.)
-8. Run review gates (§5) — pooled for a skip-class todo.
+8. Run review gates (§5) — pooled for a todo with no security trigger.
 9. Commit (§6) — after the pool's gates, for a pooled todo.
 
 **Parallelism:** parallelize sub-agents only for todos that are independent and
@@ -171,39 +189,44 @@ report a clean state that isn't real.
 
 ## 5. Review gates
 - Route each green + clean todo — a pool as one, see **Pool** — through
-  `code-review-gatekeeper` and, unless in the skip class below, `security-specialist`.
+  `code-review-gatekeeper` and, when a trigger below fires, `security-specialist`.
   Address findings before committing; a blocker you can't resolve: stop, report.
 - **When building against a spec**, also route the todo through
   `spec-compliance-reviewer` as a **scoped review** naming exactly the
   REQ-/EDGE-IDs the todo delivers (the agent verifies only those; other spec
   items report as out-of-scope, not FAIL). A `CHANGES_REQUIRED` verdict on the
   todo's own IDs blocks the commit like any other finding.
-- **Skip class for the security pass.** `security-specialist` is skipped for a
-  todo whose every changed file is documentation (agent-executed Markdown
-  included) or declarative configuration (only JSON, YAML, TOML, INI; never a
-  hook, CI, settings or MCP file, nor agent frontmatter), whose change adds or
-  changes no credential, token, permission, network endpoint, dependency, tool
-  grant, shell command, run step, post/push/publish step or trust boundary, and
-  loosens no guardrail, gate or security setting; state it in the commit message
-  and summary as `security pass: skipped (docs/config class)`. Skipped, never
-  run at a lower tier. Class is judged on the final diff, fixes included; the
-  gatekeeper's brief carries the claim and this test; unconfirmed, the pass runs. A **mixed**
-  todo, or one gaining an out-of-class file or change, leaves the skip class at
-  once and ends the pool as its last todo; full gates then cover the pool's diff, no skip stated.
-- **Pool.** A maximal run of consecutive skip-class todos is one pool (a single
+- **Security pass triggers.** `security-specialist` runs when the todo's final diff
+  touches any of: authentication, cryptography, secrets, network endpoints,
+  dependencies, hooks or CI, permissions or tool grants (agent `tools:` and
+  `disallowedTools:` included), shell command construction, a trust boundary,
+  or loosens a guardrail, gate, validation or security setting (deletions included).
+  Otherwise the pass is skipped, and the commit message and summary say
+  `security pass: skipped (no trigger)`. Skipped, never run at a lower tier. The
+  trigger test is judged on the final diff, fixes included; the gatekeeper's brief
+  carries this list and the no-trigger claim; a claim the gatekeeper does not confirm
+  runs the pass. A todo whose diff, or a fix to it, gains a trigger runs the pass at
+  once and ends the pool as its last todo; full gates then cover the pool's diff, no
+  skip stated.
+- **Pool.** A pool is a maximal run of consecutive todos without a trigger (a single
   one: a pool of one). After the last todo's docs step, and before any other
   todo starts, `code-review-gatekeeper` (and, against a spec, the scoped
   `spec-compliance-reviewer` review naming the union of the pool's IDs) runs
   once over the pool's combined uncommitted diff — the paths its todos'
   delegations reported changing, plus your inline edits. On `CHANGES_REQUIRED`,
   apply each fix to the todo whose file or ID it names (a shared file, or no
-  single owner: the later todo) and run a fresh round over the whole pool; the
-  pool's commits wait for it.
-- **Second rounds.** After a reviewer's findings are applied, the same reviewer
+  single owner: the later todo) and run a fresh round over the whole pool, by a
+  fresh reviewer agent (see **Second rounds**); the pool's commits wait for it.
+- **Second rounds.** A finished agent is never resumed with SendMessage, neither the
+  implementer for a fix round nor the reviewer for a re-review: each later round
+  starts a fresh agent with the brief of §"How to frame a delegated task" (findings
+  verbatim with file and line, the diff or commit range since the last round, the
+  criteria and test command, the `Pinned decisions`, the `Project rules` block).
+  After a reviewer's findings are applied, that reviewer role
   runs a second round only after `CHANGES_REQUIRED` (for the gatekeeper and the
   security pass: a must-fix, Critical or High finding; a round with none is `APPROVED`), a fix
   that changed an algorithm, interface or data flow, or a fix that adds, changes
-  or loosens an item on the skip class's change list. This covers every reviewer
+  or removes a security trigger. This covers every reviewer
   this flow runs, the Final Quality Gate's `peer-review-critic` round included
   (the Stop hook forces it only after `CHANGES_REQUIRED`); cap 3 rounds per
   reviewer and todo or pool, then stop and report. `APPROVED` with minor findings
@@ -265,6 +288,8 @@ Example — *"auth with DB persistence and UI"*:
 
 ## Failure handling — applies throughout
 - If a sub-agent returns unusable output: retry once with clarified
-  instructions, then stop and report.
+  instructions, then stop and report. The retry is a fresh agent whose brief
+  carries the clarified task and the original brief's items (a)–(e) of "Fresh agent
+  for every later round"; a finished agent is never resumed with SendMessage.
 - Always prefer stopping and surfacing a problem over guessing or fabricating
   success.

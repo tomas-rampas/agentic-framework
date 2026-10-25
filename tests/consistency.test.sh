@@ -398,18 +398,18 @@ section "[7] Stale architecture description: claude.json set to '18-agent' -> no
 }
 
 # ===========================================================================
-# CASE 8 - Roster drift in prose table: delete an agent row from CLAUDE.md.
+# CASE 8 - Roster drift in prose table: delete an agent row from POLICY.md.
 # ===========================================================================
-section "[8] Roster drift: delete an agent row from the CLAUDE.md table -> non-zero"
+section "[8] Roster drift: delete an agent row from the POLICY.md table -> non-zero"
 {
   copy="$(make_copy)"
   _verify_copy "$copy"
-  # Remove the go-expert table row (shape: | **go-expert** | ... |). awk drops
-  # exactly that line, leaving everything else byte-identical.
-  awk '!/^\| \*\*go-expert\*\* \|/' "$copy/CLAUDE.md" > "$copy/CLAUDE.md.tmp" \
-    && mv "$copy/CLAUDE.md.tmp" "$copy/CLAUDE.md"
+  # Drop go-expert from its multi-agent row (shape: | a, go-expert, b | ... |); sed
+  # on the stable "go-expert, " token leaves everything else byte-identical.
+  sed -i.bak 's/go-expert, //' "$copy/POLICY.md" && rm -f "$copy/POLICY.md.bak"
+  ! grep -qF "go-expert" "$copy/POLICY.md" || { echo "case 8 fixture edit did not apply" >&2; exit 1; }
   run_validate "$copy" 9
-  assert_rc_nonzero "validator fails when an agent row is missing from CLAUDE.md table"
+  assert_rc_nonzero "validator fails when an agent row is missing from POLICY.md table"
   assert_out_contains "reports missing-row for go-expert" "missing-row: go-expert"
   rm -rf "$copy"
 }
@@ -738,14 +738,14 @@ section "[22] Drifted marketplace top-level description: set to '99 specialized 
 #           must fail. Injects the exact phrasing the Jul 2026 perf
 #           regression shipped ("delegate all shell execution").
 # ===========================================================================
-section "[23] Policy re-broadening: inject 'delegate all shell execution' into CLAUDE.md -> non-zero (check 14)"
+section "[23] Policy re-broadening: inject 'delegate all shell execution' into POLICY.md -> non-zero (check 14)"
 {
   copy="$(make_copy)"
   _verify_copy "$copy"
-  printf '\nAgents should delegate all shell execution to the executor agents.\n' >> "$copy/CLAUDE.md"
+  printf '\nAgents should delegate all shell execution to the executor agents.\n' >> "$copy/POLICY.md"
   run_validate "$copy" 14
-  assert_rc_nonzero "validator fails when a re-broadening phrase appears in CLAUDE.md"
-  assert_out_contains "reports the re-broadening phrase with its location" "policy re-broadening phrase in CLAUDE.md"
+  assert_rc_nonzero "validator fails when a re-broadening phrase appears in POLICY.md"
+  assert_out_contains "reports the re-broadening phrase with its location" "policy re-broadening phrase in POLICY.md"
   rm -rf "$copy"
 
   # Hook scripts are in scope too (they carry prose comments that could
@@ -761,18 +761,38 @@ section "[23] Policy re-broadening: inject 'delegate all shell execution' into C
 
 # ===========================================================================
 # CASE 24 - Required policy statement removed -> check 14 must fail. Strips
-#           the selective section header from CLAUDE.md, simulating a doc
+#           the selective section header from POLICY.md, simulating a doc
 #           pass that quietly rewrites the policy heading.
 # ===========================================================================
-section "[24] Policy statement removed: strip '(selective)' header from CLAUDE.md -> non-zero (check 14)"
+section "[24] Policy statement removed: strip '## Command execution' header from POLICY.md -> non-zero (check 14)"
 {
   copy="$(make_copy)"
   _verify_copy "$copy"
-  sed -i.bak 's/Command-line Execution Policy (selective)/Command-line Execution Policy/' "$copy/CLAUDE.md" \
-    && rm -f "$copy/CLAUDE.md.bak"
+  sed -i.bak 's/^## Command execution/## Command running/' "$copy/POLICY.md" \
+    && rm -f "$copy/POLICY.md.bak"
+  ! grep -qF "## Command execution" "$copy/POLICY.md" || { echo "case 24 fixture edit did not apply" >&2; exit 1; }
   run_validate "$copy" 14
   assert_rc_nonzero "validator fails when the selective policy header is gone"
-  assert_out_contains "reports the missing required statement" "missing from CLAUDE.md"
+  assert_out_contains "reports the missing required statement" "missing from POLICY.md"
+  rm -rf "$copy"
+
+  # Size cap: POLICY.md grown past 8192 bytes must fail (SessionStart stdout cap).
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  before_size="$(wc -c < "$copy/POLICY.md" | tr -d '[:space:]')"
+  # Pad until the cap is crossed, whatever POLICY.md's current size is (a fixed
+  # pad would make this guard impossible to satisfy once POLICY.md shrinks).
+  _pad=0
+  while [[ "$(wc -c < "$copy/POLICY.md" | tr -d '[:space:]')" -le 8192 ]]; do
+    printf '<!-- padding padding padding padding padding pad -->\n' >> "$copy/POLICY.md"
+    _pad=$((_pad + 1))
+    [[ "$_pad" -lt 1000 ]] || { echo "case 24 size fixture: padding loop did not cross 8192 bytes" >&2; exit 1; }
+  done
+  after_size="$(wc -c < "$copy/POLICY.md" | tr -d '[:space:]')"
+  [[ "$after_size" -gt "$before_size" && "$after_size" -gt 8192 ]] || { echo "case 24 size fixture edit did not apply" >&2; exit 1; }
+  run_validate "$copy" 14
+  assert_rc_nonzero "validator fails when POLICY.md exceeds 8192 bytes"
+  assert_out_contains "reports the size and the limit" "over the 8192-byte limit"
   rm -rf "$copy"
 }
 
@@ -1117,6 +1137,66 @@ EOF
   assert_out_contains "check 15 reports the full roster as valid" "$agent_count agent frontmatter block(s) valid"
   rm -rf "$copy"
 
+  # --- 26te: token-economy rules (h): omitClaudeMd / Artifact / Agent -----
+  # _set_fm_key <file> <key> <value|-> replaces (or, with '-', only removes) the
+  # key line inside the FIRST frontmatter block; a missing key is inserted right
+  # after the opening fence. Independent of whether the key already exists.
+  _set_fm_key() {
+    awk -v k="$2" -v v="$3" '
+      NR==1 { print; if (v != "-") print k ": " v; inblock=1; next }
+      inblock && /^---[[:space:]]*$/ { inblock=0 }
+      inblock && index($0, k ":") == 1 { next }
+      { print }' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+  }
+
+  # 26te1: omitClaudeMd present but not 'true'
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  _set_fm_key "$copy/agents/rust-expert.md" omitClaudeMd false
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails on omitClaudeMd: false"
+  assert_out_contains "reports missing-omitclaudemd for rust-expert" "missing-omitclaudemd: rust-expert"
+  rm -rf "$copy"
+
+  # 26te2: omitClaudeMd key absent
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  _set_fm_key "$copy/agents/rust-expert.md" omitClaudeMd -
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when omitClaudeMd is missing"
+  assert_out_contains "reports missing-omitclaudemd for an absent key" "missing-omitclaudemd: rust-expert"
+  rm -rf "$copy"
+
+  # 26te3: disallowedTools lacks Artifact
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  _set_fm_key "$copy/agents/rust-expert.md" disallowedTools Agent
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when disallowedTools lacks Artifact"
+  assert_out_contains "reports missing-artifact-denial for rust-expert" "missing-artifact-denial: rust-expert"
+  rm -rf "$copy"
+
+  # 26te4: disallowedTools lacks Agent on a non-architect agent
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  _set_fm_key "$copy/agents/rust-expert.md" disallowedTools Artifact
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when disallowedTools lacks Agent on rust-expert"
+  assert_out_contains "reports missing-agent-denial for rust-expert" "missing-agent-denial: rust-expert"
+  rm -rf "$copy"
+
+  # 26te5: GREEN — system-architect may omit Agent (still needs Artifact)
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  _set_fm_key "$copy/agents/system-architect.md" disallowedTools Artifact
+  run_validate "$copy" 15
+  if grep -qF -- "missing-agent-denial: system-architect" <<< "$RUN_OUT"; then
+    _fail "system-architect is exempt from the Agent denial" "validator reported missing-agent-denial: system-architect"
+  else
+    _pass "system-architect is exempt from the Agent denial"
+  fi
+  rm -rf "$copy"
+
   # --- 26q: RED — MCP tools with NO mcpServers key at all (rule f) --------
   # Rule (c) can only compare against a declared list; an agent that declares
   # none used to skip it entirely and pass vacuously. The injected entries name
@@ -1196,37 +1276,52 @@ EOF
 }
 
 # ===========================================================================
-# CASE 27 - CLAUDE.md "Default tier" column vs claude.json (check 9c,
+# CASE 27 - POLICY.md "Tier" column vs claude.json (check 9c,
 #           blocking): a diverged tier and an invalid tier value must each
 #           fail validation, each naming the affected agent row.
 # ===========================================================================
-section "[27] CLAUDE.md Default tier column: diverged + invalid tier -> non-zero (check 9c)"
+section "[27] POLICY.md Tier column: diverged + invalid tier -> non-zero (check 9c)"
 {
-  # --- 27a: flip rust-expert's Default tier cell to a DIFFERENT valid tier
+  # --- 27a: flip product-owner's Tier cell to a DIFFERENT valid tier
   # (opus) than its actual claude.json/frontmatter tier (sonnet). Nothing else
-  # in the copy changes, so the ONLY break is the CLAUDE.md<->claude.json
+  # in the copy changes, so the ONLY break is the POLICY.md<->claude.json
   # tier-column mismatch (check 9c).
   copy="$(make_copy)"
   _verify_copy "$copy"
-  sed -i.bak -E 's/^(\| \*\*rust-expert\*\* \| .* \| )sonnet( \|)$/\1opus\2/' \
-    "$copy/CLAUDE.md" && rm -f "$copy/CLAUDE.md.bak"
+  sed -i.bak -E 's/^(\| product-owner \| )sonnet( \|)/\1opus\2/' \
+    "$copy/POLICY.md" && rm -f "$copy/POLICY.md.bak"
+  grep -qE '^\| product-owner \| opus \|' "$copy/POLICY.md" || { echo "case 27a fixture edit did not apply" >&2; exit 1; }
   run_validate "$copy" 9
-  assert_rc_nonzero "validator fails when CLAUDE.md's tier cell diverges from claude.json"
+  assert_rc_nonzero "validator fails when POLICY.md's tier cell diverges from claude.json"
   # Assert the FAILURE text, not words the 9c pass line also carries ("tier").
-  assert_out_contains "reports a tier mismatch naming rust-expert" "rust-expert tier mismatch"
-  assert_out_contains "names both sides of the mismatch" "CLAUDE.md 'opus' != claude.json 'sonnet'"
+  assert_out_contains "reports a tier mismatch naming product-owner" "product-owner tier mismatch"
+  assert_out_contains "names both sides of the mismatch" "POLICY.md 'opus' != claude.json 'sonnet'"
   rm -rf "$copy"
 
-  # --- 27b: set an INVALID tier value (typo) in one row's Default tier cell.
+  # --- 27b: set an INVALID tier value (typo) in one row's Tier cell.
   # It is not listed in .consistency.model_tiers, so the legal-tier
   # guard must fail it (blocking), naming the row's agent.
   copy="$(make_copy)"
   _verify_copy "$copy"
-  sed -i.bak -E 's/^(\| \*\*rust-expert\*\* \| .* \| )sonnet( \|)$/\1sonnett\2/' \
-    "$copy/CLAUDE.md" && rm -f "$copy/CLAUDE.md.bak"
+  sed -i.bak -E 's/^(\| product-owner \| )sonnet( \|)/\1sonnett\2/' \
+    "$copy/POLICY.md" && rm -f "$copy/POLICY.md.bak"
+  grep -qE '^\| product-owner \| sonnett \|' "$copy/POLICY.md" || { echo "case 27b fixture edit did not apply" >&2; exit 1; }
   run_validate "$copy" 9
-  assert_rc_nonzero "validator fails on an invalid Default tier value in CLAUDE.md"
-  assert_out_contains "reports the invalid tier naming rust-expert" "rust-expert Default tier cell 'sonnett' is not a valid tier"
+  assert_rc_nonzero "validator fails on an invalid Tier value in POLICY.md"
+  assert_out_contains "reports the invalid tier naming product-owner" "product-owner Tier cell 'sonnett' is not a valid tier"
+  rm -rf "$copy"
+
+  # --- 27c: flip product-owner's Effort cell (medium -> high) away from its
+  # frontmatter `effort:` (medium). Only the POLICY.md<->frontmatter effort
+  # column breaks, so the failure must come from the 9c effort sub-assertion.
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/^(\| product-owner \| sonnet \| )medium( \|)/\1high\2/' \
+    "$copy/POLICY.md" && rm -f "$copy/POLICY.md.bak"
+  grep -qE '^\| product-owner \| sonnet \| high \|' "$copy/POLICY.md" || { echo "case 27c fixture edit did not apply" >&2; exit 1; }
+  run_validate "$copy" 9
+  assert_rc_nonzero "validator fails when POLICY.md's effort cell diverges from frontmatter"
+  assert_out_contains "reports an effort mismatch naming product-owner and both values" "product-owner effort mismatch (POLICY.md 'high' != agents/product-owner.md effort 'medium')"
   rm -rf "$copy"
 }
 

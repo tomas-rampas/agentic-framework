@@ -55,7 +55,7 @@ esac
 |--------|-----------------|-------------|
 | Session file | `telemetry/sessions/<session>.json` | `session_id`, `started_at`, `duration_s?`, `model?`, `tokens{input,output,cache_read,cache_creation}` |
 | Agent record | `telemetry/sessions/<session>/agents/<tool_use_id>.json` | `agent_name`, `model_tier`, `background`, `started_at`, `duration_s?`, `status?` (`launched` or `completed`), `agent_id?`, `launched_at?`, `model_actual?`, `verdict?` |
-| Subagent record | `telemetry/sessions/<session>/agents/subagent-<agent_id>.json` | `agent_name`, `agent_type`, `tool_use_id?`, `started_at?`, `duration_s?`, `model_actual?`, `tokens?`, `verdict?` (not counted as invocations; the pre/post record is) |
+| Subagent record | `telemetry/sessions/<session>/agents/subagent-<agent_id>.json` | `agent_name`, `agent_type`, `tool_use_id?`, `started_at?`, `duration_s?`, `model_actual?`, `tokens?`, `output_final?`, `verdict` (null when none) (not counted as invocations; the pre/post record is) |
 | Review marker (fallback) | `peer-review/<session-id>` | line 1 = ISO timestamp; optional `verdict=APPROVED\|CHANGES_REQUIRED`; optional `head=<sha>` |
 | Marker sources (fallback) | `peer-review/<session-id>.verdict-sources` | one line per recorded reviewer instance |
 
@@ -180,9 +180,28 @@ done | jq -R -s --arg cutoff "$CUT" '
 
 Markers are written by the review-gate recorder and predate the telemetry hooks, so the fallback covers sessions from before 5.0.0, but the recorder prunes markers after 7 days, so through this source `last 30 days` and `all time` mean the last week; say so in the report. The PowerShell recorder stamps local time, so a session near the cutoff can land on either side. State which source produced the numbers.
 
+#### Review outcomes per reviewer and token completeness
+
+`subagent-*.json` records carry `verdict` (null when the report has no `VERDICT:` line, same grammar as the recorder) and `output_final` (false when a message had no final usage line and its largest output count was used, so `tokens.output` may be low). Count them per reviewer agent:
+
+```bash
+find "$T" -mindepth 3 -maxdepth 3 -name 'subagent-*.json' -exec cat {} + 2>/dev/null | jq -s --arg cutoff "$CUT" '
+  [.[] | select(.agent_id and ((.started_at // .ended_at // "") >= $cutoff))] as $r
+  | {reviewers: ([$r[] | select(.agent_name == "peer-review-critic" or .agent_name == "spec-compliance-reviewer" or .agent_name == "code-review-gatekeeper")]
+       | group_by(.agent_name)
+       | map({agent: .[0].agent_name,
+              approved: ([.[] | select(.verdict == "APPROVED")] | length),
+              changes_required: ([.[] | select(.verdict == "CHANGES_REQUIRED")] | length),
+              other: ([.[] | select(.verdict != "APPROVED" and .verdict != "CHANGES_REQUIRED")] | length)})),
+     runs: ($r | length),
+     output_not_final: ([$r[] | select(.output_final == false)] | length)}'
+```
+
+`other` counts runs with a null or unrecognised verdict. Sessions that predate these fields have no `verdict` on their subagent records: if `reviewers` is empty, rely on the agent-records and marker results above for outcomes.
+
 ### 5. Render the report
 
-Print the period and the date range first, then three Markdown tables from the JSON above. Round durations to whole seconds (or `1h 02m` above an hour), tokens with thousands separators, cost to 2 decimals, rates to a whole percent.
+Print the period and the date range first, then the Markdown tables from the JSON above. Round durations to whole seconds (or `1h 02m` above an hour), tokens with thousands separators, cost to 2 decimals, rates to a whole percent.
 
 ```
 # Metrics — last 7 days (since 2026-10-13T14:02:11Z)
@@ -213,6 +232,13 @@ Tier distribution: opus 8, sonnet 31, haiku 9, unknown 1
 | Sessions with a review | 5     |
 | Approval rate          | 80%   |
 | Average review cycles  | 1.6   |
+
+## Review outcomes
+| Reviewer              | APPROVED | CHANGES_REQUIRED | Other |
+|-----------------------|----------|------------------|-------|
+| peer-review-critic    | 4        | 2                | 0     |
+| code-review-gatekeeper| 5        | 1                | 1     |
+Runs with output_final: false: 3 of 49 (their output tokens are a lower bound)
 ```
 
 Cost is always printed with a leading `~` and the footer line `Cost is an estimate from a static rates table (snapshot 2026-10-06), not a bill.`

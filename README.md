@@ -12,7 +12,7 @@ This framework extends Claude Code CLI with:
 
 - **21 Specialized Agents** covering the full development lifecycle
 - **Real Enforcement Hooks** — a blocking peer-review Stop gate, a blocking code-review push/PR gate that needs a code-review-gatekeeper review, and a model-tier guard on sub-agent calls, plus session-context and delegation-hint hooks, registered via the plugin's `hooks/hooks.json` and covered by tests
-- **Persistent Agent Memory** — every agent keeps its own institutional knowledge across sessions and projects (`memory: user`, under `~/.claude/agent-memory/<agent>/`), browsed, searched and pruned with `/agentic-framework:knowledge`
+- **Persistent Agent Memory** — every agent keeps its own institutional knowledge across sessions and projects (`memory: user`, under `~/.claude/agent-memory/agentic-framework-<agent>/`), browsed, searched and pruned with `/agentic-framework:knowledge`
 - **Local Telemetry** — silent hooks record sessions, token usage and sub-agent invocations under `~/.claude/.state/telemetry/` (no network, pruned after 30 days); `/agentic-framework:metrics` reports usage, estimated cost and review outcomes
 - **Anti-Drift Consistency System** — dynamic validator, doc generator, and CI gate that keep the registry, docs, and filesystem in lockstep
 - **MCP Integration** — 6 MCP servers ship with the plugin, covering code intelligence, file operations, documentation lookup, structured reasoning, web fetching, and a persistent code-review knowledge graph
@@ -155,6 +155,36 @@ claude
 /agentic-framework:validate-hooks
 /agentic-framework:analyze-framework
 ```
+
+---
+
+### Policy delivery and the CLAUDE.md marker
+
+Since 5.2.0 the plugin delivers the framework policy itself; there is no `CLAUDE.md` to copy into `~/.claude/`. `POLICY.md` at the plugin root (agent table, routing, command execution, model tiering, effort, fix rounds, memory and gate order, about 7 KB) is printed into the session context by the `session-start-context` hook, after its branch line, in every project, on the `startup`, `clear` and `compact` sources. `resume` and `fork` print nothing because the resumed or forked transcript already carries the policy. A SessionStart payload without a `source` prints no policy, and a missing `POLICY.md` prints nothing extra. After updating the plugin or running the migration, start a new session or run `/clear` so the transcript does not keep the older policy text.
+
+**The marker.** A project whose own `CLAUDE.md` already carries the policy can suppress the second copy by putting this exact line in `<project>/CLAUDE.md`:
+
+```
+<!-- agentic-framework: policy inline -->
+```
+
+Only `CLAUDE.md` in the session's working directory is checked: a marker in a parent or child directory does nothing. This repository's own `CLAUDE.md` carries the marker, imports `POLICY.md` with `@POLICY.md` so sessions here load the policy once, and otherwise holds only what developing the framework needs.
+
+**Sub-agents see no CLAUDE.md.** Every agent carries `omitClaudeMd: true`, so a sub-agent loads neither the policy nor your project's own `CLAUDE.md`, whatever its content. The delegation brief's `Project rules` block (scratch directory, commit message rules, test and build commands, conventions of the files touched; for a review gate or system-architect, the project's invariants and hard rules the diff could violate (for example, in this framework: twin equivalence, gate limits, suite policy; anything your `CLAUDE.md` calls a rule); for any agent that edits files, POLICY.md's `Scratch files and shell edits` rules, verbatim) is the only carrier of your project's rules into a sub-agent; a rule you want agents to follow has to be in that block, which `/agentic-framework:delegate` and `/agentic-framework:build` fill from your `CLAUDE.md`.
+
+**Upgrading from 5.1.0 or earlier.** If you copied the framework block into `~/.claude/CLAUDE.md`, that copy now doubles the policy in every session. After updating the plugin, run the migration script once, then start a new session: a session started before the update and resumed after migrating has no policy until `/clear` or compaction, because `resume` prints nothing and the old transcript never held it:
+
+```bash
+# POSIX shell (Linux, macOS, Git Bash)
+sh scripts/migrate-global-claude-md.sh --dry-run     # print the lines that would be removed; change nothing
+sh scripts/migrate-global-claude-md.sh               # migrate ~/.claude/CLAUDE.md
+
+# PowerShell 7
+pwsh -NoProfile -File scripts/migrate-global-claude-md.ps1 -DryRun
+pwsh -NoProfile -File scripts/migrate-global-claude-md.ps1
+```
+
+Run it from the plugin folder (`~/.claude/plugins/cache/agentic-framework/agentic-framework/<version>/`) or from a clone. On POSIX hosts the `session-start-context` hook needs `jq` for the branch line; without it the policy still prints. Migrating while a plugin older than 5.2.0 is installed leaves no policy until the plugin is updated; the script warns when the installed plugin has no `POLICY.md`. Both take an optional path to migrate a file other than `~/.claude/CLAUDE.md`. The script removes only the framework block, from the line `# Claude Code CLI - Agent Execution Framework` to the next top-level heading that is not part of the shipped policy text, and preserves every byte outside it. Before changing anything it writes a timestamped backup beside the file (`CLAUDE.md.bak-<yyyyMMdd-HHmmss>`). It is idempotent: a second run finds nothing to do. Exit codes: `0` migrated, dry run, or nothing to do; `2` usage or file error; `3` refused because the block holds lines that match none of the shipped reference policies (`scripts/legacy-policy/`), meaning you customised it or it predates 4.7.0; the differing lines are printed, nothing is changed, and no backup is written, so move your own lines out by hand and run it again.
 
 ---
 
@@ -321,9 +351,30 @@ How the commands, self-scoring loop, review chain, and Stop gate fit together:
 | **devops-orchestrator** | CI/CD, containers, cloud deployment, monitoring |
 | **technical-docs-writer** | API docs, user guides, architecture docs |
 
+### Agent frontmatter
+
+Besides `name`, `description`, `model`, `tools` and `memory: user`, each `agents/*.md` carries keys the validator enforces (check 15):
+
+| Key | Value | Effect |
+|-----|-------|--------|
+| `omitClaudeMd` | `true` on all 21 agents | The sub-agent loads no `CLAUDE.md`, including a consumer project's own. The delegation brief's `Project rules` block is the carrier (see [Policy delivery](#policy-delivery-and-the-claudemd-marker)). |
+| `disallowedTools` | `Artifact` on every agent; `Agent` on all but `system-architect` | Agents cannot publish artifacts, and cannot delegate onward. A need outside an agent's domain is reported in its hand-back, and the orchestrator routes it. Executors carry `Agent, Artifact`; `peer-review-critic` and `spec-compliance-reviewer` merged both into their existing deny list. |
+| `effort` | reviewers and gates `high`, `system-architect` and `comprehensive-analyst` `high`, implementers `medium`, executors `low` | Default reasoning effort per role. The orchestrator may pass a per-call `effort: low` on mechanical delegations, never below `high` for a reviewer. |
+
+The language experts no longer list `Agent` in `tools:`. The four reviewers record per-project false-positive patterns in their memory, so a later re-review does not re-derive a rejected finding.
+
 ## Model tiering
 
-The most capable model orchestrates; the cheapest model that can do the job does the job. Every agent carries a default tier in its frontmatter (`model:`), mirrored in `claude.json` and in the `Default tier` column of the agent table in `CLAUDE.md`: review gates, security and architecture run on `opus`; language experts, domain specialists, analysis and planning on `sonnet`; executors, docs and UI/UX on `haiku`. The orchestrating session chooses the model on every delegation through the Agent tool's `model` parameter — one tier down for mechanical work, one tier up (with the reason stated) for concurrency, auth/crypto, large refactors or after two failed review rounds — and never runs a sub-agent on its own top tier. Built-in agents (`Explore`, `Plan`, `general-purpose`, `claude`) have no default tier and would inherit the parent's model, so they always get an explicit one: the orchestrator passes it, and when it does not, the `pretooluse-model-guard` hook fills it in automatically (`haiku` for `Explore`, `sonnet` for the others) with nothing to configure (on POSIX hosts the hook needs `jq`, like every hook here; without it the hook enforces nothing). The same hook denies the top tier and every `fork`. Setting `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` in your settings `env` is optional: it additionally covers agents the hook cannot recognise (your own, or another plugin's, when their definition has no `model:`). Rationale and measurements: [`docs/design/model-tiering.md`](docs/design/model-tiering.md).
+The most capable model orchestrates; the cheapest model that can do the job does the job. Every agent carries a default tier in its frontmatter (`model:`), mirrored in `claude.json` and in the agent table of `POLICY.md`: review gates, security and architecture run on `opus`; language experts, domain specialists, analysis and planning on `sonnet`; executors, docs and UI/UX on `haiku`. The orchestrating session chooses the model on every delegation through the Agent tool's `model` parameter — one tier down for mechanical work, one tier up (with the reason stated) for concurrency, auth/crypto, large refactors or after two failed review rounds — and never runs a sub-agent on its own top tier. Built-in agents (`Explore`, `Plan`, `general-purpose`, `claude`) have no default tier and would inherit the parent's model, so they always get an explicit one: the orchestrator passes it, and when it does not, the `pretooluse-model-guard` hook fills it in automatically (`haiku` for `Explore`, `sonnet` for the others) with nothing to configure (on POSIX hosts the hook needs `jq`, like every hook here; without it the hook enforces nothing). The same hook denies the top tier and every `fork`, and caps the executors (`bash-expert`, `powershell-expert`) at sonnet by denying opus in any spelling for them. Setting `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` in your settings `env` is optional: it additionally covers agents the hook cannot recognise (your own, or another plugin's, when their definition has no `model:`). Rationale and measurements: [`docs/design/model-tiering.md`](docs/design/model-tiering.md).
+
+## Orchestration and review gates
+
+`/agentic-framework:delegate` and `/agentic-framework:build` follow these rules, which `POLICY.md` also states:
+
+- **Fresh agent for every fix round and re-review.** A finished agent is never resumed with `SendMessage`. A new agent gets a brief with five items: (a) the reviewer findings verbatim with file and line, (b) the diff or commit range since the last round, not the whole branch, (c) the acceptance criteria to keep green and the test command, (d) the todo's pinned decisions, (e) the `Project rules` block.
+- **`Project rules` block.** Each brief carries the scratch directory, commit message rules, test and build commands and the conventions of the files touched, plus, for a review gate or system-architect, the project's invariants and hard rules the diff could violate (for example, in this framework: twin equivalence, gate limits, suite policy; anything the project `CLAUDE.md` calls a rule) and, for any agent that edits files, POLICY.md's `Scratch files and shell edits` rules verbatim, taken from the project's `CLAUDE.md` and POLICY.md, because sub-agents load none (see [Policy delivery](#policy-delivery-and-the-claudemd-marker)).
+- **Effort per call.** The orchestrator passes `effort: low` on a rename, scaffolding, formatting, a single-file edit with an exact spec, or applying a reviewer's one-line finding; otherwise the agent's frontmatter effort applies.
+- **Security pass on a trigger list.** `security-specialist` runs when the final diff touches authentication, cryptography, secrets, network endpoints, dependencies, hooks or CI, permissions or tool grants (`tools:` and `disallowedTools:` included), shell command construction, a trust boundary, or loosens a guardrail, gate, validation or security setting (deletions included). The earlier skip class for docs and config changes is gone: a docs or config diff that touches none of the ten runs no pass, and the commit message and summary say `security pass: skipped (no trigger)`. The pass is skipped, never run at a lower tier, and the gatekeeper confirms the no-trigger claim.
 
 ---
 
@@ -333,7 +384,8 @@ The framework distributes as one plugin:
 
 ```
 <plugin root>*                      # ~/.claude/plugins/cache/agentic-framework/agentic-framework/<version>/
-├── CLAUDE.md                # Agent execution rules and task routing
+├── POLICY.md                # Framework policy, printed at session start by the session-start-context hook
+├── CLAUDE.md                # Developing this plugin (carries the policy-inline marker; not the user's policy)
 ├── claude.json              # Agent registry (single source of truth for the tooling)
 ├── settings.template.json   # Recommended permissions + alwaysThinkingEnabled
 ├── .mcp.json                # MCP server definitions (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph)
@@ -342,7 +394,7 @@ The framework distributes as one plugin:
 │   └── setup.md             # Configures the two MCP environment variables (both optional)
 ├── hooks/                   # Real hook scripts + hooks/hooks.json registration (peer-review Stop gate, push/PR gate, recorder, session context, delegation hint, model guard, telemetry)
 ├── skills/                  # Operational skills
-├── scripts/                 # Validation, anti-drift consistency, and doc-generation scripts
+├── scripts/                 # Validation, anti-drift consistency, doc-generation, and the global CLAUDE.md migration (migrate-global-claude-md.sh/.ps1, references in legacy-policy/)
 ├── tests/                   # Consistency + hook test harnesses
 ├── docs/design/             # Design rationale for the hook architecture
 ├── .github/workflows/       # CI (anti-drift consistency gate)
@@ -364,7 +416,7 @@ The framework distributes as one plugin:
 | `/agentic-framework:validate-hooks` | Hook coverage and consistency verification |
 | `/agentic-framework:agent-status` | Agent configuration status and health assessment |
 | `/agentic-framework:quality-report` | Quality metrics, trend analysis, and reporting |
-| `/agentic-framework:metrics` | Local usage telemetry: session count and duration, tokens by class with an estimated cost, sub-agent invocations by agent and tier, review approval rate and cycles — `last 7 days` (default), `last 30 days` or `all time` |
+| `/agentic-framework:metrics` | Local usage telemetry: session count and duration, tokens by class with an estimated cost, sub-agent invocations by agent and tier, review approval rate and cycles, review outcomes per reviewer (APPROVED, CHANGES_REQUIRED, other) and the count of runs whose output tokens are a lower bound because no final usage line was seen — `last 7 days` (default), `last 30 days` or `all time` |
 | `/agentic-framework:setup` | Configure the two MCP environment variables, `CONTEXT7_API_KEY` and `MCP_FS_ROOT` (both optional) |
 
 ## Analysis Commands
@@ -402,7 +454,7 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 | **dependency-checker** | Verify the toolchain the framework needs (git, jq, pwsh 7, node, uv) |
 | **git-workflow-assistant** | Guide branching, commit conventions, and PR workflows (incl. the peer-review gate) |
 | **hook-config-generator** | Guide for adding a new real hook (script + registration + tests) |
-| **knowledge** | Browse, search and prune the agents' persistent memories (`~/.claude/agent-memory/<agent>/`, plus Serena project memories when present): by agent, topic or recency; keyword search; stale/duplicate/contradictory detection with suggested actions |
+| **knowledge** | Browse, search and prune the agents' persistent memories (`~/.claude/agent-memory/agentic-framework-<agent>/`, plus Serena project memories when present): by agent, topic or recency; keyword search; stale/duplicate/contradictory detection with suggested actions; detects orphaned memory directories (a bare agent name such as `peer-review-critic/` left by a legacy install is never loaded by the plugin agents, which read `agentic-framework-<agent>/`) and offers a per-file migration after secret, instruction and checkout checks |
 | **refactoring-advisor** | Identify refactoring opportunities and improvement patterns |
 | **self-scoring-loop** | Rubric-based score → rewrite → rescore loop for non-code deliverables |
 
@@ -417,12 +469,12 @@ The framework ships real Claude Code hooks via the **agentic-framework plugin** 
 | `stop-peer-review-gate` (.ps1/.sh pair) | `Stop` | **Blocking.** Refuses to end a session while a feature branch has committed work ahead of its base and the latest `peer-review-critic` run did not record `VERDICT: APPROVED` — one block if no review ran, up to 3 while the verdict is `CHANGES_REQUIRED`. Loop-safe, fail-open (legacy no-verdict markers unlock). Accepts bare and plugin-scoped reviewer names. |
 | `pretooluse-code-review-gate` (.ps1/.sh pair) | `PreToolUse` (`Bash\|PowerShell`) | **Blocking.** Allows a push or a PR/MR creation only as a plain single command with literal names: `git push [options] [<remote> [<refspec>]]`, `gh pr create` (alias `gh pr new`), `glab mr create` (alias `glab mr new`), optionally after one location form (`cd <dir> &&`, `cd <dir>;`, PowerShell `Set-Location <dir>;`) or as `git -C <dir> push ...`. A PR/MR body with newlines, `$`, backticks or a `$(cat <<'EOF' ...)` heredoc is not plain: write it to a file and pass `--body-file <path>`, or use `--fill`. Every other command that mentions a push or a PR/MR creation is denied (chains such as `git add -A && git commit -m x && git push`, variables and substitutions, pipes, wrappers, heredocs, conditionals, PowerShell blocks), and the deny asks for it to be split into plain commands. The plain command's destination is resolved the way git resolves it (explicit refspec, `remote.<r>.push`, `push.default`, upstream). A push whose destination is `main` or `master` (force and force-with-lease included), and every PR/MR creation, needs a `code-review-gatekeeper` sub-agent run recorded for the current HEAD and that destination: the marker's `head=` and the `Target:` range `(<merge-base>..<head-sha>)` must match, so a commit after the review, or a per-todo review of uncommitted work, does not unlock it. An oversized command is judged by its text alone (64 KB). Needs git 2.31 or newer for `--end-of-options` (older git fails closed with the stale and unknown-ref wordings). The deny reason names the exact delegation. Fail-open on payloads it cannot read. POSIX hosts need `jq`, or the hook enforces nothing. `AF_CODE_REVIEW_GATE=off` in the launch environment disables it (restart required). |
 | `record-subagent-run` (.ps1/.sh pair) | `PostToolUse` + `SubagentStop` | Records each `peer-review-critic` run as a per-session marker in `peer-review/`, and each `code-review-gatekeeper` run as a per-session marker in `code-review/` with its `target=` line. Parses the report's machine-readable `VERDICT:` line into the marker: the verdict the Stop gate and the push/PR gate enforce. The report is read from the stop payload's `last_assistant_message` or, when Claude Code delivers it through the `SubagentHandback` tool (observed on 2.1.303 to 2.1.308), from the sub-agent transcript; a PostToolUse launch acknowledgement records nothing. |
-| `session-start-context` (.ps1/.sh pair) | `SessionStart` | Injects branch/review status into the session context at startup. |
+| `session-start-context` (.ps1/.sh pair) | `SessionStart` | Injects branch/review status into the session context, then prints the framework policy (`POLICY.md`, byte for byte) on the `startup`, `clear` and `compact` sources (not `resume` or `fork`: the transcript already carries it), unless `<cwd>/CLAUDE.md` holds the line `<!-- agentic-framework: policy inline -->` (see [Policy delivery](#policy-delivery-and-the-claudemd-marker)). A payload without `source`, or a missing `POLICY.md`, prints no policy. |
 | `pretooluse-delegation-hint` (.ps1/.sh pair) | `PreToolUse` | Advisory: suggests the matching specialist subagent when a technology-specific file is written (once per session per agent). |
-| `pretooluse-model-guard` (.ps1/.sh pair) | `PreToolUse` (`Task\|Agent`) | **Blocking and rewriting.** The model-tier ceiling, automatic with nothing to configure (POSIX hosts need `jq`, or the hook enforces nothing): denies a sub-agent call whose `model` names the top tier (`fable`, in any spelling or as a full model id), denies every `fork` (a fork always runs on its parent's model), and **rewrites** a built-in agent call (`Explore`, `Plan`, `general-purpose`, `claude`, or no type) that carries no `model` — it sets `haiku` for `Explore` and `sonnet` for the rest, echoes every other field back unchanged, and lets the call proceed without touching your permission rules (when `CLAUDE_CODE_SUBAGENT_MODEL` is set to a usable tier the hook stays out of the way and the variable decides). It is not a general ceiling: an agent type the hook does not know (your own, or another plugin's) is neither denied nor rewritten, because its frontmatter is invisible to the hook; if that definition has no `model:` it inherits the caller's tier, and `CLAUDE_CODE_SUBAGENT_MODEL` is the cover. Fail-open on any payload it cannot parse; `AF_MODEL_GUARD=off` disables it. |
+| `pretooluse-model-guard` (.ps1/.sh pair) | `PreToolUse` (`Task\|Agent`) | **Blocking and rewriting.** The model-tier ceiling, automatic with nothing to configure (POSIX hosts need `jq`, or the hook enforces nothing): denies a sub-agent call whose `model` names the top tier (`fable`, in any spelling or as a full model id), denies every `fork` (a fork always runs on its parent's model), denies opus in any spelling on a call to `bash-expert` or `powershell-expert`, bare or plugin-scoped (executors are capped at sonnet; haiku, sonnet and no `model` pass, as does any other agent on opus), and **rewrites** a built-in agent call (`Explore`, `Plan`, `general-purpose`, `claude`, or no type) that carries no `model` — it sets `haiku` for `Explore` and `sonnet` for the rest, echoes every other field back unchanged, and lets the call proceed without touching your permission rules (when `CLAUDE_CODE_SUBAGENT_MODEL` is set to a usable tier the hook stays out of the way and the variable decides). It is not a general ceiling: an agent type the hook does not know (your own, or another plugin's) is neither denied nor rewritten, because its frontmatter is invisible to the hook; if that definition has no `model:` it inherits the caller's tier, and `CLAUDE_CODE_SUBAGENT_MODEL` is the cover. Fail-open on any payload it cannot parse; `AF_MODEL_GUARD=off` disables it. |
 | `telemetry-session-start` (.sh only) | `SessionStart` | **Silent.** Records session id, project, branch, start time and source to `~/.claude/.state/telemetry/sessions/<session>.json` (`CLAUDE_STATE_DIR` overrides the root); prunes telemetry older than 30 days. No network, fail-open. |
 | `telemetry-session-stop` (.sh only) | `Stop` + `SessionEnd` | **Silent.** Stamps end time and duration, counts turns, and sums the transcript's token usage (input, output, cache read, cache creation) incrementally into the session record; SessionEnd adds the end reason. |
-| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` (`Task\|Agent`) + `SubagentStop` | **Silent.** Records each sub-agent invocation under `sessions/<session>/agents/`: agent, model tier (requested, else the registry default), launch (`status: launched`) and completion at SubagentStop with the duration from the PreToolUse start, the actual model, the `VERDICT:` parsed from the hand-back report for the reviewer agents (peer-review-critic, spec-compliance-reviewer, code-review-gatekeeper), and the sub-agent transcript's token usage. Read by `/agentic-framework:metrics`. |
+| `telemetry-agent-run` (.sh only) | `PreToolUse` + `PostToolUse` (`Task\|Agent`) + `SubagentStop` | **Silent.** Records each sub-agent invocation under `sessions/<session>/agents/`: agent, model tier (requested, else the registry default), launch (`status: launched`) and completion at SubagentStop with the duration from the PreToolUse start, the actual model, the `VERDICT:` parsed from the hand-back report for the reviewer agents (peer-review-critic, spec-compliance-reviewer, code-review-gatekeeper), and the sub-agent transcript's token usage. The per-sub-agent record (`subagent-<agent_id>.json`) carries `duration_s` as the transcript's first-to-last timestamp span (not the launch latency), `verdict` (null when the report has no `VERDICT:` line), and `tokens.output` counted from each message's final usage line, with `output_final: false` when some message had none and its largest count was used instead, so the figure is a lower bound. Transcripts are read up to `AF_TELEMETRY_TRANSCRIPT_CAP` bytes (default 16 MiB); over the cap, tokens come from the first window and the verdict and last timestamp from the last window. Read by `/agentic-framework:metrics`. |
 
 Design rationale (including why the legacy TDD hard block was retired) lives in `docs/design/`. The hook scripts are tested by `tests/hooks.test.ps1` (PowerShell) and `tests/hooks.test.sh` (POSIX), and `/agentic-framework:validate-hooks` asserts pair parity: every hook registered with a pwsh arm has both .ps1 and .sh implementations on disk, sh-only hooks have their .sh and a `dispatch.sh` allowlist entry, no script on disk is unregistered, all event names are valid. An equivalence test `tests/hooks-equivalence.test.sh` verifies the two implementations produce identical output on systems where both interpreters are present (primarily CI).
 
@@ -458,6 +510,8 @@ claude mcp list                                          # What Claude Code sees
 On Linux/macOS, if `jq` is missing from PATH, the hook scripts load and fire (visible in the transcript), but enforcement is disarmed — nothing gets enforced, including the peer-review Stop gate and the code-review push/PR gate. A failing or missing `tr` also disarms the code-review gate at any size; a failing `sed` or `grep` disarms it for commands under its 64 KB size cap. **Cause:** the POSIX hook implementations depend on `jq` to validate the hook JSON payload; without it, hooks skip enforcement. **Fix:** install `jq` with your system package manager (`apt-get install jq` on Debian/Ubuntu; `brew install jq` on macOS), then restart Claude Code. When `jq` is absent, the `SessionStart` hook prints a `[session-context]` warning line at session start — this confirms the symptom is active.
 
 **Code-review gate denies a PR or push**: run the `code-review-gatekeeper` sub-agent on the branch against its destination after the last commit, then retry the plain command (`gh pr create ...` or `git push origin main`); `AF_CODE_REVIEW_GATE=off` in the launch environment (restart needed) is the only bypass.
+
+**The framework policy does not appear in a session (or appears twice):** the policy prints only on the `startup`, `clear` and `compact` sources (not `resume` or `fork`), and only from the `session-start-context` hook; on a POSIX host without `jq` the hook cannot read the source, so it prints the policy on every source, `resume` included (its `[session-context] jq not installed` line confirms that cause of a doubled policy). It is suppressed when `<cwd>/CLAUDE.md` holds the exact marker line `<!-- agentic-framework: policy inline -->`; a marker in a parent directory does not count. Appearing twice means a leftover framework block in `~/.claude/CLAUDE.md`: run `scripts/migrate-global-claude-md.sh --dry-run`, then without the flag (see [Policy delivery](#policy-delivery-and-the-claudemd-marker)).
 
 **Harmless "sh: not found" stderr on Windows without Git Bash:**
 When Git Bash is not installed, the hook chain's `sh` command fails with a "not found" error line in the transcript. This is harmless — the `||` arm runs the PowerShell `.ps1` script directly. (Installing Git Bash removes the noise and speeds hooks up: `sh` then exists and `dispatch.sh` detects MINGW*/MSYS*/CYGWIN*, running the POSIX `.sh` implementation directly when `jq` is on PATH — which skips a pwsh cold start of roughly 1–2 seconds on every hook fire — and routing to the same PowerShell script otherwise.)
@@ -527,5 +581,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 9 Hook Scripts • 11 Skills • 13 Commands • v5.1.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 9 Hook Scripts • 11 Skills • 13 Commands • v5.2.0**
 <!-- END GENERATED: framework-stats -->

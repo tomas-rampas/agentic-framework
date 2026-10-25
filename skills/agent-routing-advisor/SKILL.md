@@ -45,7 +45,7 @@ Decision order: (0) the task is purely running/summarizing commands → bash-exp
 
 ## Model tier
 
-Routing picks the agent; the model tier is a second, separate decision (CLAUDE.md, Model Tiering Policy). Read the agent's default tier from the registry (`.sub_agents[<agent>].model`), then decide whether this task warrants a one-tier move:
+Routing picks the agent; the model tier is a second, separate decision (the plugin's `POLICY.md`, printed at session start: Model tiering). Read the agent's default tier from the registry (`.sub_agents[<agent>].model`), then decide whether this task warrants a one-tier move:
 
 - **Keep the default** for ordinary work in the agent's domain. Gates and leveraged decisions default to `opus`, implementation/analysis/domain work to `sonnet`, executors and mechanical prose to `haiku`.
 - **One tier down** for mechanical work: a single-file edit with an exact spec, formatting, scaffolding, a rename, applying a reviewer's one-line finding.
