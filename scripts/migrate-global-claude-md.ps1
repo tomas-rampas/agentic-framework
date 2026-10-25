@@ -83,8 +83,20 @@ if ($refFiles.Count -eq 0) {
     exit 2
 }
 
+# The installed plugin (what sessions run) must carry POLICY.md (5.2.0 or later).
+$pluginKey = 'agentic-framework@agentic-framework'
+$installedJson = Join-Path $env:USERPROFILE '.claude/plugins/installed_plugins.json'
+$installPath = $null
+try {
+    $inst = Get-Content -LiteralPath $installedJson -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable
+    $installPath = [string]$inst['plugins'][$pluginKey][0]['installPath']
+} catch { $installPath = $null }
+if ([string]::IsNullOrEmpty($installPath) -or -not (Test-Path -LiteralPath (Join-Path $installPath 'POLICY.md') -PathType Leaf)) {
+    $shown = if ($installPath) { $installPath } else { "<not found in $installedJson>" }
+    [Console]::Error.WriteLine("migrate-global-claude-md: warning: the installed agentic-framework plugin at $shown has no POLICY.md; sessions get no policy until the plugin is updated to 5.2.0 or later")
+}
 if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '../POLICY.md') -PathType Leaf)) {
-    [Console]::Error.WriteLine("migrate-global-claude-md: warning: POLICY.md not found at $(Join-Path $PSScriptRoot '../POLICY.md'); the installed plugin may predate 5.2.0 and not print the policy at session start. Update the plugin first, or the session loses the policy.")
+    [Console]::Error.WriteLine("migrate-global-claude-md: warning: this script's folder has no POLICY.md ($(Join-Path $PSScriptRoot '../POLICY.md'))")
 }
 
 $known = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)

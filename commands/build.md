@@ -60,9 +60,9 @@ Read the **whole spec** before writing anything: every REQ/EDGE item and its
   criteria, the `Pinned decisions` block and a `Project rules` block. You fill
   `Project rules` from the project's CLAUDE.md with the items the todo needs: the
   scratch directory, the commit message rules, the test and build commands, and the
-  conventions the files touched follow; for a review gate, the project's invariants and
-  hard rules the diff could violate (twin equivalence, gate limits, suite policy, anything
-  the project CLAUDE.md calls a rule); for any agent that edits files, POLICY.md's
+  conventions the files touched follow; for a review gate or system-architect, the project's
+  invariants and hard rules the diff could violate (for example, in this framework: twin
+  equivalence, gate limits, suite policy; anything the project CLAUDE.md calls a rule); for any agent that edits files, POLICY.md's
   `Scratch files and shell edits` rules, verbatim. Sub-agents no longer load CLAUDE.md, so the
   brief is the only carrier of these rules.
   Per-call `effort` follows `/agentic-framework:delegate`'s Routing → Model tier.

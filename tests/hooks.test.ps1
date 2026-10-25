@@ -608,10 +608,10 @@ $fs = [IO.File]::Open($lockedMd, 'Open', 'Read', 'None')
 try {
     $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p9c'; source = 'startup'; cwd = $polDir })
 } finally { $fs.Dispose() }
-Assert 'policy: unreadable <cwd>/CLAUDE.md prints the policy (stdout length equals POLICY.md size)' ($r.Code -eq 0 -and [Text.Encoding]::UTF8.GetByteCount($r.Out) -eq (Get-Item (Join-Path $repoRoot 'POLICY.md')).Length - 1)
+Assert 'policy: unreadable <cwd>/CLAUDE.md prints the policy (stdout equals POLICY.md)' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
 Remove-Item $lockedMd -Force
 
-$emptyRoot =Join-Path $workRoot 'policy-emptyroot'
+$emptyRoot = Join-Path $workRoot 'policy-emptyroot'
 New-Item -ItemType Directory -Force -Path $emptyRoot | Out-Null
 $env:CLAUDE_PLUGIN_ROOT = $emptyRoot
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p10'; source = 'startup'; cwd = $polDir })

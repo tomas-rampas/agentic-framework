@@ -780,11 +780,16 @@ section "[24] Policy statement removed: strip '## Command execution' header from
   copy="$(make_copy)"
   _verify_copy "$copy"
   before_size="$(wc -c < "$copy/POLICY.md" | tr -d '[:space:]')"
-  for _i in $(seq 1 20); do
+  # Pad until the cap is crossed, whatever POLICY.md's current size is (a fixed
+  # pad would make this guard impossible to satisfy once POLICY.md shrinks).
+  _pad=0
+  while [[ "$(wc -c < "$copy/POLICY.md" | tr -d '[:space:]')" -le 8192 ]]; do
     printf '<!-- padding padding padding padding padding pad -->\n' >> "$copy/POLICY.md"
+    _pad=$((_pad + 1))
+    [[ "$_pad" -lt 1000 ]] || { echo "case 24 size fixture: padding loop did not cross 8192 bytes" >&2; exit 1; }
   done
   after_size="$(wc -c < "$copy/POLICY.md" | tr -d '[:space:]')"
-  [[ "$after_size" -ge $((before_size + 1000)) && "$after_size" -gt 8192 ]] || { echo "case 24 size fixture edit did not apply" >&2; exit 1; }
+  [[ "$after_size" -gt "$before_size" && "$after_size" -gt 8192 ]] || { echo "case 24 size fixture edit did not apply" >&2; exit 1; }
   run_validate "$copy" 14
   assert_rc_nonzero "validator fails when POLICY.md exceeds 8192 bytes"
   assert_out_contains "reports the size and the limit" "over the 8192-byte limit"

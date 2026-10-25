@@ -257,6 +257,10 @@ Recommendation: PostgreSQL with TimescaleDB extension
   exceeds SLA after 6 months of production data
 ```
 
+## Project rules
+
+The project's CLAUDE.md is not loaded for you. The brief's `Project rules` block carries its invariants; when the brief has none and you must judge architecture or conventions, read the project's CLAUDE.md yourself and say that you did.
+
 ## Memory
 
 You keep a persistent memory directory (`memory: user`, resolved to `~/.claude/agent-memory/agentic-framework-system-architect/`,

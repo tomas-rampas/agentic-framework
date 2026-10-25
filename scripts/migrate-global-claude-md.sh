@@ -57,8 +57,23 @@ if [ ! -f "$path" ]; then
 fi
 
 # Warnings only (stderr, the exit status is unchanged).
+# The installed plugin (what sessions run) must carry POLICY.md (5.2.0 or later).
+plugin_key="agentic-framework@agentic-framework"
+installed_json="${HOME:-}/.claude/plugins/installed_plugins.json"
+install_path=""
+if [ -r "$installed_json" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    install_path=$(jq -r --arg k "$plugin_key" '.plugins[$k][0].installPath // empty' "$installed_json" 2>/dev/null)
+  else
+    install_path=$(tr '{},' '\n\n\n' < "$installed_json" | awk -v k="\"$plugin_key\"" '
+      index($0, k) { f = 1 } f && /"installPath"/ { sub(/^[^:]*:[ \t]*"/, ""); sub(/"[ \t]*$/, ""); gsub(/\\\\/, "\\"); print; exit }')
+  fi
+fi
+if [ -z "$install_path" ] || [ ! -f "$install_path/POLICY.md" ]; then
+  echo "migrate-global-claude-md: warning: the installed agentic-framework plugin at ${install_path:-<not found in $installed_json>} has no POLICY.md; sessions get no policy until the plugin is updated to 5.2.0 or later" >&2
+fi
 if [ ! -f "$SCRIPT_DIR/../POLICY.md" ]; then
-  echo "migrate-global-claude-md: warning: POLICY.md not found at $SCRIPT_DIR/../POLICY.md; the installed plugin may predate 5.2.0 and not print the policy at session start. Update the plugin first, or the session loses the policy." >&2
+  echo "migrate-global-claude-md: warning: this script's folder has no POLICY.md ($SCRIPT_DIR/../POLICY.md)" >&2
 fi
 if ! command -v jq >/dev/null 2>&1; then
   echo "migrate-global-claude-md: warning: jq is not in PATH; the SessionStart hook still prints the policy without it, but skips the branch line." >&2
@@ -81,8 +96,7 @@ fi
 # as an assignment) is scanned. Prints START, END (first line after the block) and one
 # BAD line per non-blank block line found in no reference.
 scan=$(LC_ALL=C awk -v title="$TITLE" -v nref="$#" '
-  FNR == 1 { fidx++ }
-  fidx <= nref { gsub(/\r/, ""); if ($0 ~ /[^ \t]/) ref[$0] = 1; next }
+  FILENAME != "-" { gsub(/\r/, ""); if ($0 ~ /[^ \t]/) ref[$0] = 1; next }
   { l = $0; sub(/\r$/, "", l)
     if (FNR == 1) sub(/^\357\273\277/, "", l)
     if (!start) { if (l == title) start = FNR; next }

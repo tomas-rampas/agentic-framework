@@ -90,6 +90,22 @@ run_suite() { # impl
   cmp -s "$FIXTURE" "$d/CLAUDE.md"; assert "$impl dry-run leaves the file byte-identical" $?
   assert_eq "$impl dry-run writes no backup" 0 "$(backups "$d")"
 
+  # 1b. installed-plugin POLICY.md warning (fake HOME / USERPROFILE)
+  for variant in missing present; do
+    fh="$HARNESS_ROOT/fakehome-$impl-$variant"; rm -rf "$fh"; mkdir -p "$fh/.claude/plugins" "$fh/plug"
+    [ "$variant" = present ] && printf 'x\n' > "$fh/plug/POLICY.md"
+    printf '{"version":2,"plugins":{"agentic-framework@agentic-framework":[{"installPath":"%s"}]}}\n' "$(to_native "$fh/plug")" > "$fh/.claude/plugins/installed_plugins.json"
+    if [ "$impl" = sh ]; then
+      OUT=$(HOME="$fh" sh "$SH_SCRIPT" --dry-run "$d/CLAUDE.md" 2>&1 >/dev/null); RC=$?
+    else
+      OUT=$(HOME="$fh" USERPROFILE="$(to_native "$fh")" pwsh -NoProfile -File "$(to_native "$PS_SCRIPT")" -Path "$(to_native "$d/CLAUDE.md")" -DryRun 2>&1 >/dev/null); RC=$?
+    fi
+    assert_eq "$impl installed plugin ($variant POLICY.md) exits 0" 0 "$RC"
+    printf '%s' "$OUT" | grep -q -F 'installed agentic-framework plugin at'; r=$?
+    if [ "$variant" = missing ]; then assert "$impl warns when the installed plugin has no POLICY.md" "$r"
+    else assert_eq "$impl no installed-plugin warning when POLICY.md present" 1 "$r"; fi
+  done
+
   # 2. real run
   mig "$impl" "$d/CLAUDE.md"
   assert_eq "$impl real run exits 0" 0 "$RC"

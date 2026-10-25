@@ -49,7 +49,7 @@ Default tier and effort come from each agent's frontmatter; the orchestrator ove
 - A per-call override never lowers a reviewer below `high`.
 ## Fix rounds and re-reviews
 - Never resume a finished agent with SendMessage for a fix round or a re-review. Start a fresh agent whose brief carries: (a) reviewer findings verbatim with file and line, (b) the diff or commit range since the last round, not the whole branch, (c) the acceptance criteria to keep green and the test command, (d) the todo's pinned decisions, (e) the project rules.
-- Agents do not load CLAUDE.md. The brief's Project rules block is the only carrier: scratch directory, commit message rules, test and build commands, conventions of the files touched; for a review gate, the project's invariants and hard rules the diff could violate (twin equivalence, gate limits, suite policy, anything the project CLAUDE.md calls a rule); for any agent that edits files, POLICY.md's `Scratch files and shell edits` rules, verbatim.
+- Agents do not load CLAUDE.md. The brief's Project rules block is the only carrier: scratch directory, commit message rules, test and build commands, conventions of the files touched; for a review gate or system-architect, the project's invariants and hard rules the diff could violate (for example, in this framework: twin equivalence, gate limits, suite policy; anything the project CLAUDE.md calls a rule); for any agent that edits files, POLICY.md's `Scratch files and shell edits` rules, verbatim.
 ## Memory
 - Every agent has `memory: user`, stored in `~/.claude/agent-memory/agentic-framework-<agent>/`; the first 200 lines of MEMORY.md load each run, detail goes in topic files.
 - Scope is user-wide: every project-specific fact names its project.
