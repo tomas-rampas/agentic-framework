@@ -28,7 +28,12 @@ pwsh -NoProfile -File scripts/migrate-global-claude-md.ps1 -DryRun
 #>
 [CmdletBinding()]
 param(
-    [string]$Path = (Join-Path $HOME '.claude/CLAUDE.md'),
+    # Home folder as Node's os.homedir() resolves it: USERPROFILE on Windows, HOME elsewhere, then $HOME.
+    [string]$Path = $(
+        $h = if ($IsWindows) { $env:USERPROFILE } else { $env:HOME }
+        if ([string]::IsNullOrEmpty($h)) { $h = $HOME }
+        [System.IO.Path]::Combine($h, '.claude/CLAUDE.md')
+    ),
     [switch]$DryRun,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
@@ -85,13 +90,23 @@ if ($refFiles.Count -eq 0) {
 
 # The installed plugin (what sessions run) must carry POLICY.md (5.2.0 or later).
 $pluginKey = 'agentic-framework@agentic-framework'
-$installedJson = Join-Path $env:USERPROFILE '.claude/plugins/installed_plugins.json'
 $installPath = $null
+$installedJson = '<unresolved home folder>'
+$hasPolicy = $false
+# Everything that can throw (null home, unmapped drive, bad JSON) stays inside the try:
+# a failure only produces the warning, never an exit.
 try {
+    $userHome = if ($IsWindows) { $env:USERPROFILE } else { $env:HOME }
+    if ([string]::IsNullOrEmpty($userHome)) { $userHome = $HOME }
+    $installedJson = [System.IO.Path]::Combine($userHome, '.claude/plugins/installed_plugins.json')
     $inst = Get-Content -LiteralPath $installedJson -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable
-    $installPath = [string]$inst['plugins'][$pluginKey][0]['installPath']
-} catch { $installPath = $null }
-if ([string]::IsNullOrEmpty($installPath) -or -not (Test-Path -LiteralPath (Join-Path $installPath 'POLICY.md') -PathType Leaf)) {
+    $entries = @($inst['plugins'][$pluginKey])
+    # Prefer the user-scope entry: a project-scope install can be listed first.
+    $chosen = @($entries | Where-Object { $_ -is [System.Collections.IDictionary] -and $_['scope'] -eq 'user' }) + $entries | Select-Object -First 1
+    $installPath = [string]$chosen['installPath']
+    $hasPolicy = Test-Path -LiteralPath ($installPath + [System.IO.Path]::DirectorySeparatorChar + 'POLICY.md') -PathType Leaf
+} catch { $hasPolicy = $false }
+if ([string]::IsNullOrEmpty($installPath) -or -not $hasPolicy) {
     $shown = if ($installPath) { $installPath } else { "<not found in $installedJson>" }
     [Console]::Error.WriteLine("migrate-global-claude-md: warning: the installed agentic-framework plugin at $shown has no POLICY.md; sessions get no policy until the plugin is updated to 5.2.0 or later")
 }

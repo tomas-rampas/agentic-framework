@@ -106,6 +106,56 @@ run_suite() { # impl
     else assert_eq "$impl no installed-plugin warning when POLICY.md present" 1 "$r"; fi
   done
 
+  # 1c. (sh only) no jq on PATH: the tr|awk fallback reads installed_plugins.json
+  if [ "$impl" = sh ]; then
+    nb="$HARNESS_ROOT/nojq-bin"; rm -rf "$nb"; mkdir -p "$nb"
+    for tool in tr awk sed od head tail date cp mv cat dirname mktemp rm grep; do
+      real=$(command -v "$tool" 2>/dev/null) || continue
+      printf '#!/bin/sh\nexec "%s" "$@"\n' "$real" > "$nb/$tool"; chmod +x "$nb/$tool"
+    done
+    sh_abs=$(command -v sh)
+    for variant in missing present; do
+      fh="$HARNESS_ROOT/fakehome-nojq-$variant"; rm -rf "$fh"; mkdir -p "$fh/.claude/plugins" "$fh/plug"
+      [ "$variant" = present ] && printf 'x\n' > "$fh/plug/POLICY.md"
+      printf '{"version":2,"plugins":{"agentic-framework@agentic-framework":[{"installPath":"%s"}]}}\n' "$(to_native "$fh/plug")" > "$fh/.claude/plugins/installed_plugins.json"
+      OUT=$(HOME="$fh" PATH="$nb" "$sh_abs" "$SH_SCRIPT" --dry-run "$d/CLAUDE.md" 2>&1 >/dev/null); RC=$?
+      assert_eq "sh no-jq ($variant POLICY.md) exits 0" 0 "$RC"
+      printf '%s' "$OUT" | grep -q -F 'jq is not in PATH'; assert "sh no-jq ($variant) confirms jq is hidden" $?
+      printf '%s' "$OUT" | grep -q -F 'installed agentic-framework plugin at'; r=$?
+      if [ "$variant" = missing ]; then assert "sh no-jq warns when the installed plugin has no POLICY.md" "$r"
+      else assert_eq "sh no-jq no installed-plugin warning when POLICY.md present" 1 "$r"; fi
+    done
+  fi
+
+  # 1d. user-scope entry preferred over a project-scope entry listed first (jq paths and ps)
+  fh="$HARNESS_ROOT/fakehome-scope-$impl"; rm -rf "$fh"; mkdir -p "$fh/.claude/plugins" "$fh/plug" "$fh/projplug"
+  printf 'x\n' > "$fh/plug/POLICY.md"
+  printf '{"version":2,"plugins":{"agentic-framework@agentic-framework":[{"scope":"project","installPath":"%s"},{"scope":"user","installPath":"%s"}]}}\n' "$(to_native "$fh/projplug")" "$(to_native "$fh/plug")" > "$fh/.claude/plugins/installed_plugins.json"
+  if [ "$impl" = sh ]; then
+    if command -v jq >/dev/null 2>&1; then
+      OUT=$(HOME="$fh" sh "$SH_SCRIPT" --dry-run "$d/CLAUDE.md" 2>&1 >/dev/null); RC=$?
+      printf '%s' "$OUT" | grep -q -F 'installed agentic-framework plugin at'; r=$?
+      assert_eq "sh prefers the user-scope install entry" 1 "$r"
+    else
+      echo "SKIP: jq unavailable; user-scope preference row not run"
+    fi
+  else
+    OUT=$(HOME="$fh" USERPROFILE="$(to_native "$fh")" pwsh -NoProfile -File "$(to_native "$PS_SCRIPT")" -Path "$(to_native "$d/CLAUDE.md")" -DryRun 2>&1 >/dev/null); RC=$?
+    printf '%s' "$OUT" | grep -q -F 'installed agentic-framework plugin at'; r=$?
+    assert_eq "ps prefers the user-scope install entry" 1 "$r"
+  fi
+
+  # 1e. (ps only) a missing USERPROFILE and an unmapped-drive installPath warn, never exit
+  if [ "$impl" = ps ]; then
+    OUT=$(env -u USERPROFILE HOME="$HARNESS_ROOT/nohome" pwsh -NoProfile -File "$(to_native "$PS_SCRIPT")" -Path "$(to_native "$d/CLAUDE.md")" -DryRun 2>&1 >/dev/null); RC=$?
+    assert_eq "ps without USERPROFILE exits 0" 0 "$RC"
+    fh="$HARNESS_ROOT/fakehome-drive"; rm -rf "$fh"; mkdir -p "$fh/.claude/plugins"
+    printf '{"version":2,"plugins":{"agentic-framework@agentic-framework":[{"scope":"user","installPath":"Q:\\\\\\\\nope\\\\\\\\5.2.0"}]}}\n' > "$fh/.claude/plugins/installed_plugins.json"
+    OUT=$(HOME="$fh" USERPROFILE="$(to_native "$fh")" pwsh -NoProfile -File "$(to_native "$PS_SCRIPT")" -Path "$(to_native "$d/CLAUDE.md")" -DryRun 2>&1 >/dev/null); RC=$?
+    assert_eq "ps unmapped-drive installPath exits 0" 0 "$RC"
+    printf '%s' "$OUT" | grep -q -F 'installed agentic-framework plugin at Q:'; assert "ps unmapped-drive installPath warns and names the path" $?
+  fi
+
   # 2. real run
   mig "$impl" "$d/CLAUDE.md"
   assert_eq "$impl real run exits 0" 0 "$RC"
