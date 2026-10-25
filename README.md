@@ -410,6 +410,24 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 
 ## Enforcement Hooks
 
+Documentation-only requests do not need a code-review-gatekeeper record. The
+exception applies only to a clean worktree and a non-empty, resolved diff from the
+destination's merge-base. It recognises `.md`, `.rst` and `.adoc` prose outside
+instruction/configuration and implementation locations, plus raster images under
+`docs/`, `documentation/` or `site/{assets,images,img,static,media}/`. Instruction
+files such as `AGENTS.md`, `CLAUDE.md`, `POLICY.md` and `SKILL.md` remain gated.
+Scripts, code, dependencies, workflows, HTML, SVG, CSS, JSON, YAML and mixed changes
+remain gated even under a documentation directory. Executable files, symlinks,
+unusual control-character names, dirty/untracked changes and unresolved ranges
+also keep the gate. Both rename paths are classified. A request's published source
+must match local HEAD. Direct publication to main/master still requires review,
+as do repository/project or host overrides and multiple configured remotes, whose
+actual forge target cannot be established from this local diff alone. The diff
+explicitly ignores relative-path and submodule-hiding configuration.
+This exception changes neither command grammar nor the
+independent peer-review Stop gate. Installed users receive it after a plugin update
+and session restart; editing a plugin cache is not an installation step.
+
 The framework ships real Claude Code hooks via the **agentic-framework plugin** in `hooks/hooks.json`. Gates and advisory hooks are registered as a shell-form fallback chain: `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name> || pwsh -NoProfile -File "${CLAUDE_PLUGIN_ROOT}/hooks/<name>.ps1"`. On Linux/macOS, the dispatcher runs the POSIX shell script; on Windows Git Bash it runs the POSIX script when `jq` is on PATH and the PowerShell script otherwise. Those hooks exist as a `.ps1` (PowerShell 7) and `.sh` (POSIX shell) pair. The silent telemetry hooks ship `.sh` only (chain `sh "${CLAUDE_PLUGIN_ROOT}/hooks/dispatch.sh" <name> || exit 0`, no pwsh arm) and do nothing on a Windows host without `jq` or without `sh`.
 
 | Hook | Event | Behavior |
@@ -527,5 +545,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 9 Hook Scripts • 11 Skills • 13 Commands • v5.1.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 9 Hook Scripts • 11 Skills • 13 Commands • v5.1.1**
 <!-- END GENERATED: framework-stats -->

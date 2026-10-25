@@ -964,6 +964,12 @@ gate_equiv_allow "gate allow: CR CR LF continuation is not a pair" ga2 $'git pu`
   rm -rf "$wd"
 }
 
+if bash "$SRC_REPO/tests/docs-only-gate.test.sh" --equivalence; then
+  _pass "documentation-only policy: paired output equivalence"
+else
+  _fail "documentation-only policy: paired output equivalence" "targeted suite failed"
+fi
+
 # === Summary
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"
 printf 'RESULT: %d run, %d pass, %d fail\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"

@@ -339,6 +339,8 @@ function Get-PlainField([string]$Text, [bool]$Psd) {
             if (-not $pm.Success) { Send-NotPlain }
             $a1 = $pm.Groups[2].Value; $a2 = $pm.Groups[4].Value
         } else {
+            # Repository/project overrides are outside this local diff's identity.
+            if ((Get-GateRx '\x16W(--repo(=|\x17)|-R|--target-project(=|\x17))').IsMatch($t)) { $flags += 'I' }
             if ([string]::Equals($kind, 'glab')) {
                 $hl = '--source-branch'; $hs = '-s'; $bl = '--target-branch'; $bs = '-b'; $vf = $g['GL_VF']
             } else {
@@ -573,9 +575,88 @@ function Get-RevOrEmpty([string]$Ref) {
     return $o
 }
 
-# Unlock rule (REQ-004, I-ter.8). Returns when the marker unlocks; else denies. $Mode: push | pr.
+# Only clean, non-empty, resolved documentation changes bypass the review marker.
+# Instruction/configuration locations and executable or linked files are not prose.
+function Invoke-GitRaw([string[]]$GitArgs) {
+    # Native PowerShell line enumeration changes embedded CR/LF in paths. Read the
+    # redirected stream directly so NUL-delimited records retain their boundaries.
+    $p = [System.Diagnostics.Process]::new()
+    try {
+        $p.StartInfo = [System.Diagnostics.ProcessStartInfo]::new('git')
+        $p.StartInfo.UseShellExecute = $false
+        $p.StartInfo.RedirectStandardOutput = $true
+        $p.StartInfo.RedirectStandardError = $true
+        $p.StartInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false, $true)
+        foreach ($a in @('-C', $script:gdir) + $GitArgs) { $p.StartInfo.ArgumentList.Add($a) }
+        if (-not $p.Start()) { return $null }
+        $stdout = $p.StandardOutput.ReadToEndAsync()
+        $stderr = $p.StandardError.ReadToEndAsync()
+        $ms = [math]::Max(1, [int](8000 - $script:SW.Elapsed.TotalMilliseconds))
+        if (-not $p.WaitForExit($ms)) {
+            try { $p.Kill($true) } catch { $null = $_ } # Best-effort termination only.
+            Send-Deny $script:K_ANY $script:W_TIME $script:T_ANY
+        }
+        $ms = [math]::Max(1, [int](8000 - $script:SW.Elapsed.TotalMilliseconds))
+        if (-not [System.Threading.Tasks.Task]::WaitAll(@($stdout, $stderr), $ms)) {
+            Send-Deny $script:K_ANY $script:W_TIME $script:T_ANY
+        }
+        if ($p.ExitCode -ne 0) { return $null }
+        return $stdout.Result
+    } catch { return $null } finally { $p.Dispose() }
+}
+
+function Test-DocumentationPath([string]$Path) {
+    if ([regex]::IsMatch($Path, '[\x00-\x1f\x7f\ufffd]')) { return $false }
+    $p = [regex]::Replace($Path, '[A-Z]', { param($m) $m.Value.ToLowerInvariant() })
+    if ($p -cmatch '(^|/)(\.[^/]*|agents|commands|skills|hooks|src|scripts|tests|prompts|instructions|vendor|vendored|node_modules)(/|$)' -or
+        $p -cmatch '(^|/)(agents|claude|policy|skill|instructions)\.md$' -or $p -cmatch '\.(instructions|prompt)\.md$') { return $false }
+    if ($p -cmatch '\.(md|rst|adoc)$') { return $true }
+    return ($p -cmatch '^(docs|documentation)/.*\.(png|jpg|jpeg|gif|webp|avif|ico)$' -or
+            $p -cmatch '^site/(assets|images|img|static|media)/.*\.(png|jpg|jpeg|gif|webp|avif|ico)$')
+}
+
+function Test-DocumentationOnly([string]$Dest, [string]$Mode) {
+    try {
+        if (-not (Test-Eq $Mode 'pr')) { return $false }
+        Import-Remote
+        if (@($script:memoRemotes).Count -ne 1) { return $false }
+        if ($script:docsIdentityOverride) { return $false }
+        foreach ($name in @('GH_REPO', 'GH_HOST', 'GLAB_REPO', 'GITLAB_REPO', 'GITLAB_HOST')) {
+            if (-not [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) { return $false }
+        }
+        Test-Time
+        $dirty = Invoke-GitRaw @('status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=none')
+        if ($null -eq $dirty -or $dirty.Length -ne 0) { return $false }
+        Resolve-CommitOf "refs/remotes/$($script:remote)/$Dest"
+        $tip = $script:CO
+        if ($tip -notmatch '^[0-9a-f]{40}$') { return $false }
+        if (Test-Eq $Mode 'pr') {
+            if (Test-Eq $script:branch '') { return $false }
+            Resolve-CommitOf "refs/remotes/$($script:remote)/$($script:branch)"
+            if (-not (Test-Eq $script:CO $script:headsha)) { return $false }
+        }
+        $mb = Invoke-Git $script:gdir @('merge-base', '--all', '--end-of-options', $tip, $script:headsha)
+        if ($null -eq $mb -or $mb -notmatch '^[0-9a-f]{40}$') { return $false }
+        Test-Time
+        # -z preserves names; --no-renames exposes both sides of every rename.
+        $raw = Invoke-GitRaw @('diff', '--raw', '-z', '--no-abbrev', '--no-renames', '--no-ext-diff', '--no-textconv', '--no-relative', '--ignore-submodules=none', $mb, $script:headsha, '--')
+        Test-Time
+        if ($null -eq $raw -or $raw.Length -eq 0 -or [System.Text.Encoding]::UTF8.GetByteCount($raw) -gt 1048576) { return $false }
+        $parts = $raw.Split([char]0)
+        if ($parts[-1] -ne '' -or $parts.Length % 2 -ne 1) { return $false }
+        for ($i = 0; $i -lt $parts.Length - 1; $i += 2) {
+            if ($parts[$i] -notmatch '^:(000000|100644) (000000|100644) [0-9a-f]{40} [0-9a-f]{40} [AMD]$' -or
+                -not (Test-DocumentationPath $parts[$i + 1])) { return $false }
+        }
+        Test-Time
+        return $true
+    } catch { return $false }
+}
+
+# Unlock rule (REQ-004, I-ter.8). Returns when docs-only or the marker unlocks; else denies. $Mode: push | pr.
 function Test-Marker([string]$Kind, [string]$Target, [string]$Dest, [string]$Mode) {
     Test-Time
+    if (Test-DocumentationOnly $Dest $Mode) { return }
     $mv = ''; $mh = ''; $mt = ''
     if (-not [System.IO.File]::Exists($script:marker)) {
         Send-Deny $Kind 'No code-review-gatekeeper review is recorded for this session, so nothing vouches for this change.' $Target
@@ -875,6 +956,7 @@ function Invoke-Push([string]$Remote, [string]$Refs, [string]$Flags) {
 # $Src, $Dst: the last --head / --base (--source-branch / --target-branch) values;
 # $Flags: N --dry-run.
 function Invoke-Pr([string]$Kind, [string]$Src, [string]$Dst, [string]$Flags) {
+    $script:docsIdentityOverride = $Flags.Contains('I')
     $label = if (Test-Eq $Kind 'glab') { 'glab mr create' } else { 'gh pr create' }
     $src = $Src; $dst = $Dst; $prDry = $Flags.Contains('N')
     if ($prDry) { exit 0 }

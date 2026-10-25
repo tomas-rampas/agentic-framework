@@ -532,6 +532,7 @@ ts_prblock() {
   # value-taking options consume the next word first, then the single-word rules;
   # the last --head / --base wins: one anchored match each (hold space)
   TP="/^$M_K$1$M_H/{
+/${M_L}W(--repo(=|${M_R})|-R|--target-project(=|${M_R}))/s/$M_Z/${M_Z}I/
 s/$tp_1/$M_S\\1$M_SV\\3$M_SE$M_DD\\4$M_DV\\6$M_DE/g
 s/$tp_2/$M_S\\1$M_SV\\2$M_SE$M_DD\\3$M_DV\\4$M_DE$M_N\\5$M_NE$M_X\\6$M_XE/g
 s/$M_S$M_SV$M_SE//g
@@ -542,12 +543,12 @@ s/$M_X$M_XE//g
 /$M_N--dry-run$M_NE/s/$M_Z/${M_Z}N/
 /${M_L}O/s/$M_Z/${M_Z}X/
 h
-s/^(${M_K}[^$M_Z]*${M_Z}[NX]*)([^$ETX]*${M_S}[^$M_SV]*$M_SV([^$M_SE]*)$M_SE)?[^$M_S]*\$/\\1$US\\3/
+s/^(${M_K}[^$M_Z]*${M_Z}[NXI]*)([^$ETX]*${M_S}[^$M_SV]*$M_SV([^$M_SE]*)$M_SE)?[^$M_S]*\$/\\1$US\\3/
 x
 s/^([^$ETX]*${M_DD}[^$M_DV]*$M_DV([^$M_DE]*)$M_DE)?[^$M_DD]*\$/\\2/
 x
 G
-s/^$M_K([^$M_H]*)$M_H([^$M_J]*)$M_J([^$M_K]*)$M_K([^$M_Z]*)$M_Z([NX]*)/\\1$US\\2$US\\3$US\\4$US\\5/
+s/^$M_K([^$M_H]*)$M_H([^$M_J]*)$M_J([^$M_K]*)$M_K([^$M_Z]*)$M_Z([NXI]*)/\\1$US\\2$US\\3$US\\4$US\\5/
 }"
 }
 ts_prblock gh --head -H --base -B "$ts_ghvf"; ts_gh=$TP
@@ -810,11 +811,65 @@ commit_of() {
   CO=$(git -C "$gdir" rev-parse --verify --quiet --end-of-options "$1^{commit}" 2>/dev/null) || CO=""
 }
 
-# Unlock rule (REQ-004, I-ter.8). Returns 0 when the marker unlocks; else denies.
+# Encode NUL output before command substitution; retain git's status rather than
+# letting a successful jq conceal an unresolved diff or failed status query.
+docs_git_json() {
+  DGJ=$({ git -C "$gdir" "$@" 2>/dev/null; printf '\000%s\000' "$?"; } |
+    jq -Rsc 'split("\u0000") | if .[-2] == "0" and .[-1] == "" then .[0:-2] | join("\u0000") else null end') || return 1
+  [ "$DGJ" != null ]
+}
+
+documentation_only() {
+  [ "$2" = pr ] || return 1
+  load_remotes
+  docs_remote_count=0
+  for docs_remote in $memo_remotes; do
+    [ -z "$docs_remote" ] || docs_remote_count=$((docs_remote_count + 1))
+  done
+  [ "$docs_remote_count" -eq 1 ] || return 1
+  [ "${docs_identity_override:-0}" = 0 ] || return 1
+  [ -z "${GH_REPO:-}${GH_HOST:-}${GLAB_REPO:-}${GITLAB_REPO:-}${GITLAB_HOST:-}" ] || return 1
+  chk_time
+  docs_git_json status --porcelain=v1 -z --untracked-files=all --ignore-submodules=none || return 1
+  [ "$DGJ" = '""' ] || return 1
+  commit_of "refs/remotes/$remote/$1"; docs_tip=$CO
+  case $docs_tip in ''|*[!0-9a-f]*) return 1 ;; esac
+  [ "${#docs_tip}" -eq 40 ] || return 1
+  if [ "$2" = pr ]; then
+    [ -n "$branch" ] || return 1
+    commit_of "refs/remotes/$remote/$branch"
+    [ "$CO" = "$headsha" ] || return 1
+  fi
+  docs_mb=$(git -C "$gdir" merge-base --all --end-of-options "$docs_tip" "$headsha" 2>/dev/null) || return 1
+  case $docs_mb in ''|*[!0-9a-f]*) return 1 ;; esac
+  [ "${#docs_mb}" -eq 40 ] || return 1
+  chk_time
+  # Disabling rename detection exposes deleted and added names separately.
+  docs_git_json diff --raw -z --no-abbrev --no-renames --no-ext-diff --no-textconv --no-relative --ignore-submodules=none "$docs_mb" "$headsha" -- || return 1
+  chk_time
+  # Check every mode header and path as a pair, not newline-delimited names.
+  printf '%s' "$DGJ" | jq -e '
+    def prose:
+      (explode | all(. >= 32 and . != 127 and . != 65533)) and
+      (ascii_downcase |
+        (test("(^|/)(\\.[^/]*|agents|commands|skills|hooks|src|scripts|tests|prompts|instructions|vendor|vendored|node_modules)(/|$)") | not) and
+        (test("(^|/)(agents|claude|policy|skill|instructions)\\.md$|\\.(instructions|prompt)\\.md$") | not) and
+        test("\\.(md|rst|adoc)$|^(docs|documentation)/.*\\.(png|jpg|jpeg|gif|webp|avif|ico)$|^site/(assets|images|img|static|media)/.*\\.(png|jpg|jpeg|gif|webp|avif|ico)$"));
+    length > 0 and utf8bytelength <= 1048576 and
+    (split("\u0000") as $p | $p[-1] == "" and ($p|length) % 2 == 1 and
+      all(range(0; ($p|length) - 1; 2);
+        . as $i | ($p[$i] | test("^:(000000|100644) (000000|100644) [0-9a-f]{40} [0-9a-f]{40} [AMD]$")) and ($p[$i+1] | prose)))
+  ' >/dev/null 2>&1 || return 1
+  chk_time
+  return 0
+}
+
+# Unlock rule (REQ-004, I-ter.8). Returns 0 when docs-only or the marker unlocks; else denies.
 # Uses gdir, headsha, branch, remote. $4: push | pr.
 check_marker() {
   ck_kind=$1; ck_target=$2; ck_dest=$3; ck_mode=$4
   chk_time
+  documentation_only "$ck_dest" "$ck_mode" && return 0
   m_verdict=""; m_head=""; m_target=""
   if [ ! -f "$marker" ]; then
     deny "$ck_kind" "No code-review-gatekeeper review is recorded for this session, so nothing vouches for this change." "$ck_target"
@@ -1150,6 +1205,8 @@ EOF
 # $1 $2: the last --head / --base (--source-branch / --target-branch) values;
 # $3 flags: N --dry-run.
 do_pr() {
+  docs_identity_override=0
+  case $3 in *I*) docs_identity_override=1 ;; esac
   if [ "$kind" = glab ]; then pr_label="glab mr create"; else pr_label="gh pr create"; fi
   pr_src=$1; pr_dst=$2
   case $3 in *N*) exit 0 ;; esac

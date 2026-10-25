@@ -2032,6 +2032,9 @@ Assert-GateDeny 'EDGE-008 agent_id payload, another session id has no marker: de
 
 $script:GateState = $stateDir
 
+& (Join-Path $PSScriptRoot 'docs-only-gate.test.ps1')
+Assert 'documentation-only policy targeted suite' ($LASTEXITCODE -eq 0)
+
 # ── Teardown ───────────────────────────────────────────────────────────────────
 Remove-Item -Recurse -Force $workRoot -ErrorAction SilentlyContinue
 Remove-Item Env:\CLAUDE_STATE_DIR -ErrorAction SilentlyContinue

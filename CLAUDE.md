@@ -1,5 +1,14 @@
 # Claude Code CLI - Agent Execution Framework
 
+Documentation-only PR/MR creation is exempt from the code-review record only
+when the shipped hook can resolve a non-empty docs-only merge-base diff from a
+clean worktree. Prose extensions are `.md`, `.rst` and `.adoc`; recognised docs
+raster assets are also eligible. Runtime instructions/configuration, scripts,
+code, dependencies, workflows, HTML, SVG, CSS, JSON, YAML and mixed changes remain
+gated. Renames check both paths, dirty/untracked work prevents exemption, and a
+request's remote source must match HEAD. Direct main/master publication still
+requires review. The peer-review Stop gate is unchanged.
+
 ## 🎯 AGENT EXECUTION CONTEXT
 
 **IMPORTANT**: This configuration applies to task routing and agent empowerment.

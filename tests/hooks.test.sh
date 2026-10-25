@@ -4974,6 +4974,10 @@ section "[PRETOOLUSE-CODE-REVIEW-GATE-EDGE008] sub-agent runs the push (agent_id
 }
 
 # ===========================================================================
+# Documentation-only policy also runs standalone for focused development.
+RUN_OUT=$(bash "$SRC_REPO/tests/docs-only-gate.test.sh" 2>&1); RUN_RC=$?
+assert_rc_zero "documentation-only policy targeted suite"
+
 # Summary
 # ===========================================================================
 printf '\n%s================================================%s\n' "$C_CYN" "$C_NC"

@@ -48,6 +48,20 @@ What to expect and do:
 
 ### The push/PR gate
 
+Documentation-only changes are exempt from its review-record requirement when the
+worktree is clean, the destination and one merge-base resolve, and the non-empty
+committed diff contains only ordinary prose (`.md`, `.rst`, `.adoc`) or recognised
+documentation raster assets. Instruction/configuration locations and instruction
+filenames remain gated, as do code, scripts, workflows, dependencies, HTML, SVG,
+CSS, JSON, YAML and mixed changes. Dirty, staged or untracked work, executable or
+linked files and unresolved diffs keep the gate. Renames check both names; a PR/MR
+also requires its remote source to match local HEAD. Direct main/master publications
+and ambiguous repository identities (explicit repository/project or host overrides,
+corresponding CLI environment overrides, or multiple remotes) retain the ordinary gate.
+The exception does not relax
+plain-command parsing or change the peer-review Stop gate. Update the plugin and
+restart the host session to receive the policy; never edit the installed cache.
+
 - Hook: `pretooluse-code-review-gate` (`.ps1`/`.sh` pair), `PreToolUse` on the shell tools (`Bash|PowerShell`).
 - Allows a push or a PR/MR creation only as a plain single command with literal names: `git push [options] [<remote> [<refspec>]]`, `gh pr create` (alias `gh pr new`), `glab mr create` (alias `glab mr new`), optionally after one location form: `cd <dir> &&`, `cd <dir>;`, or (PowerShell) `Set-Location <dir>;`; the push may also be written `git -C <dir> push ...`. Every other command that mentions one is denied, chains included, and the deny asks for it to be split into plain commands.
 - A PR/MR body with newlines, `$`, backticks or the `--body "$(cat <<'EOF' ...)"` idiom is not a plain command and is denied. Write the body to a file and pass `--body-file <path>`, or use `--fill`. A plain push's destination is resolved the way git resolves it (explicit refspec, `remote.<r>.push`, `push.default`, upstream); a push whose destination is `main` or `master` (force included), and every PR/MR creation, is gated.

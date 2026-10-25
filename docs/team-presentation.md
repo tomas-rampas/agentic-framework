@@ -351,7 +351,7 @@ See [README.md Migration section](README.md#migration-existing-local-clones) if 
 | Commands | 13 management commands |
 | MCP servers | 6 (filesystem, context7, serena, sequential-thinking, fetch, code-review-graph) |
 | Validator checks | 15, all derived at runtime |
-| Test suites | 8 automated suites under tests/ |
+| Test suites | 10 automated suites under tests/ |
 | CI jobs | 4 (consistency, lint, hooks-macos, hooks-windows) |
 <!-- END GENERATED: team-presentation-stats -->
 
