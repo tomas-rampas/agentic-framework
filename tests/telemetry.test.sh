@@ -118,5 +118,15 @@ run_stop s5 a5 rust-expert "$T5"
 unset AF_TELEMETRY_TRANSCRIPT_CAP
 assert_eq "over-cap non-reviewer: duration_s spans first to tail-window last" 300 "$(field .duration_s)"
 
-printf '\n%s run, %s passed, %s failed\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"
+# 6. cap normalisation (I-2): "00" is the default (not a zero-byte read); a huge value is clamped, not fatal.
+# The effective cap is not exported, so the clamp itself is only exercised for "does not break the read".
+AF_TELEMETRY_TRANSCRIPT_CAP=00 && export AF_TELEMETRY_TRANSCRIPT_CAP
+run_stop s6 a6 rust-expert "$T5"
+assert_eq "cap=00 behaves as the default (whole fixture read: 6 x 5 tokens)" 30 "$(field .tokens.output)"
+AF_TELEMETRY_TRANSCRIPT_CAP=99999999999999999999 && export AF_TELEMETRY_TRANSCRIPT_CAP
+run_stop s7 a7 rust-expert "$T5"
+unset AF_TELEMETRY_TRANSCRIPT_CAP
+assert_eq "cap above the 1 GiB clamp still reads the fixture" 30 "$(field .tokens.output)"
+
+printf '\n%s run,%s passed, %s failed\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"
 [ "$TESTS_FAIL" -eq 0 ]

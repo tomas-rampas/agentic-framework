@@ -55,7 +55,11 @@ parse_verdict() {
 }
 # Transcript read cap in bytes; AF_TELEMETRY_TRANSCRIPT_CAP overrides it (tests use a small cap).
 cap=${AF_TELEMETRY_TRANSCRIPT_CAP:-16777216}
-case "$cap" in ''|0|*[!0-9]*) cap=16777216 ;; esac
+case "$cap" in *[!0-9]*) cap=16777216 ;; esac
+cap=$(printf '%s' "$cap" | sed -E 's/^0+//')   # strip leading zeros: "00" -> empty -> default
+case "$cap" in ''|0) cap=16777216 ;; esac
+[ "${#cap}" -gt 10 ] && cap=1073741824          # more than 10 digits: beyond any clamp, avoids overflow
+[ "$cap" -gt 1073741824 ] && cap=1073741824     # clamp to 1 GiB
 is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer|code-review-gatekeeper) return 0 ;; esac; return 1; }
 
 # Token totals + last model over a transcript file (read through a 16 MiB cap into $work/lines), as one

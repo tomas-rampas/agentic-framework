@@ -96,7 +96,7 @@ fi
 
 ts=$(date +%Y%m%d-%H%M%S)
 backup="$path.bak-$ts"
-if [ -e "$backup" ]; then
+if [ -e "$backup" ] || [ -L "$backup" ]; then
   echo "migrate-global-claude-md: backup already exists, refusing to overwrite: $backup" >&2
   exit 2
 fi

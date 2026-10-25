@@ -122,7 +122,7 @@ if ($DryRun) {
 }
 
 $backup = '{0}.bak-{1}' -f $Path, (Get-Date -Format 'yyyyMMdd-HHmmss')
-if (Test-Path -LiteralPath $backup) {
+if ((Test-Path -LiteralPath $backup) -or (Get-Item -LiteralPath $backup -Force -ErrorAction Ignore)) {
     [Console]::Error.WriteLine("migrate-global-claude-md: backup already exists, refusing to overwrite: $backup")
     exit 2
 }
