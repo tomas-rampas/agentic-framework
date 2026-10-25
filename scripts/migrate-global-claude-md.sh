@@ -58,15 +58,15 @@ fi
 
 # Warnings only (stderr, the exit status is unchanged).
 # The installed plugin (what sessions run) must carry POLICY.md (5.2.0 or later).
-plugin_key="agentic-framework@agentic-framework"
+plugin_id="agentic-framework@agentic-framework"
 installed_json="${HOME:-}/.claude/plugins/installed_plugins.json"
 install_path=""
 if [ -r "$installed_json" ]; then
   if command -v jq >/dev/null 2>&1; then
-    install_path=$(jq -r --arg k "$plugin_key" 'first(.plugins[$k][]? | select(.scope == "user") | .installPath) // .plugins[$k][0].installPath // empty' "$installed_json" 2>/dev/null)
+    install_path=$(jq -r --arg k "$plugin_id" 'first(.plugins[$k][]? | select(.scope == "user") | .installPath) // .plugins[$k][0].installPath // empty' "$installed_json" 2>/dev/null)
   else
     # No jq: the first entry is taken whatever its scope (the user-scope preference needs jq).
-    install_path=$(tr '{},' '\n\n\n' < "$installed_json" | awk -v k="\"$plugin_key\"" '
+    install_path=$(tr '{},' '\n\n\n' < "$installed_json" | awk -v k="\"$plugin_id\"" '
       index($0, k) { f = 1 } f && /"installPath"/ { sub(/^[^:]*:[ \t]*"/, ""); sub(/"[ \t]*$/, ""); gsub(/\\\\/, "\\"); print; exit }')
   fi
 fi

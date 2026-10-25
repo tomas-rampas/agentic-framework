@@ -74,9 +74,15 @@ if ($Rest -and $Rest.Count -gt 0) {
     [Console]::Error.WriteLine("migrate-global-claude-md: unexpected argument: $($Rest -join ' ')")
     exit 2
 }
-# One resolution for every API below: a relative -Path must mean the same file to
-# Test-Path, Copy-Item and the .NET file calls (the .NET current directory can differ).
-$Path = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Path)
+# -Path is a filesystem path, never a PSPath: a name such as awk::start=3/CLAUDE.md must
+# not parse as a provider-qualified path. A relative path is anchored at the PowerShell
+# location (the .NET current directory can differ); ~ is not expanded (the default is
+# absolute; pass an absolute or cwd-relative path).
+if ([System.IO.Path]::IsPathRooted($Path)) {
+    $Path = [System.IO.Path]::GetFullPath($Path)
+} else {
+    $Path = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine((Get-Location).ProviderPath, $Path))
+}
 if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     [Console]::Error.WriteLine("migrate-global-claude-md: file not found: $Path")
     exit 2
@@ -89,7 +95,7 @@ if ($refFiles.Count -eq 0) {
 }
 
 # The installed plugin (what sessions run) must carry POLICY.md (5.2.0 or later).
-$pluginKey = 'agentic-framework@agentic-framework'
+$pluginId = 'agentic-framework@agentic-framework'
 $installPath = $null
 $installedJson = '<unresolved home folder>'
 $hasPolicy = $false
@@ -100,7 +106,7 @@ try {
     if ([string]::IsNullOrEmpty($userHome)) { $userHome = $HOME }
     $installedJson = [System.IO.Path]::Combine($userHome, '.claude/plugins/installed_plugins.json')
     $inst = Get-Content -LiteralPath $installedJson -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable
-    $entries = @($inst['plugins'][$pluginKey])
+    $entries = @($inst['plugins'][$pluginId])
     # Prefer the user-scope entry: a project-scope install can be listed first.
     $chosen = @($entries | Where-Object { $_ -is [System.Collections.IDictionary] -and $_['scope'] -eq 'user' }) + $entries | Select-Object -First 1
     $installPath = [string]$chosen['installPath']
