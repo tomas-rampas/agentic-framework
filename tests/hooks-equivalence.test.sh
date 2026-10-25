@@ -453,6 +453,8 @@ section "[SESSION-START-POLICY] byte-identical stdout across sh and pwsh"
   check_ss_equiv "marker on line 1 after a UTF-8 BOM" startup "$ss_plain"
   printf '# p\r%s\n' "$ss_marker" > "$ss_plain/CLAUDE.md"
   check_ss_equiv "bare CR before the marker on the same line" startup "$ss_plain"
+  printf '# p\n%s\n' "${ss_marker%-->}$(printf '\342\200\213')-->" > "$ss_plain/CLAUDE.md"
+  check_ss_equiv "U+200B inside the marker line (policy printed)" startup "$ss_plain"
 
   rm -rf "$ss_workdir"
 }

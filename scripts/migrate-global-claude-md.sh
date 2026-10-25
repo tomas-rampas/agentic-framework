@@ -46,7 +46,7 @@ for a in "$@"; do
   path="$a"; have_path=1
 done
 [ -n "$path" ] || path="${HOME:-}/.claude/CLAUDE.md"
-case "$path" in -*) path="./$path" ;; esac   # only reachable after --; keeps awk from reading it as an option
+case "$path" in -*) path="./$path" ;; esac   # a bare "-", or any path given after "--"; keeps awk from reading it as an option
 
 if [ ! -f "$path" ]; then
   echo "migrate-global-claude-md: file not found: $path" >&2
@@ -90,7 +90,7 @@ fi
 
 if [ "$dry" -eq 1 ]; then
   echo "dry run: would remove lines $start-$((end - 1)) ($((end - start)) lines) from $path:"
-  sed -n "${start},$((end - 1))p" -- "$path"
+  sed -n "${start},$((end - 1))p" "$path"
   exit 0
 fi
 
@@ -100,12 +100,12 @@ if [ -e "$backup" ]; then
   echo "migrate-global-claude-md: backup already exists, refusing to overwrite: $backup" >&2
   exit 2
 fi
-cp -p -- "$path" "$backup" || { echo "migrate-global-claude-md: backup failed" >&2; exit 2; }
+cp -p "$path" "$backup" || { echo "migrate-global-claude-md: backup failed" >&2; exit 2; }
 
 tmp=$(mktemp "$path.migrate-tmp.XXXXXX") || { echo "migrate-global-claude-md: cannot create temp file" >&2; exit 2; }
 {
-  head -n "$((start - 1))" -- "$path"
-  tail -n "+$end" -- "$path"
+  [ "$start" -gt 1 ] && head -n "$((start - 1))" "$path"
+  tail -n "+$end" "$path"
 } > "$tmp" || { rm -f "$tmp"; echo "migrate-global-claude-md: write failed" >&2; exit 2; }
 cat "$tmp" > "$path" || { rm -f "$tmp"; echo "migrate-global-claude-md: write failed; restore from $backup" >&2; exit 2; }
 rm -f "$tmp"

@@ -704,7 +704,7 @@ section "[9] Roster-presence for prose tables (POLICY.md table + list-agents ros
   fi
 
   # --- 9c: POLICY.md "Tier" column vs claude.json (BLOCKING) --------
-  # The third column of the agent table is what the orchestrator reads AT
+  # The Tier column (second cell) of the agent table is what the orchestrator reads AT
   # DECISION TIME to pick a model for a delegated call (model-tiering policy);
   # claude.json .sub_agents[<a>].model is the single source of truth for that
   # tier. A prose column has no round-trip generator (see the header comment
@@ -769,7 +769,7 @@ section "[9] Roster-presence for prose tables (POLICY.md table + list-agents ros
       # must not print a green line for a comparison that never happened).
       if [[ "$tier_9c_checked" -eq 0 ]]; then
         tier_9c_ok=0; ok=0
-        fail "POLICY.md agent table (9c): no Default tier cell could be compared (0 rows matched a registered agent)"
+        fail "POLICY.md agent table (9c): no Tier cell could be compared (0 rows matched a registered agent)"
       fi
 
       if [[ "$tier_9c_ok" -eq 1 ]]; then

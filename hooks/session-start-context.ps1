@@ -71,11 +71,14 @@ try {
             $inline = $false
             $claudeMd = Join-Path $cwd 'CLAUDE.md'
             if (Test-Path -LiteralPath $claudeMd -PathType Leaf) {
-                # ReadAllText drops a UTF-8 BOM; removing every CR (not only a trailing one)
-                # and splitting on LF alone matches the .sh twin (tr -d '\r' | grep -x).
-                $text = [System.IO.File]::ReadAllText($claudeMd).Replace("`r", '')
+                # Decode as UTF-8 without BOM detection (no UTF-16/UTF-32 sniffing), strip one
+                # leading U+FEFF, remove every CR and split on LF alone; compare ordinally.
+                # Matches the .sh twin (tr -d '\r' | sed BOM | grep -x -F) on UTF-8 input.
+                $text = [Text.UTF8Encoding]::new($false).GetString([IO.File]::ReadAllBytes($claudeMd))
+                if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
+                $text = $text.Replace("`r", '')
                 foreach ($l in $text.Split("`n")) {
-                    if ($l -ceq $Marker) { $inline = $true; break }
+                    if ([string]::Equals($l, $Marker, [StringComparison]::Ordinal)) { $inline = $true; break }
                 }
             }
             if (-not $inline) {

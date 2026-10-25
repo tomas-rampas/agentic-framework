@@ -102,7 +102,7 @@ emit_policy() {
   policy="$root/POLICY.md"
   [ -f "$policy" ] || return 0
   # Strip every CR and a leading UTF-8 BOM so the .ps1 twin (which reads the
-  # whole text, BOM-stripped, CRs removed) and this script agree on every input.
+  # whole text, BOM-stripped, CRs removed) and this script agree on UTF-8 input with or without one BOM.
   bom=$(printf '\357\273\277')
   if [ -f "$cwd/CLAUDE.md" ] && tr -d '\r' < "$cwd/CLAUDE.md" 2>/dev/null | LC_ALL=C sed "1s/^$bom//" | grep -q -x -F -- "$MARKER"; then
     return 0

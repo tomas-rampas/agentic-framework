@@ -590,6 +590,13 @@ $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p9'; 
 Assert "policy: marker only in the parent's CLAUDE.md still prints the policy" ($r.Code -eq 0 -and $r.Out -ceq $policyText)
 Remove-Item (Join-Path $workRoot 'CLAUDE.md') -Force
 
+# U+200B inside the marker line: ordinal compare, so it is a different line and the policy prints.
+$zw = $marker.Insert($marker.Length - 4, [string][char]0x200B)
+[IO.File]::WriteAllText((Join-Path $polDir 'CLAUDE.md'), "$zw`n", [Text.UTF8Encoding]::new($false))
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p9b'; source = 'startup'; cwd = $polDir })
+Assert 'policy: marker with U+200B inside does not match, policy printed' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+Remove-Item (Join-Path $polDir 'CLAUDE.md') -Force
+
 $emptyRoot = Join-Path $workRoot 'policy-emptyroot'
 New-Item -ItemType Directory -Force -Path $emptyRoot | Out-Null
 $env:CLAUDE_PLUGIN_ROOT = $emptyRoot
