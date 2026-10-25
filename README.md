@@ -12,7 +12,7 @@ This framework extends Claude Code CLI with:
 
 - **21 Specialized Agents** covering the full development lifecycle
 - **Real Enforcement Hooks** — a blocking peer-review Stop gate, a blocking code-review push/PR gate that needs a code-review-gatekeeper review, and a model-tier guard on sub-agent calls, plus session-context and delegation-hint hooks, registered via the plugin's `hooks/hooks.json` and covered by tests
-- **Persistent Agent Memory** — every agent keeps its own institutional knowledge across sessions and projects (`memory: user`, under `~/.claude/agent-memory/<agent>/`), browsed, searched and pruned with `/agentic-framework:knowledge`
+- **Persistent Agent Memory** — every agent keeps its own institutional knowledge across sessions and projects (`memory: user`, under `~/.claude/agent-memory/agentic-framework-<agent>/`), browsed, searched and pruned with `/agentic-framework:knowledge`
 - **Local Telemetry** — silent hooks record sessions, token usage and sub-agent invocations under `~/.claude/.state/telemetry/` (no network, pruned after 30 days); `/agentic-framework:metrics` reports usage, estimated cost and review outcomes
 - **Anti-Drift Consistency System** — dynamic validator, doc generator, and CI gate that keep the registry, docs, and filesystem in lockstep
 - **MCP Integration** — 6 MCP servers ship with the plugin, covering code intelligence, file operations, documentation lookup, structured reasoning, web fetching, and a persistent code-review knowledge graph
@@ -454,7 +454,7 @@ The framework ships operational skills in `skills/<name>/SKILL.md` (the layout C
 | **dependency-checker** | Verify the toolchain the framework needs (git, jq, pwsh 7, node, uv) |
 | **git-workflow-assistant** | Guide branching, commit conventions, and PR workflows (incl. the peer-review gate) |
 | **hook-config-generator** | Guide for adding a new real hook (script + registration + tests) |
-| **knowledge** | Browse, search and prune the agents' persistent memories (`~/.claude/agent-memory/<agent>/`, plus Serena project memories when present): by agent, topic or recency; keyword search; stale/duplicate/contradictory detection with suggested actions; detects orphaned memory directories (a bare agent name such as `peer-review-critic/` left by a legacy install is never loaded by the plugin agents, which read `agentic-framework-<agent>/`) and offers a per-file migration after secret, instruction and checkout checks |
+| **knowledge** | Browse, search and prune the agents' persistent memories (`~/.claude/agent-memory/agentic-framework-<agent>/`, plus Serena project memories when present): by agent, topic or recency; keyword search; stale/duplicate/contradictory detection with suggested actions; detects orphaned memory directories (a bare agent name such as `peer-review-critic/` left by a legacy install is never loaded by the plugin agents, which read `agentic-framework-<agent>/`) and offers a per-file migration after secret, instruction and checkout checks |
 | **refactoring-advisor** | Identify refactoring opportunities and improvement patterns |
 | **self-scoring-loop** | Rubric-based score → rewrite → rescore loop for non-code deliverables |
 

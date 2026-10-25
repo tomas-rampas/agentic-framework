@@ -38,7 +38,7 @@ model: <tier-shorthand>            # opus | sonnet | haiku (must match claude.js
                                     # POLICY.md). `fable` is never a valid subagent tier: it is
                                     # not listed in `.consistency.model_tiers`, and the
                                     # pretooluse-model-guard hook denies it at call time.
-memory: user                       # required: persistent per-agent memory (~/.claude/agent-memory/<name>/)
+memory: user                       # required: persistent per-agent memory (~/.claude/agent-memory/agentic-framework-<name>/)
 color: <color-name>
 effort: <reasoning-effort>         # optional: low | medium | high | xhigh | max
                                     # by role: reviewers high, implementers medium, executors low
@@ -74,8 +74,8 @@ note that `memory:` adds Read, Write and Edit on top of any allowlist (Claude Co
 them so the agent can maintain its memory files), so a reviewer's read-only stance toward
 the code under review is a conduct rule, stated in its prompt, not a tool restriction.
 Every agent carries `memory: user` and a 10-to-16-line `## Memory` section (what to record,
-the project-name rule, verify-before-apply, no secrets, no copied instructions); CLAUDE.md's
-Agent Memory Policy is the governing text.
+the project-name rule, verify-before-apply, no secrets, no copied instructions); POLICY.md's
+`## Memory` section is the governing text.
 
 **MCP tool names come in twins.** The same server is addressable under two prefixes:
 the bare `mcp__<server>__<tool>` form and the plugin-served
@@ -100,9 +100,10 @@ In the `.sub_agents` object, add an entry with `model`, `specialization`, and `f
 }
 ```
 
-Also add the agent to exactly one group in `.agent_categories`. CLAUDE.md's agent table
-now carries a `Default tier` column that validator sub-check 9c pins to this `model`
-value, so registering a new agent also means adding its row's tier cell in CLAUDE.md.
+Also add the agent to exactly one group in `.agent_categories`. POLICY.md's agent table
+carries `Tier` and `Effort` columns that validator sub-check 9c pins to this `model`
+value and to the frontmatter `effort`, so registering a new agent also means adding its
+row, both cells included, to POLICY.md.
 
 ### 3. Quality enforcement is framework-wide
 
@@ -133,7 +134,7 @@ This runs the full check battery, including:
 - Architecture description count accuracy
 - Model parity (agents/<name>.md frontmatter vs claude.json — both tier shorthand) — blocking (see note below)
 - Stated-count scan (headline agent/hook/skill/command counts match derived values)
-- Roster presence in prose tables (README, CLAUDE.md, list-agents.md)
+- Roster presence in prose tables (README, POLICY.md, list-agents.md)
 - README focus-text parity (README Focus cells match claude.json .focus fields)
 - Generated blocks are fresh (list-agents summary, README framework-stats footer, docs/team-presentation.md team-presentation-stats)
 
@@ -142,6 +143,9 @@ Additional validation and testing:
 - `bash tests/plugin-manifests.test.sh` — plugin manifest validation
 - `claude plugin validate .` — validate agentic-framework plugin
 - `pwsh -NoProfile -File tests/migrate.test.ps1` — legacy migration dry-run validation
+- `bash tests/telemetry.test.sh` — telemetry hooks (records, duration, verdict, output tokens)
+- `bash tests/migrate-claude-md.test.sh` — global CLAUDE.md migration script (exit codes, backup, refusal)
+- `bash tests/hooks-equivalence.test.sh` — .ps1/.sh hook pair equivalence (self-skips without pwsh)
 
 All blocking checks must pass (exit 0). **Note:** The consistency and plugin-manifests test harnesses build per-case repository copies from `git ls-files`, so new or renamed files must be staged with `git add` before running these suites — untracked files are invisible to them.
 
@@ -162,7 +166,7 @@ Launchers in the root `.mcp.json` are unpinned as of 2026-09-18. The manifest su
 
 ### 6. Update prose tables
 
-If the validator reports roster-presence failures in `README.md` or `CLAUDE.md` tables, add the agent row to those hand-written tables. Consult the tables' existing structure for style.
+If the validator reports roster-presence failures in `README.md` or `POLICY.md` tables, add the agent row to those hand-written tables. Consult the tables' existing structure for style.
 
 The validator will tell you exactly which tables need updates. Do not hardcode any counts in these tables — omit agent/hook counts and use phrases like "the current roster in claude.json" if needed.
 
@@ -174,7 +178,7 @@ The validator will tell you exactly which tables need updates. Do not hardcode a
 - **Runs the full check battery** (see summary above) and collects all failures before exiting
 - **Distinguishes blocking vs. advisory**: exits non-zero on any blocking check failure
 - **Enforces model parity** (check 7, blocking) — each agent's frontmatter `model:` and its claude.json `.sub_agents[*].model` must be the SAME tier shorthand (`opus`/`sonnet`/`haiku`), and every model value on either side must be listed in `consistency.model_tiers`. A mismatch or an unknown/typo value fails CI. `fable` is never a legal value here — it is not in the tier list, and the `pretooluse-model-guard` hook denies any subagent call that passes it, independent of this validator.
-- **Pins CLAUDE.md's `Default tier` column** (check 9c, blocking) — each agent-table row's tier cell must match its `claude.json` `.sub_agents[*].model`.
+- **Pins POLICY.md's `Tier` and `Effort` columns** (check 9c, blocking) — each agent-table row's tier cell must match its `claude.json` `.sub_agents[*].model`, and each effort cell must match the agent's frontmatter `effort:`.
 
 Run it during development and before pushing. CI (`.github/workflows/consistency.yml`) runs it on every PR.
 
