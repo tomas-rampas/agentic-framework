@@ -58,7 +58,11 @@ function ConvertTo-Display {
 
 function Get-LineText {
     param([string]$Segment)
-    return $Segment.TrimEnd("`n").TrimEnd("`r")
+    # Exactly one LF, then exactly one CR (as the .sh twin's sub(/\r$/, "")).
+    $t = $Segment
+    if ($t.EndsWith("`n", [System.StringComparison]::Ordinal)) { $t = $t.Substring(0, $t.Length - 1) }
+    if ($t.EndsWith("`r", [System.StringComparison]::Ordinal)) { $t = $t.Substring(0, $t.Length - 1) }
+    return $t
 }
 
 if ($Rest -and $Rest.Count -gt 0) {
@@ -79,11 +83,15 @@ if ($refFiles.Count -eq 0) {
     exit 2
 }
 
+if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '../POLICY.md') -PathType Leaf)) {
+    [Console]::Error.WriteLine("migrate-global-claude-md: warning: POLICY.md not found at $(Join-Path $PSScriptRoot '../POLICY.md'); the installed plugin may predate 5.2.0 and not print the policy at session start. Update the plugin first, or the session loses the policy.")
+}
+
 $known = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 foreach ($f in $refFiles) {
     foreach ($seg in (Read-Segment ($latin1.GetString([System.IO.File]::ReadAllBytes($f.FullName))))) {
-        $l = Get-LineText $seg
-        if ($l -match '\S') { [void]$known.Add($l) }
+        $l = (Get-LineText $seg).Replace("`r", '')   # the .sh twin strips every CR from the references
+        if ($l -match '[^ \t]') { [void]$known.Add($l) }
     }
 }
 
@@ -100,8 +108,8 @@ for ($i = 0; $i -lt $segs.Count; $i++) {
         if ([string]::Equals($l, $title, [System.StringComparison]::Ordinal)) { $start = $i }
         continue
     }
-    if ($l.StartsWith('# ') -and -not $known.Contains($l)) { $end = $i; break }
-    if ($l -match '\S' -and -not $known.Contains($l)) {
+    if ($l.StartsWith('# ', [System.StringComparison]::Ordinal) -and -not $known.Contains($l)) { $end = $i; break }
+    if ($l -match '[^ \t]' -and -not $known.Contains($l)) {
         $bad.Add(('{0}: {1}' -f ($i + 1), (ConvertTo-Display $l)))
     }
 }

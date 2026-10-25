@@ -128,5 +128,5 @@ run_stop s7 a7 rust-expert "$T5"
 unset AF_TELEMETRY_TRANSCRIPT_CAP
 assert_eq "cap above the 1 GiB clamp still reads the fixture" 30 "$(field .tokens.output)"
 
-printf '\n%s run,%s passed, %s failed\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"
+printf '\n%s run, %s passed, %s failed\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"
 [ "$TESTS_FAIL" -eq 0 ]

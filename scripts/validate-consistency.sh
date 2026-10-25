@@ -1122,6 +1122,23 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
   _policy_require "POLICY.md" "Inline is the default" "POLICY.md keeps inline-by-default as the governing principle"
   _policy_require "agents/bash-expert.md" "compresses to a small conclusion" "bash-expert advertises the selective delegation trigger"
   _policy_require "agents/powershell-expert.md" "compresses to a small conclusion" "powershell-expert advertises the selective delegation trigger"
+
+  # (c) POLICY.md size cap. The SessionStart hook prints POLICY.md on plain
+  # stdout, which Claude Code caps at 10,000 characters (over the cap Claude
+  # gets a file path and a 2,000-character preview). The hook also prints a
+  # branch line (~330 chars), so POLICY.md must stay at or under 8192 bytes to
+  # keep headroom (REQ-010).
+  policy_limit=8192
+  if [[ -f "$ROOT/POLICY.md" ]]; then
+    policy_size="$(wc -c < "$ROOT/POLICY.md" | tr -d '[:space:]')"
+    if [[ "$policy_size" -le "$policy_limit" ]]; then
+      pass "POLICY.md size $policy_size bytes is within the $policy_limit-byte limit (SessionStart stdout cap)"
+    else
+      fail "POLICY.md is $policy_size bytes, over the $policy_limit-byte limit (SessionStart stdout cap of 10,000 characters leaves no branch-line headroom)"
+    fi
+  else
+    fail "POLICY.md not found for the size check at $ROOT/POLICY.md"
+  fi
 }
 
 # ===========================================================================

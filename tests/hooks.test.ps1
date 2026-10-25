@@ -551,9 +551,13 @@ $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p2'; 
 $lines = $r.Out -split "`n", 2
 Assert 'policy: git repo prints branch line, then POLICY.md exactly' ($r.Code -eq 0 -and $lines[0] -match 'ahead of' -and $lines[1] -ceq $policyText)
 
-foreach ($src in 'resume', 'clear', 'compact') {
+foreach ($src in 'clear', 'compact') {
     $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p3'; source = $src; cwd = $polDir })
     Assert "policy: source $src prints the policy" ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+}
+foreach ($src in 'resume', 'fork') {
+    $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p3b'; source = $src; cwd = $polDir })
+    Assert "policy: source $src prints nothing" ($r.Code -eq 0 -and -not $r.Out)
 }
 
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p4'; source = 'other'; cwd = $polDir })
@@ -565,7 +569,7 @@ Assert 'policy: marker in <cwd>/CLAUDE.md suppresses the policy, branch line kep
 Remove-Item (Join-Path $scratch 'CLAUDE.md') -Force
 
 [IO.File]::WriteAllText((Join-Path $polDir 'CLAUDE.md'), "# proj`r`n$marker`r`n")
-$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p6'; source = 'resume'; cwd = $polDir })
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p6'; source = 'compact'; cwd = $polDir })
 Assert 'policy: marker with CRLF line endings is honoured' ($r.Code -eq 0 -and -not $r.Out)
 
 [IO.File]::WriteAllBytes((Join-Path $polDir 'CLAUDE.md'), [byte[]](0xEF, 0xBB, 0xBF) + [Text.Encoding]::UTF8.GetBytes("$marker`n# proj`n"))
@@ -597,7 +601,17 @@ $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p9b';
 Assert 'policy: marker with U+200B inside does not match, policy printed' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
 Remove-Item (Join-Path $polDir 'CLAUDE.md') -Force
 
-$emptyRoot = Join-Path $workRoot 'policy-emptyroot'
+# Unreadable <cwd>/CLAUDE.md (opened with no sharing): the read fails, the policy is printed.
+$lockedMd = Join-Path $polDir 'CLAUDE.md'
+[IO.File]::WriteAllText($lockedMd, "$marker`n")
+$fs = [IO.File]::Open($lockedMd, 'Open', 'Read', 'None')
+try {
+    $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p9c'; source = 'startup'; cwd = $polDir })
+} finally { $fs.Dispose() }
+Assert 'policy: unreadable <cwd>/CLAUDE.md prints the policy (stdout length equals POLICY.md size)' ($r.Code -eq 0 -and [Text.Encoding]::UTF8.GetByteCount($r.Out) -eq (Get-Item (Join-Path $repoRoot 'POLICY.md')).Length - 1)
+Remove-Item $lockedMd -Force
+
+$emptyRoot =Join-Path $workRoot 'policy-emptyroot'
 New-Item -ItemType Directory -Force -Path $emptyRoot | Out-Null
 $env:CLAUDE_PLUGIN_ROOT = $emptyRoot
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p10'; source = 'startup'; cwd = $polDir })

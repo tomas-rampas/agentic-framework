@@ -440,16 +440,44 @@ section "[SESSION-START-POLICY] policy printed after the branch line unless <cwd
   if printf '%s' "$RUN_OUT" | head -n 1 | grep -q 'ahead of' && out_is_policy_after "$RUN_OUT" 1; then _pass "startup, git repo: branch line, then POLICY.md byte-identical"
   else _fail "startup, git repo: branch line, then POLICY.md byte-identical"; fi
 
-  # EDGE-005: resume, clear and compact fire the policy again
-  for src in resume clear compact; do
+  # EDGE-005: clear and compact fire the policy again
+  for src in clear compact; do
     run_policy "$src" "$plain"
     if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "source $src prints the policy"
     else _fail "source $src prints the policy"; fi
   done
 
+  # resume and fork keep the transcript (which already holds the policy): nothing printed
+  for src in resume fork; do
+    run_policy "$src" "$plain"
+    if [ -z "$RUN_OUT" ]; then _pass "source $src prints nothing"; else _fail "source $src prints nothing"; fi
+  done
+
   # other or absent source prints no policy
   run_policy other "$plain"
   if [ -z "$RUN_OUT" ]; then _pass "unknown source prints no policy"; else _fail "unknown source prints no policy"; fi
+
+  # no jq on PATH: the policy still prints (as for startup) after the jq warning, in a cwd without CLAUDE.md
+  mkdir -p "$workdir/nojqbin"
+  for tool in cat git; do
+    real="$(command -v "$tool" 2>/dev/null)"; [ -z "$real" ] && continue
+    # wrapper scripts, not symlinks: under Git Bash a copied cat.exe cannot find its DLLs outside its own directory
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$real" > "$workdir/nojqbin/$tool"; chmod +x "$workdir/nojqbin/$tool"
+  done
+  ( cd "$plain" && PATH="$workdir/nojqbin" CLAUDE_PLUGIN_ROOT="$SRC_REPO" "$(command -v sh)" "$hook" < /dev/null > "$workdir/nojq.out" 2>/dev/null; printf '%s' "$?" > "$workdir/nojq.rc" )
+  # the first line is the jq warning; the rest must be POLICY.md bytes
+  if [ "$(cat "$workdir/nojq.rc")" = 0 ] && head -n 1 "$workdir/nojq.out" | grep -qF 'jq not installed' && tail -n +2 "$workdir/nojq.out" | cmp -s - "$policy_file"; then _pass "no jq on PATH: warning, then POLICY.md bytes, exit 0"
+  else _fail "no jq on PATH: warning, then POLICY.md bytes, exit 0"; fi
+
+  # unreadable <cwd>/CLAUDE.md (chmod 000): the policy is printed; skipped where the file stays readable
+  printf '%s\n' "$marker" > "$plain/CLAUDE.md"; chmod 000 "$plain/CLAUDE.md"
+  if [ -r "$plain/CLAUDE.md" ]; then _pass "unreadable CLAUDE.md row skipped: file stays readable on this host (Windows or root)"
+  else
+    run_policy startup "$plain"
+    if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "unreadable <cwd>/CLAUDE.md: policy printed"
+    else _fail "unreadable <cwd>/CLAUDE.md: policy printed"; fi
+  fi
+  chmod 600 "$plain/CLAUDE.md"; rm -f "$plain/CLAUDE.md"
 
   # marker in <cwd>/CLAUDE.md suppresses the policy, branch line stays
   printf '# proj\n%s\n' "$marker" > "$repo/CLAUDE.md"
@@ -459,7 +487,7 @@ section "[SESSION-START-POLICY] policy printed after the branch line unless <cwd
 
   # CRLF CLAUDE.md still honours the marker
   printf '# proj\r\n%s\r\n' "$marker" > "$plain/CLAUDE.md"
-  run_policy resume "$plain"
+  run_policy compact "$plain"
   if [ -z "$RUN_OUT" ]; then _pass "marker with CRLF line endings is honoured"; else _fail "marker with CRLF line endings is honoured"; fi
 
   # a UTF-8 BOM before the marker on line 1 is stripped: the marker is honoured

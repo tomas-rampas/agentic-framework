@@ -145,7 +145,7 @@ Proposed: 1 delete, 2 fix, 1 merge. Nothing has been changed. Which rows should 
 
 ### Orphaned stores
 
-The plugin agents load memory only from directories named `agentic-framework-<agent>`. A directory with any other name is never read by this plugin's agents, so for a framework agent its content is invisible until it is migrated or discarded. Two cases count as orphaned: a bare directory named exactly like a framework agent (`peer-review-critic/`, left by a legacy install; `agents/<name>.md` exists, and no live `~/.claude/agents/<name>.md` makes it that agent's live user-scope store, which is labelled and left untouched) and a prefixed name whose agent is not in `agents/` (`agentic-framework-<x>` with no `agents/<x>.md`). Every other directory is not a framework store: it may be the live memory of the user's own agents (`~/.claude/agents/x.md` with `memory: user` writes to `~/.claude/agent-memory/x/`) or of another plugin's agents. Detection labels those "not a framework store, left untouched" and they get no actions anywhere in this skill. Agent names are the file names in `agents/`: the framework checkout's `agents/` folder, or the `agents/` folder under the plugin root in an installed plugin.
+The plugin agents load memory only from directories named `agentic-framework-<agent>`. A directory with any other name is never read by this plugin's agents, so for a framework agent its content is invisible until it is migrated or discarded. Two cases count as orphaned: a bare directory named exactly like a framework agent (`peer-review-critic/`, left by a legacy install; `agents/<name>.md` exists, and no live `~/.claude/agents/<name>.md` or project-scoped `./.claude/agents/<name>.md` (relative to the cwd) makes it that agent's live user-scope store, which is labelled and left untouched) and a prefixed name whose agent is not in `agents/` (`agentic-framework-<x>` with no `agents/<x>.md`). Every other directory is not a framework store: it may be the live memory of the user's own agents (`~/.claude/agents/x.md` with `memory: user` writes to `~/.claude/agent-memory/x/`) or of another plugin's agents. Detection labels those "not a framework store, left untouched" and they get no actions anywhere in this skill. Agent names are the file names in `agents/`: the framework checkout's `agents/` folder, or the `agents/` folder under the plugin root in an installed plugin.
 
 #### Detection (read-only)
 
@@ -177,7 +177,7 @@ for d in "$ROOT"/*/; do
       if [ ! -f "$AGENTS_DIR/$n.md" ]; then               # not a framework agent name
         printf '%s\tnot a framework store, left untouched\n' "$n"; continue
       fi
-      if [ -f "$HOME/.claude/agents/$n.md" ]; then        # live user-scope agent store
+      if [ -f "$HOME/.claude/agents/$n.md" ] || [ -f "./.claude/agents/$n.md" ]; then   # live user-scope agent store (user or project-scoped file)
         printf '%s\tlive user-scope agent store, left untouched\n' "$n"; continue
       fi
       if [ -d "$ROOT/agentic-framework-$n" ]; then sib=yes; else sib=no; fi ;;
@@ -214,9 +214,9 @@ $dirs   = @(Get-ChildItem -Path $root -Directory | Where-Object { $known -notcon
 $dirs | Where-Object { $_.Name -notlike "agentic-framework-*" -and $agents -notcontains $_.Name } |
     ForEach-Object { "$($_.Name)`tnot a framework store, left untouched" }
 # Bare framework-named directories with a live user-scope agent file: label them, never act on them.
-$dirs | Where-Object { $_.Name -notlike "agentic-framework-*" -and $agents -contains $_.Name -and (Test-Path (Join-Path $env:USERPROFILE ".claude\agents\$($_.Name).md")) } |
+$dirs | Where-Object { $_.Name -notlike "agentic-framework-*" -and $agents -contains $_.Name -and ((Test-Path (Join-Path $env:USERPROFILE ".claude\agents\$($_.Name).md")) -or (Test-Path ".\.claude\agents\$($_.Name).md")) } |
     ForEach-Object { "$($_.Name)`tlive user-scope agent store, left untouched" }
-$dirs | Where-Object { $_.Name -like "agentic-framework-*" -or ($agents -contains $_.Name -and -not (Test-Path (Join-Path $env:USERPROFILE ".claude\agents\$($_.Name).md"))) } | ForEach-Object {
+$dirs | Where-Object { $_.Name -like "agentic-framework-*" -or ($agents -contains $_.Name -and -not ((Test-Path (Join-Path $env:USERPROFILE ".claude\agents\$($_.Name).md")) -or (Test-Path ".\.claude\agents\$($_.Name).md"))) } | ForEach-Object {
     $dir   = $_
     $files = @(Get-ChildItem -Path $dir.FullName -Recurse -File)
     $bytes = [int64](($files | Measure-Object -Property Length -Sum).Sum)

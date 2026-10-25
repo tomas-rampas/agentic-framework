@@ -5,13 +5,17 @@
 #   1. A branch / unreviewed-commit line so the model knows whether the peer-review
 #      final gate (Stop hook) is armed, plus a one-line routing reminder.
 #   2. The framework policy: the full, unmodified content of POLICY.md at the plugin
-#      root, printed after the branch line on source startup, resume, clear and
-#      compact (any other or absent source prints no policy), unless <cwd>/CLAUDE.md holds the
+#      root, printed after the branch line on source startup, clear and compact
+#      (resume, fork, any other or absent source prints no policy: a resumed or
+#      forked session keeps the transcript, which already holds the policy), unless
+#      <cwd>/CLAUDE.md holds the
 #      exact marker line  <!-- agentic-framework: policy inline -->  (REQ-009).
 #      The marker is honoured only in <cwd>/CLAUDE.md; parent and child directories
 #      are not consulted (EDGE-005). A missing POLICY.md prints nothing extra.
 #      The plugin root is CLAUDE_PLUGIN_ROOT, else this script's parent directory.
-# Fail-open: always exit 0. Prints jq warning if jq is missing.
+# Fail-open: always exit 0. Without jq the payload cannot be parsed: the script prints a
+# jq warning, then the policy as if source were startup (cwd = $PWD for the marker
+# check); the branch line is skipped in that case.
 #
 # Ported from session-start-context.ps1 to POSIX sh.
 
@@ -19,29 +23,32 @@ set -u
 
 MARKER='<!-- agentic-framework: policy inline -->'
 
-# Preflight: check if jq is available on PATH
+no_jq=0
 if ! command -v jq >/dev/null 2>&1; then
-  printf "[session-context] jq not installed; POSIX hooks including peer-review Stop gate will exit without enforcing anything. Install jq and restart the session.\n"
-  exit 0
+  no_jq=1
 fi
 
-# Read JSON payload from stdin
-payload=$(cat 2>/dev/null)
-if [ -z "$payload" ]; then
-  exit 0
-fi
+cwd=""
+source_kind=""
+if [ "$no_jq" -eq 0 ]; then
+  # Read JSON payload from stdin
+  payload=$(cat 2>/dev/null)
+  if [ -z "$payload" ]; then
+    exit 0
+  fi
 
-# Validate and extract cwd from JSON using jq
-# If jq fails to parse, exit 0 (fail-open)
-if ! printf '%s' "$payload" | jq empty >/dev/null 2>&1; then
-  exit 0
-fi
-cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null) || cwd=""
-source_kind=$(printf '%s' "$payload" | jq -r '.source // empty' 2>/dev/null) || source_kind=""
+  # Validate and extract cwd from JSON using jq
+  # If jq fails to parse, exit 0 (fail-open)
+  if ! printf '%s' "$payload" | jq empty >/dev/null 2>&1; then
+    exit 0
+  fi
+  cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null) || cwd=""
+  source_kind=$(printf '%s' "$payload" | jq -r '.source // empty' 2>/dev/null) || source_kind=""
 
-# If cwd not provided or invalid, use current directory
-if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
-  cwd=$(pwd 2>/dev/null)
+  # If cwd not provided or invalid, use current directory
+  if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
+    cwd=$(pwd 2>/dev/null)
+  fi
 fi
 
 # Prints the branch line (if any); returns instead of exiting so the policy follows.
@@ -92,7 +99,7 @@ emit_branch_line() {
 # Prints POLICY.md byte for byte unless the marker line is in <cwd>/CLAUDE.md.
 emit_policy() {
   case "$source_kind" in
-    startup|resume|clear|compact) ;;
+    startup|clear|compact) ;;
     *) return 0 ;;
   esac
   root="${CLAUDE_PLUGIN_ROOT:-}"
@@ -110,6 +117,15 @@ emit_policy() {
   cat "$policy" 2>/dev/null
   return 0
 }
+
+# Without jq the payload is unreadable: warn, then print the policy as for startup.
+if [ "$no_jq" -eq 1 ]; then
+  printf "[session-context] jq not installed; POSIX hooks including peer-review Stop gate will exit without enforcing anything. Install jq and restart the session.\n"
+  cwd=$(pwd 2>/dev/null)
+  source_kind=startup
+  emit_policy
+  exit 0
+fi
 
 emit_branch_line
 emit_policy

@@ -69,6 +69,10 @@ Your final message MUST **end with exactly one line**, on its own line, as the v
 
 Never emit that line anywhere else in the report.
 
+## Project rules
+
+The project's CLAUDE.md is not loaded for you. The brief's `Project rules` block carries its invariants; when the brief has none and you must judge architecture or conventions, read the project's CLAUDE.md yourself and say that you did.
+
 ## Memory
 
 You keep a persistent memory directory (`memory: user`, resolved to `~/.claude/agent-memory/agentic-framework-spec-compliance-reviewer/`,

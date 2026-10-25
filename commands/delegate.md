@@ -76,7 +76,10 @@ with JWT issuing/validation + ASP.NET Core identity integration, tests in
   brief for the todo, gate briefs included; a plan or ticket todo reconciles alike.
 - **Project rules:** a block you fill from the project's CLAUDE.md with the items the todo
   needs: the scratch directory, the commit message rules, the test and build commands, and
-  the conventions the files touched follow. Sub-agents no longer load CLAUDE.md, so the
+  the conventions the files touched follow; for a review gate, the project's invariants and
+  hard rules the diff could violate (twin equivalence, gate limits, suite policy, anything
+  the project CLAUDE.md calls a rule); for any agent that edits files, POLICY.md's
+  `Scratch files and shell edits` rules, verbatim. Sub-agents no longer load CLAUDE.md, so the
   brief is the only carrier of these rules; an item left out of the block does not exist
   for the agent.
 - **Fresh agent for every later round.** A finished agent is never resumed with
@@ -223,7 +226,7 @@ report a clean state that isn't real.
   runs a second round only after `CHANGES_REQUIRED` (for the gatekeeper and the
   security pass: a must-fix, Critical or High finding; a round with none is `APPROVED`), a fix
   that changed an algorithm, interface or data flow, or a fix that adds, changes
-  or gains or changes a security trigger. This covers every reviewer
+  or removes a security trigger. This covers every reviewer
   this flow runs, the Final Quality Gate's `peer-review-critic` round included
   (the Stop hook forces it only after `CHANGES_REQUIRED`); cap 3 rounds per
   reviewer and todo or pool, then stop and report. `APPROVED` with minor findings

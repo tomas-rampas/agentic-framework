@@ -47,31 +47,42 @@ for a in "$@"; do
 done
 [ -n "$path" ] || path="${HOME:-}/.claude/CLAUDE.md"
 case "$path" in -*) path="./$path" ;; esac   # a bare "-", or any path given after "--"; keeps awk from reading it as an option
-# "name=value" as an awk operand is a variable assignment, not a file: prefix a relative
-# path whose text before its first "=" is an awk identifier (drive-qualified paths are not).
+# Defence in depth: the target is fed to awk on stdin, never as an operand. Still, prefix a
+# relative path whose text before its first "=" is an awk identifier (drive-qualified paths are not).
 case "${path%%=*}" in "$path"|*[!A-Za-z0-9_]*|[0-9]*) ;; *) path="./$path" ;; esac
-
-# A UTF-8 BOM at the start of the file is outside the block: ignored when matching the
-# title, kept in the output.
-bom=$(printf '\357\273\277')
-has_bom=0
-[ "$(head -c 3 "$path" 2>/dev/null | LC_ALL=C tr -d '\n')" = "$bom" ] && has_bom=1
 
 if [ ! -f "$path" ]; then
   echo "migrate-global-claude-md: file not found: $path" >&2
   exit 2
 fi
+
+# Warnings only (stderr, the exit status is unchanged).
+if [ ! -f "$SCRIPT_DIR/../POLICY.md" ]; then
+  echo "migrate-global-claude-md: warning: POLICY.md not found at $SCRIPT_DIR/../POLICY.md; the installed plugin may predate 5.2.0 and not print the policy at session start. Update the plugin first, or the session loses the policy." >&2
+fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "migrate-global-claude-md: warning: jq is not in PATH; the SessionStart hook still prints the policy without it, but skips the branch line." >&2
+fi
+
+# A UTF-8 BOM at the start of the file is outside the block: ignored when matching the
+# title, kept in the output. The three bytes are read as hex so no NUL reaches the shell.
+bom=$(printf '\357\273\277')
+has_bom=0
+[ "$(LC_ALL=C head -c 3 "$path" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "efbbbf" ] && has_bom=1
+
 set -- "$REF_DIR"/claude-md-v*.md
 if [ ! -f "$1" ]; then
   echo "migrate-global-claude-md: no reference policies in $REF_DIR" >&2
   exit 2
 fi
 
-# One pass: the references (stdin, CR stripped) build the known-line set, then the
-# target (file argument) is scanned. Prints START, END (first line after the block)
-# and one BAD line per non-blank block line found in no reference.
-scan=$(cat "$@" | tr -d '\r' | LC_ALL=C awk -v title="$TITLE" '
-  NR == FNR { if ($0 ~ /[^ \t]/) ref[$0] = 1; next }
+# One pass: the references (absolute operands, CR stripped) build the known-line set,
+# then the target (stdin, never an operand: awk would read name=value or ns::name=value
+# as an assignment) is scanned. Prints START, END (first line after the block) and one
+# BAD line per non-blank block line found in no reference.
+scan=$(LC_ALL=C awk -v title="$TITLE" -v nref="$#" '
+  FNR == 1 { fidx++ }
+  fidx <= nref { gsub(/\r/, ""); if ($0 ~ /[^ \t]/) ref[$0] = 1; next }
   { l = $0; sub(/\r$/, "", l)
     if (FNR == 1) sub(/^\357\273\277/, "", l)
     if (!start) { if (l == title) start = FNR; next }
@@ -80,7 +91,7 @@ scan=$(cat "$@" | tr -d '\r' | LC_ALL=C awk -v title="$TITLE" '
       if (l ~ /[^ \t]/ && !(l in ref)) bad[++nb] = FNR ": " l
     } }
   END { print "START " start + 0; print "END " (end ? end : FNR + 1)
-        for (i = 1; i <= nb; i++) print "BAD " bad[i] }' - "$path") || { echo "migrate-global-claude-md: scan failed" >&2; exit 2; }
+        for (i = 1; i <= nb; i++) print "BAD " bad[i] }' "$@" - < "$path") || { echo "migrate-global-claude-md: scan failed" >&2; exit 2; }
 
 start=$(printf '%s\n' "$scan" | sed -n 's/^START //p')
 end=$(printf '%s\n' "$scan" | sed -n 's/^END //p')

@@ -775,6 +775,20 @@ section "[24] Policy statement removed: strip '## Command execution' header from
   assert_rc_nonzero "validator fails when the selective policy header is gone"
   assert_out_contains "reports the missing required statement" "missing from POLICY.md"
   rm -rf "$copy"
+
+  # Size cap: POLICY.md grown past 8192 bytes must fail (SessionStart stdout cap).
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  before_size="$(wc -c < "$copy/POLICY.md" | tr -d '[:space:]')"
+  for _i in $(seq 1 20); do
+    printf '<!-- padding padding padding padding padding pad -->\n' >> "$copy/POLICY.md"
+  done
+  after_size="$(wc -c < "$copy/POLICY.md" | tr -d '[:space:]')"
+  [[ "$after_size" -ge $((before_size + 1000)) && "$after_size" -gt 8192 ]] || { echo "case 24 size fixture edit did not apply" >&2; exit 1; }
+  run_validate "$copy" 14
+  assert_rc_nonzero "validator fails when POLICY.md exceeds 8192 bytes"
+  assert_out_contains "reports the size and the limit" "over the 8192-byte limit"
+  rm -rf "$copy"
 }
 
 # ===========================================================================

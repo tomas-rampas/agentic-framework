@@ -6,8 +6,9 @@
 #   1. A branch / unreviewed-commit line so the model knows whether the peer-review
 #      final gate (Stop hook) is armed, plus a one-line routing reminder.
 #   2. The framework policy: the full, unmodified content of POLICY.md at the plugin
-#      root, printed after the branch line on source startup, resume, clear and
-#      compact (any other or absent source prints no policy), unless <cwd>/CLAUDE.md holds the
+#      root, printed after the branch line on source startup, clear and compact
+#      (resume, fork, any other or absent source prints no policy: a resumed or forked
+#      session keeps the transcript, which already holds the policy), unless <cwd>/CLAUDE.md holds the
 #      exact marker line  <!-- agentic-framework: policy inline -->  (REQ-009).
 #      The marker is honoured only in <cwd>/CLAUDE.md; parent and child directories
 #      are not consulted (EDGE-005). A missing POLICY.md prints nothing extra.
@@ -63,7 +64,7 @@ try {
         $out.Write($b, 0, $b.Length)
     }
 
-    if ($sourceKind -in @('startup', 'resume', 'clear', 'compact')) {
+    if ($sourceKind -in @('startup', 'clear', 'compact')) {
         $root = $env:CLAUDE_PLUGIN_ROOT
         if (-not $root) { $root = Split-Path -Parent $PSScriptRoot }
         $policy = Join-Path $root 'POLICY.md'

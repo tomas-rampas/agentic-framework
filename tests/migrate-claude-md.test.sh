@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # migrate-claude-md.test.sh — scripts/migrate-global-claude-md.{sh,ps1} (REQ-013, EDGE-006).
-# Fixture: a copy of the owner's ~/.claude/CLAUDE.md when it still holds the framework
-# block, else a synthetic file built from the bundled v5.1.0 reference plus a
-# "Claude Code System Guidelines" section. The real file is only ever read.
+# Fixture: a synthetic file built from the bundled v5.1.0 reference plus a
+# "Claude Code System Guidelines" section. With MIGRATE_TEST_USE_REAL_FILE=1 a copy of the
+# owner's ~/.claude/CLAUDE.md is used instead when it still holds the framework block.
+# The real file is only ever read.
 # The .sh script always runs; the .ps1 runs through pwsh -NoProfile -File when pwsh exists.
 # Usage: bash tests/migrate-claude-md.test.sh   (exit 0 = all pass)
 
@@ -43,7 +44,7 @@ assert_eq() { # name expected actual
 # --- fixture -------------------------------------------------------------------
 GLOBAL_REAL="${HOME:-}/.claude/CLAUDE.md"
 FIXTURE="$HARNESS_ROOT/fixture-CLAUDE.md"
-if [ -f "$GLOBAL_REAL" ] && grep -q -x -F -- "$TITLE" "$GLOBAL_REAL" && grep -q -x -F -- "$GUIDE" "$GLOBAL_REAL"; then
+if [ "${MIGRATE_TEST_USE_REAL_FILE:-}" = 1 ] && [ -f "$GLOBAL_REAL" ] && grep -q -x -F -- "$TITLE" "$GLOBAL_REAL" && grep -q -x -F -- "$GUIDE" "$GLOBAL_REAL"; then
   cp "$GLOBAL_REAL" "$FIXTURE"
   echo "fixture: copy of $GLOBAL_REAL"
 else
@@ -216,7 +217,46 @@ run_suite() { # impl
   fi
   assert_eq "$impl path a=b/CLAUDE.md dry-run exits 0" 0 "$RC"
   printf '%s' "$OUT" | grep -q -F 'dry run: would remove'; assert "$impl path a=b/CLAUDE.md finds the block" $?
+
+  # 11. a namespace-qualified "ident::ident=value" path is a file, not a gawk assignment
+  d11="$HARNESS_ROOT/$impl-ns"; rm -rf "$d11"
+  # (MSYS maps ":" to a private-use character on NTFS, so native pwsh cannot see that name: sh only there.)
+  if [ "$impl" = ps ] && command -v cygpath >/dev/null 2>&1; then
+    echo "SKIP: ps path awk::start=3/CLAUDE.md: ':' is not a legal NTFS file name for native pwsh"
+  elif mkdir -p "$d11/awk::start=3" 2>/dev/null && [ -d "$d11/awk::start=3" ]; then
+    cp "$FIXTURE" "$d11/awk::start=3/CLAUDE.md"
+    if [ "$impl" = sh ]; then
+      OUT=$(cd "$d11" && sh "$SH_SCRIPT" --dry-run 'awk::start=3/CLAUDE.md' 2>&1); RC=$?
+    else
+      OUT=$(cd "$d11" && pwsh -NoProfile -File "$(to_native "$PS_SCRIPT")" -Path 'awk::start=3/CLAUDE.md' -DryRun 2>&1); RC=$?
+    fi
+    assert_eq "$impl path awk::start=3/CLAUDE.md dry-run exits 0" 0 "$RC"
+    printf '%s' "$OUT" | grep -q -F 'dry run: would remove lines 1-'; assert "$impl path awk::start=3/CLAUDE.md scans the whole file (block starts at line 1)" $?
+  else
+    echo "SKIP: $impl cannot create a directory named awk::start=3 on this host"
+  fi
+
+  # 12. a control byte before "# " is not a heading: the line is a customised block line (exit 3)
+  d12="$HARNESS_ROOT/$impl-ctl"; rm -rf "$d12"; mkdir -p "$d12"
+  { head -n 10 "$FIXTURE"; printf '\001# x\n'; tail -n +11 "$FIXTURE"; } > "$d12/CLAUDE.md"
+  cp "$d12/CLAUDE.md" "$d12/orig"
+  mig "$impl" "$d12/CLAUDE.md"
+  assert_eq "$impl control byte before '# ' inside the block exits 3" 3 "$RC"
+  cmp -s "$d12/orig" "$d12/CLAUDE.md"; assert "$impl control-byte row leaves the file unchanged" $?
 }
+
+# 13. (sh only) a FIFO path exits 2 at once instead of blocking on the BOM read
+fifo_dir="$HARNESS_ROOT/fifo"; mkdir -p "$fifo_dir"
+if mkfifo "$fifo_dir/f" 2>/dev/null && [ -p "$fifo_dir/f" ]; then
+  if command -v timeout >/dev/null 2>&1; then
+    OUT=$(timeout 10 sh "$SH_SCRIPT" "$fifo_dir/f" 2>&1 </dev/null); RC=$?
+    assert_eq "sh FIFO path exits 2 without blocking (124 = timeout)" 2 "$RC"
+  else
+    echo "SKIP: no timeout command; FIFO row not run"
+  fi
+else
+  echo "SKIP: mkfifo unavailable on this host; FIFO row not run"
+fi
 
 run_suite sh
 if [ "$HAVE_PWSH" -eq 1 ]; then
