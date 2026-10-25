@@ -100,5 +100,23 @@ run_stop s4 a4 peer-review-critic "$T4"
 assert_eq "no hand-back: verdict null" null "$(field .verdict)"
 assert_eq "no hand-back: record still written with tokens" 40 "$(field .tokens.output)"
 
+# 5. over-cap transcript (cap shrunk to 700 bytes via AF_TELEMETRY_TRANSCRIPT_CAP): duration_s spans
+# the first timestamp to the LAST one in the file's tail, not to the end of the head window (REQ-014)
+T5="$HARNESS_ROOT/t5.jsonl"
+{
+  line 2026-10-24T10:00:00Z msg_F1 null 5
+  line 2026-10-24T10:01:00Z msg_F2 null 5
+  line 2026-10-24T10:02:00Z msg_F3 null 5
+  line 2026-10-24T10:03:00Z msg_F4 null 5
+  line 2026-10-24T10:04:00Z msg_F5 null 5
+  line 2026-10-24T10:05:00Z msg_F6 end_turn 5
+} > "$T5"
+t5size=$(wc -c < "$T5" | tr -d '[:space:]')
+assert_eq "over-cap fixture exceeds the shrunk cap" true "$([ "$t5size" -gt 700 ] && echo true || echo false)"
+AF_TELEMETRY_TRANSCRIPT_CAP=700 && export AF_TELEMETRY_TRANSCRIPT_CAP
+run_stop s5 a5 rust-expert "$T5"
+unset AF_TELEMETRY_TRANSCRIPT_CAP
+assert_eq "over-cap non-reviewer: duration_s spans first to tail-window last" 300 "$(field .duration_s)"
+
 printf '\n%s run, %s passed, %s failed\n' "$TESTS_RUN" "$TESTS_PASS" "$TESTS_FAIL"
 [ "$TESTS_FAIL" -eq 0 ]

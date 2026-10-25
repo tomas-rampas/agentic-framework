@@ -101,7 +101,10 @@ emit_policy() {
   fi
   policy="$root/POLICY.md"
   [ -f "$policy" ] || return 0
-  if [ -f "$cwd/CLAUDE.md" ] && tr -d '\r' < "$cwd/CLAUDE.md" 2>/dev/null | grep -q -x -F -- "$MARKER"; then
+  # Strip every CR and a leading UTF-8 BOM so the .ps1 twin (which reads the
+  # whole text, BOM-stripped, CRs removed) and this script agree on every input.
+  bom=$(printf '\357\273\277')
+  if [ -f "$cwd/CLAUDE.md" ] && tr -d '\r' < "$cwd/CLAUDE.md" 2>/dev/null | LC_ALL=C sed "1s/^$bom//" | grep -q -x -F -- "$MARKER"; then
     return 0
   fi
   cat "$policy" 2>/dev/null

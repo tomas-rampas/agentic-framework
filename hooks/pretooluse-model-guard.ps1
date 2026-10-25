@@ -101,7 +101,7 @@
 # casing, its values and their position.
 #
 # Registered in hooks/hooks.json via the agentic-framework plugin (PreToolUse: Task|Agent).
-# All THREE deny shapes (fork, fable, and the rewrite-fallback deny above)
+# All FOUR deny shapes (fork, fable, the executor cap, and the rewrite-fallback deny above)
 # are byte-identical with the .sh twin, since none of them echo
 # caller-supplied text verbatim. REWRITE cases may legitimately differ in
 # JSON escaping of echoed strings and are compared as canonical JSON

@@ -53,6 +53,9 @@ parse_verdict() {
   tr -d '\r' | grep -E '^[[:space:]]*VERDICT:[[:blank:]]*(APPROVED|CHANGES_REQUIRED)[[:blank:]]*$' \
     | tail -n 1 | sed -E 's/.*VERDICT:[[:blank:]]*([A-Z_]+).*/\1/'
 }
+# Transcript read cap in bytes; AF_TELEMETRY_TRANSCRIPT_CAP overrides it (tests use a small cap).
+cap=${AF_TELEMETRY_TRANSCRIPT_CAP:-16777216}
+case "$cap" in ''|0|*[!0-9]*) cap=16777216 ;; esac
 is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer|code-review-gatekeeper) return 0 ;; esac; return 1; }
 
 # Token totals + last model over a transcript file (read through a 16 MiB cap into $work/lines), as one
@@ -62,7 +65,7 @@ is_reviewer() { case "$1" in peer-review-critic|spec-compliance-reviewer|code-re
 # so sidechain lines are NOT excluded here (unlike the main-transcript accounting).
 sum_transcript() {
   # jq reads a FILE (piping into the native jq.exe is ~7x slower); $work is trap-covered.
-  head -c 16777216 "$1" | tr -d '\r' > "$work/lines" || return 1
+  head -c "$cap" "$1" | tr -d '\r' > "$work/lines" || return 1
   jq -c -n -R '
     [inputs | fromjson? | objects
      | select(.type == "assistant" and (.message | type) == "object"
@@ -199,14 +202,19 @@ case "$event" in
       if [ -f "$work/lines" ]; then
         first_ts=$(jq -r -n -R 'first(inputs | fromjson? | objects) | .timestamp | strings' "$work/lines" | tr -d '\r')
         last_ts=$(jq -r -n -R '[inputs | fromjson? | objects | .timestamp | strings] | last // empty' "$work/lines" | tr -d '\r')
-        if is_reviewer "$name"; then
-          hb_src="$work/lines"
-          tsize=$(wc -c < "$tpath" 2>/dev/null | tr -d '[:space:]')
-          case "$tsize" in ''|*[!0-9]*) tsize=0 ;; esac
-          if [ "$tsize" -gt 16777216 ]; then
-            # the report is the file's tail, beyond the capped head read
-            if tail -c 16777216 -- "$tpath" | sed 1d | tr -d '\r' > "$work/tail"; then hb_src="$work/tail"; fi
+        hb_src="$work/lines"
+        tsize=$(wc -c < "$tpath" 2>/dev/null | tr -d '[:space:]')
+        case "$tsize" in ''|*[!0-9]*) tsize=0 ;; esac
+        if [ "$tsize" -gt "$cap" ]; then
+          # beyond the capped head read: the last timestamp (REQ-014) and a reviewer's report
+          # are in the file's tail; the tail window drops its partial first line
+          if tail -c "$cap" -- "$tpath" | sed 1d | tr -d '\r' > "$work/tail"; then
+            hb_src="$work/tail"
+            tail_ts=$(jq -r -n -R '[inputs | fromjson? | objects | .timestamp | strings] | last // empty' "$work/tail" | tr -d '\r')
+            if [ -n "$tail_ts" ]; then last_ts=$tail_ts; fi
           fi
+        fi
+        if is_reviewer "$name"; then
           hb=$(jq -r -n -R '
             def blocks: (.message | if type == "object" then .content else null end) | if type == "array" then . else [] end;
             [inputs | fromjson? | objects | select(.type == "assistant")] as $a

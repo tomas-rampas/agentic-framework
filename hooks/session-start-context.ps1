@@ -71,8 +71,11 @@ try {
             $inline = $false
             $claudeMd = Join-Path $cwd 'CLAUDE.md'
             if (Test-Path -LiteralPath $claudeMd -PathType Leaf) {
-                foreach ($l in [System.IO.File]::ReadLines($claudeMd)) {
-                    if ($l.TrimEnd("`r") -ceq $Marker) { $inline = $true; break }
+                # ReadAllText drops a UTF-8 BOM; removing every CR (not only a trailing one)
+                # and splitting on LF alone matches the .sh twin (tr -d '\r' | grep -x).
+                $text = [System.IO.File]::ReadAllText($claudeMd).Replace("`r", '')
+                foreach ($l in $text.Split("`n")) {
+                    if ($l -ceq $Marker) { $inline = $true; break }
                 }
             }
             if (-not $inline) {

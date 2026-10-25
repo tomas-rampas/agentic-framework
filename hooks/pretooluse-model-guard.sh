@@ -74,8 +74,8 @@ set -u
 # sanitised copy that still fails to parse, missing jq) keeps the true
 # fail-open exit-0-silent behaviour.
 #
-# Ported from pretooluse-model-guard.ps1 to POSIX sh. All THREE deny shapes
-# (fork, fable, and the rewrite-fallback deny above) are byte-identical
+# Ported from pretooluse-model-guard.ps1 to POSIX sh. All FOUR deny shapes
+# (fork, fable, the executor cap, and the rewrite-fallback deny above) are byte-identical
 # between the two implementations, since none of them echo caller-supplied
 # text verbatim. REWRITE cases may legitimately differ in JSON escaping of
 # echoed strings (jq emits raw UTF-8, .NET's Utf8JsonWriter may differ on

@@ -462,6 +462,17 @@ section "[SESSION-START-POLICY] policy printed after the branch line unless <cwd
   run_policy resume "$plain"
   if [ -z "$RUN_OUT" ]; then _pass "marker with CRLF line endings is honoured"; else _fail "marker with CRLF line endings is honoured"; fi
 
+  # a UTF-8 BOM before the marker on line 1 is stripped: the marker is honoured
+  printf '\357\273\277%s\n# proj\n' "$marker" > "$plain/CLAUDE.md"
+  run_policy startup "$plain"
+  if [ -z "$RUN_OUT" ]; then _pass "marker on line 1 after a UTF-8 BOM is honoured"; else _fail "marker on line 1 after a UTF-8 BOM is honoured"; fi
+
+  # a bare CR before the marker is removed, not a line break: "x<CR>marker" is not the marker line
+  printf '# proj\r%s\n' "$marker" > "$plain/CLAUDE.md"
+  run_policy startup "$plain"
+  if printf '%s' "$RUN_OUT" | cmp -s - "$policy_file"; then _pass "bare CR before the marker on the same line does not suppress the policy"
+  else _fail "bare CR before the marker on the same line does not suppress the policy"; fi
+
   # CLAUDE.md without the marker (and a near-miss line) does not suppress
   printf '# proj\n<!-- agentic-framework: policy inline --> trailing\n' > "$plain/CLAUDE.md"
   run_policy startup "$plain"

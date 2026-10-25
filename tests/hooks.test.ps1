@@ -568,6 +568,14 @@ Remove-Item (Join-Path $scratch 'CLAUDE.md') -Force
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p6'; source = 'resume'; cwd = $polDir })
 Assert 'policy: marker with CRLF line endings is honoured' ($r.Code -eq 0 -and -not $r.Out)
 
+[IO.File]::WriteAllBytes((Join-Path $polDir 'CLAUDE.md'), [byte[]](0xEF, 0xBB, 0xBF) + [Text.Encoding]::UTF8.GetBytes("$marker`n# proj`n"))
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p6b'; source = 'startup'; cwd = $polDir })
+Assert 'policy: marker on line 1 after a UTF-8 BOM is honoured' ($r.Code -eq 0 -and -not $r.Out)
+
+[IO.File]::WriteAllText((Join-Path $polDir 'CLAUDE.md'), "# proj`r$marker`n")
+$r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p6c'; source = 'startup'; cwd = $polDir })
+Assert 'policy: bare CR before the marker on the same line does not suppress the policy' ($r.Code -eq 0 -and $r.Out -ceq $policyText)
+
 [IO.File]::WriteAllText((Join-Path $polDir 'CLAUDE.md'), "# proj`n$marker trailing`n")
 $r = Invoke-Hook 'session-start-context.ps1' (New-Payload @{ session_id = 'p7'; source = 'startup'; cwd = $polDir })
 Assert 'policy: near-miss marker line does not suppress the policy' ($r.Code -eq 0 -and $r.Out -ceq $policyText)

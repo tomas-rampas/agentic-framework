@@ -449,6 +449,10 @@ section "[SESSION-START-POLICY] byte-identical stdout across sh and pwsh"
   check_ss_equiv "marker only in a child directory (policy printed)" startup "$ss_plain"
   printf '# p\r\n%s\r\n' "$ss_marker" > "$ss_plain/CLAUDE.md"
   check_ss_equiv "marker with CRLF line endings" resume "$ss_plain"
+  printf '\357\273\277%s\n# p\n' "$ss_marker" > "$ss_plain/CLAUDE.md"
+  check_ss_equiv "marker on line 1 after a UTF-8 BOM" startup "$ss_plain"
+  printf '# p\r%s\n' "$ss_marker" > "$ss_plain/CLAUDE.md"
+  check_ss_equiv "bare CR before the marker on the same line" startup "$ss_plain"
 
   rm -rf "$ss_workdir"
 }
