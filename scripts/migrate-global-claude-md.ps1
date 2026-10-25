@@ -37,8 +37,12 @@ param(
 $ErrorActionPreference = 'Stop'
 $title = '# Claude Code CLI - Agent Execution Framework'
 # Latin1 maps bytes to chars one to one, so reading and writing never alters a byte.
+# Files are read as raw bytes through GetString: ReadAllText would sniff a BOM and decode
+# in another encoding. A UTF-8 BOM at the start of the target is outside the block: it is
+# ignored for the title comparison and kept in the output.
 $latin1 = [System.Text.Encoding]::Latin1
 $utf8 = [System.Text.UTF8Encoding]::new($false)
+$bom = [string]([char]0xEF) + [char]0xBB + [char]0xBF
 
 function Read-Segment {
     # Splits raw text into segments that keep their own line terminator.
@@ -77,13 +81,14 @@ if ($refFiles.Count -eq 0) {
 
 $known = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 foreach ($f in $refFiles) {
-    foreach ($seg in (Read-Segment ([System.IO.File]::ReadAllText($f.FullName, $latin1)))) {
+    foreach ($seg in (Read-Segment ($latin1.GetString([System.IO.File]::ReadAllBytes($f.FullName))))) {
         $l = Get-LineText $seg
         if ($l -match '\S') { [void]$known.Add($l) }
     }
 }
 
-$text = [System.IO.File]::ReadAllText($Path, $latin1)
+$text = $latin1.GetString([System.IO.File]::ReadAllBytes($Path))
+$hasBom = $text.StartsWith($bom, [System.StringComparison]::Ordinal)
 $segs = Read-Segment $text
 $start = -1   # zero-based index of the title line
 $end = $segs.Count   # zero-based index of the first line after the block
@@ -91,7 +96,8 @@ $bad = [System.Collections.Generic.List[string]]::new()
 for ($i = 0; $i -lt $segs.Count; $i++) {
     $l = Get-LineText $segs[$i]
     if ($start -lt 0) {
-        if ($l -ceq $title) { $start = $i }
+        if ($i -eq 0 -and $hasBom) { $l = $l.Substring(3) }
+        if ([string]::Equals($l, $title, [System.StringComparison]::Ordinal)) { $start = $i }
         continue
     }
     if ($l.StartsWith('# ') -and -not $known.Contains($l)) { $end = $i; break }
@@ -117,7 +123,11 @@ if ($bad.Count -gt 0) {
 $count = $end - $start
 if ($DryRun) {
     Write-Output "dry run: would remove lines $first-$last ($count lines) from ${Path}:"
-    for ($i = $start; $i -lt $end; $i++) { Write-Output (ConvertTo-Display (Get-LineText $segs[$i])) }
+    for ($i = $start; $i -lt $end; $i++) {
+        $l = Get-LineText $segs[$i]
+        if ($i -eq 0 -and $hasBom) { $l = $l.Substring(3) }
+        Write-Output (ConvertTo-Display $l)
+    }
     exit 0
 }
 
@@ -128,6 +138,8 @@ if ((Test-Path -LiteralPath $backup) -or (Get-Item -LiteralPath $backup -Force -
 }
 Copy-Item -LiteralPath $Path -Destination $backup -ErrorAction Stop
 $sb = [System.Text.StringBuilder]::new()
+# The BOM is not part of the block: keep it when the block's first line carried it.
+if ($hasBom -and $start -eq 0) { [void]$sb.Append($bom) }
 for ($i = 0; $i -lt $segs.Count; $i++) {
     if ($i -lt $start -or $i -ge $end) { [void]$sb.Append($segs[$i]) }
 }

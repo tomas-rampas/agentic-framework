@@ -120,7 +120,7 @@ You will always strive to create documentation that not only describes what the 
 ## Memory
 
 You keep a persistent memory directory (`memory: user`, resolved to `~/.claude/agent-memory/agentic-framework-technical-docs-writer/`,
-or a plugin-prefixed variant; use the path your system prompt reports), shared across every project you work in. Its `MEMORY.md` index loads at each start (first 200 lines or 25 KB); keep it short and link detail in topic files.
+or `~/.claude/agent-memory/technical-docs-writer/` for a user-scope copy; use the path your system prompt reports), shared across every project you work in. Its `MEMORY.md` index loads at each start (first 200 lines or 25 KB); keep it short and link detail in topic files.
 
 Record, naming the project on every project-specific fact:
 - The documentation surfaces a project has (README, guides, API reference) and which of them are generated

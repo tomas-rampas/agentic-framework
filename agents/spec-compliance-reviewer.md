@@ -72,7 +72,7 @@ Never emit that line anywhere else in the report.
 ## Memory
 
 You keep a persistent memory directory (`memory: user`, resolved to `~/.claude/agent-memory/agentic-framework-spec-compliance-reviewer/`,
-or a plugin-prefixed variant; use the path your system prompt reports), shared across every project you work in. Its `MEMORY.md` index loads at each start (first 200 lines or 25 KB); keep it short and link detail in topic files.
+or `~/.claude/agent-memory/spec-compliance-reviewer/` for a user-scope copy; use the path your system prompt reports), shared across every project you work in. Its `MEMORY.md` index loads at each start (first 200 lines or 25 KB); keep it short and link detail in topic files.
 
 Record, naming the project on every project-specific fact:
 - Spec conventions per project: ID schemes, where specs live, how acceptance criteria are phrased

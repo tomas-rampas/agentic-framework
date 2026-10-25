@@ -47,6 +47,15 @@ for a in "$@"; do
 done
 [ -n "$path" ] || path="${HOME:-}/.claude/CLAUDE.md"
 case "$path" in -*) path="./$path" ;; esac   # a bare "-", or any path given after "--"; keeps awk from reading it as an option
+# "name=value" as an awk operand is a variable assignment, not a file: prefix a relative
+# path whose text before its first "=" is an awk identifier (drive-qualified paths are not).
+case "${path%%=*}" in "$path"|*[!A-Za-z0-9_]*|[0-9]*) ;; *) path="./$path" ;; esac
+
+# A UTF-8 BOM at the start of the file is outside the block: ignored when matching the
+# title, kept in the output.
+bom=$(printf '\357\273\277')
+has_bom=0
+[ "$(head -c 3 "$path" 2>/dev/null | LC_ALL=C tr -d '\n')" = "$bom" ] && has_bom=1
 
 if [ ! -f "$path" ]; then
   echo "migrate-global-claude-md: file not found: $path" >&2
@@ -61,9 +70,10 @@ fi
 # One pass: the references (stdin, CR stripped) build the known-line set, then the
 # target (file argument) is scanned. Prints START, END (first line after the block)
 # and one BAD line per non-blank block line found in no reference.
-scan=$(cat "$@" | tr -d '\r' | awk -v title="$TITLE" '
+scan=$(cat "$@" | tr -d '\r' | LC_ALL=C awk -v title="$TITLE" '
   NR == FNR { if ($0 ~ /[^ \t]/) ref[$0] = 1; next }
   { l = $0; sub(/\r$/, "", l)
+    if (FNR == 1) sub(/^\357\273\277/, "", l)
     if (!start) { if (l == title) start = FNR; next }
     if (!done) {
       if (l ~ /^# / && !(l in ref)) { end = FNR; done = 1; next }
@@ -90,7 +100,7 @@ fi
 
 if [ "$dry" -eq 1 ]; then
   echo "dry run: would remove lines $start-$((end - 1)) ($((end - start)) lines) from $path:"
-  sed -n "${start},$((end - 1))p" "$path"
+  sed -n "${start},$((end - 1))p" "$path" | LC_ALL=C sed "1s/^$bom//"
   exit 0
 fi
 
@@ -104,6 +114,7 @@ cp -p "$path" "$backup" || { echo "migrate-global-claude-md: backup failed" >&2;
 
 tmp=$(mktemp "$path.migrate-tmp.XXXXXX") || { echo "migrate-global-claude-md: cannot create temp file" >&2; exit 2; }
 {
+  [ "$has_bom" -eq 1 ] && [ "$start" -eq 1 ] && printf '%s' "$bom"
   [ "$start" -gt 1 ] && head -n "$((start - 1))" "$path"
   tail -n "+$end" "$path"
 } > "$tmp" || { rm -f "$tmp"; echo "migrate-global-claude-md: write failed" >&2; exit 2; }

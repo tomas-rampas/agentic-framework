@@ -165,6 +165,57 @@ run_suite() { # impl
   assert_eq "$impl unknown flag exits 2" 2 "$RC"
   cmp -s "$FIXTURE" "$d6/CLAUDE.md"; assert "$impl unknown flag leaves the file unchanged" $?
   assert_eq "$impl usage errors write no backup" 0 "$(backups "$d6")"
+
+  # 9. UTF-8 BOM at the start is outside the block: kept, ignored for the title match
+  bomb=$(printf '\357\273\277')
+  user='# My notes — café
+- keep → this 🙂
+'
+  d7="$HARNESS_ROOT/$impl-bom"; rm -rf "$d7"; mkdir -p "$d7"
+  { printf '%s' "$bomb"; cat "$REF"; printf '\n%s' "$user"; } > "$d7/CLAUDE.md"
+  { printf '%s' "$bomb"; printf '%s' "$user"; } > "$d7/expected"
+  mig "$impl" "$d7/CLAUDE.md" dry
+  assert_eq "$impl BOM dry-run exits 0" 0 "$RC"
+  printf '%s' "$OUT" | grep -q -F -- "$bomb"; r=$?; assert_eq "$impl BOM dry-run output carries no BOM" 1 "$r"
+  mig "$impl" "$d7/CLAUDE.md"
+  assert_eq "$impl BOM run exits 0" 0 "$RC"
+  cmp -s "$d7/expected" "$d7/CLAUDE.md"; assert "$impl BOM run output is BOM + user section, byte-identical" $?
+  assert_eq "$impl BOM run writes one backup" 1 "$(backups "$d7")"
+  cp "$d7/CLAUDE.md" "$d7/after"
+  mig "$impl" "$d7/CLAUDE.md"
+  assert_eq "$impl BOM second run exits 0" 0 "$RC"
+  printf '%s' "$OUT" | grep -q -F 'nothing to do'; assert "$impl BOM second run says nothing to do" $?
+  cmp -s "$d7/after" "$d7/CLAUDE.md"; assert "$impl BOM second run changes nothing" $?
+  cp "$d7/expected" "$d7/CLAUDE.md"
+  mig "$impl" "$d7/CLAUDE.md"
+  printf '%s' "$OUT" | grep -q -F 'nothing to do'; assert "$impl BOM file without a block says nothing to do" $?
+  cmp -s "$d7/expected" "$d7/CLAUDE.md"; assert "$impl BOM file without a block is unchanged" $?
+  # BOM + a user line before the block: BOM stays on line 1 of the output
+  d8="$HARNESS_ROOT/$impl-bom-prefix"; rm -rf "$d8"; mkdir -p "$d8"
+  { printf '%s# Mine\n' "$bomb"; cat "$REF"; printf '\n%s' "$user"; } > "$d8/CLAUDE.md"
+  # (the block's own trailing blank line goes with it, as in section 7)
+  { printf '%s# Mine\n' "$bomb"; printf '%s' "$user"; } > "$d8/expected"
+  mig "$impl" "$d8/CLAUDE.md"
+  assert_eq "$impl BOM prefix run exits 0" 0 "$RC"
+  cmp -s "$d8/expected" "$d8/CLAUDE.md"; assert "$impl BOM prefix run keeps the BOM and user lines" $?
+  # a BOM file whose block holds a customised line is still refused, file untouched
+  d9="$HARNESS_ROOT/$impl-bom-custom"; rm -rf "$d9"; mkdir -p "$d9"
+  { printf '%s' "$bomb"; head -n 10 "$REF"; printf '%s\n' "$inj"; tail -n +11 "$REF"; } > "$d9/CLAUDE.md"
+  cp "$d9/CLAUDE.md" "$d9/orig"
+  mig "$impl" "$d9/CLAUDE.md"
+  assert_eq "$impl BOM customised block exits 3" 3 "$RC"
+  cmp -s "$d9/orig" "$d9/CLAUDE.md"; assert "$impl BOM customised block leaves the file unchanged" $?
+
+  # 10. a relative path whose text before "=" is an awk identifier is a file, not an assignment
+  d10="$HARNESS_ROOT/$impl-eq/a=b"; rm -rf "$HARNESS_ROOT/$impl-eq"; mkdir -p "$d10"
+  cp "$FIXTURE" "$d10/CLAUDE.md"
+  if [ "$impl" = sh ]; then
+    OUT=$(cd "$HARNESS_ROOT/$impl-eq" && sh "$SH_SCRIPT" --dry-run a=b/CLAUDE.md 2>&1); RC=$?
+  else
+    OUT=$(cd "$HARNESS_ROOT/$impl-eq" && pwsh -NoProfile -File "$(to_native "$PS_SCRIPT")" -Path a=b/CLAUDE.md -DryRun 2>&1); RC=$?
+  fi
+  assert_eq "$impl path a=b/CLAUDE.md dry-run exits 0" 0 "$RC"
+  printf '%s' "$OUT" | grep -q -F 'dry run: would remove'; assert "$impl path a=b/CLAUDE.md finds the block" $?
 }
 
 run_suite sh

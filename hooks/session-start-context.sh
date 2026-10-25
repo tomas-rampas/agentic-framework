@@ -104,7 +104,7 @@ emit_policy() {
   # Strip every CR and a leading UTF-8 BOM so the .ps1 twin (which reads the
   # whole text, BOM-stripped, CRs removed) and this script agree on UTF-8 input with or without one BOM.
   bom=$(printf '\357\273\277')
-  if [ -f "$cwd/CLAUDE.md" ] && tr -d '\r' < "$cwd/CLAUDE.md" 2>/dev/null | LC_ALL=C sed "1s/^$bom//" | grep -a -q -x -F -- "$MARKER"; then
+  if [ -f "$cwd/CLAUDE.md" ] && { tr -d '\r' < "$cwd/CLAUDE.md"; } 2>/dev/null | LC_ALL=C sed "1s/^$bom//" | grep -a -q -x -F -- "$MARKER"; then
     return 0
   fi
   cat "$policy" 2>/dev/null

@@ -168,7 +168,7 @@ Since 5.2.0 the plugin delivers the framework policy itself; there is no `CLAUDE
 <!-- agentic-framework: policy inline -->
 ```
 
-Only `CLAUDE.md` in the session's working directory is checked: a marker in a parent or child directory does nothing. This repository's own `CLAUDE.md` carries the marker and holds only what developing the framework needs and imports `POLICY.md` with `@POLICY.md`, so sessions here load the policy once.
+Only `CLAUDE.md` in the session's working directory is checked: a marker in a parent or child directory does nothing. This repository's own `CLAUDE.md` carries the marker, imports `POLICY.md` with `@POLICY.md` so sessions here load the policy once, and otherwise holds only what developing the framework needs.
 
 **Sub-agents see no CLAUDE.md.** Every agent carries `omitClaudeMd: true`, so a sub-agent loads neither the policy nor your project's own `CLAUDE.md`, whatever its content. The delegation brief's `Project rules` block (scratch directory, commit message rules, test and build commands, conventions of the files touched) is the only carrier of your project's rules into a sub-agent; a rule you want agents to follow has to be in that block, which `/agentic-framework:delegate` and `/agentic-framework:build` fill from your `CLAUDE.md`.
 
@@ -184,7 +184,7 @@ pwsh -NoProfile -File scripts/migrate-global-claude-md.ps1 -DryRun
 pwsh -NoProfile -File scripts/migrate-global-claude-md.ps1
 ```
 
-Run it from the plugin folder (`~/.claude/plugins/cache/agentic-framework/agentic-framework/<version>/`) or from a clone. Both take an optional path to migrate a file other than `~/.claude/CLAUDE.md`. The script removes only the framework block, from the line `# Claude Code CLI - Agent Execution Framework` to the next top-level heading that is not part of the shipped policy text, and preserves every byte outside it. Before changing anything it writes a timestamped backup beside the file (`CLAUDE.md.bak-<yyyyMMdd-HHmmss>`). It is idempotent: a second run finds nothing to do. Exit codes: `0` migrated, dry run, or nothing to do; `2` usage or file error; `3` refused because the block holds lines that match none of the shipped reference policies (`scripts/legacy-policy/`), meaning you customised it; the differing lines are printed, nothing is changed, and no backup is written, so move your own lines out by hand and run it again.
+Run it from the plugin folder (`~/.claude/plugins/cache/agentic-framework/agentic-framework/<version>/`) or from a clone. Both take an optional path to migrate a file other than `~/.claude/CLAUDE.md`. The script removes only the framework block, from the line `# Claude Code CLI - Agent Execution Framework` to the next top-level heading that is not part of the shipped policy text, and preserves every byte outside it. Before changing anything it writes a timestamped backup beside the file (`CLAUDE.md.bak-<yyyyMMdd-HHmmss>`). It is idempotent: a second run finds nothing to do. Exit codes: `0` migrated, dry run, or nothing to do; `2` usage or file error; `3` refused because the block holds lines that match none of the shipped reference policies (`scripts/legacy-policy/`), meaning you customised it or it predates 4.7.0; the differing lines are printed, nothing is changed, and no backup is written, so move your own lines out by hand and run it again.
 
 ---
 

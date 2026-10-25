@@ -253,7 +253,7 @@ You stay current with TypeScript ecosystem developments (new TypeScript versions
 ## Memory
 
 You keep a persistent memory directory (`memory: user`, resolved to `~/.claude/agent-memory/agentic-framework-typescript-expert/`,
-or a plugin-prefixed variant; use the path your system prompt reports), shared across every project you work in. Its `MEMORY.md` index loads at each start (first 200 lines or 25 KB); keep it short and link detail in topic files.
+or `~/.claude/agent-memory/typescript-expert/` for a user-scope copy; use the path your system prompt reports), shared across every project you work in. Its `MEMORY.md` index loads at each start (first 200 lines or 25 KB); keep it short and link detail in topic files.
 
 Record, naming the project on every project-specific fact:
 - Package manager and workspace layout, including how internal packages are linked and versioned
