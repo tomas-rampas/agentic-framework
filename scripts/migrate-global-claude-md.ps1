@@ -83,7 +83,7 @@ if ([System.IO.Path]::IsPathRooted($Path)) {
 } else {
     $Path = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine((Get-Location).ProviderPath, $Path))
 }
-if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+if (-not [System.IO.File]::Exists($Path)) {
     [Console]::Error.WriteLine("migrate-global-claude-md: file not found: $Path")
     exit 2
 }
@@ -105,18 +105,18 @@ try {
     $userHome = if ($IsWindows) { $env:USERPROFILE } else { $env:HOME }
     if ([string]::IsNullOrEmpty($userHome)) { $userHome = $HOME }
     $installedJson = [System.IO.Path]::Combine($userHome, '.claude/plugins/installed_plugins.json')
-    $inst = Get-Content -LiteralPath $installedJson -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable
+    $inst = [System.IO.File]::ReadAllText($installedJson) | ConvertFrom-Json -AsHashtable
     $entries = @($inst['plugins'][$pluginId])
     # Prefer the user-scope entry: a project-scope install can be listed first.
     $chosen = @($entries | Where-Object { $_ -is [System.Collections.IDictionary] -and $_['scope'] -eq 'user' }) + $entries | Select-Object -First 1
     $installPath = [string]$chosen['installPath']
-    $hasPolicy = Test-Path -LiteralPath ($installPath + [System.IO.Path]::DirectorySeparatorChar + 'POLICY.md') -PathType Leaf
+    $hasPolicy = [System.IO.File]::Exists([System.IO.Path]::Combine($installPath, 'POLICY.md'))
 } catch { $hasPolicy = $false }
 if ([string]::IsNullOrEmpty($installPath) -or -not $hasPolicy) {
     $shown = if ($installPath) { $installPath } else { "<not found in $installedJson>" }
     [Console]::Error.WriteLine("migrate-global-claude-md: warning: the installed agentic-framework plugin at $shown has no POLICY.md; sessions get no policy until the plugin is updated to 5.2.0 or later")
 }
-if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '../POLICY.md') -PathType Leaf)) {
+if (-not [System.IO.File]::Exists((Join-Path $PSScriptRoot '../POLICY.md'))) {
     [Console]::Error.WriteLine("migrate-global-claude-md: warning: this script's folder has no POLICY.md ($(Join-Path $PSScriptRoot '../POLICY.md'))")
 }
 
@@ -173,11 +173,16 @@ if ($DryRun) {
 }
 
 $backup = '{0}.bak-{1}' -f $Path, (Get-Date -Format 'yyyyMMdd-HHmmss')
-if ((Test-Path -LiteralPath $backup) -or (Get-Item -LiteralPath $backup -Force -ErrorAction Ignore)) {
+$backupTaken = [System.IO.File]::Exists($backup) -or [System.IO.Directory]::Exists($backup)
+if (-not $backupTaken) {
+    # Dangling symlink: neither Exists call sees it.
+    try { $backupTaken = [bool](Get-Item -LiteralPath $backup -Force -ErrorAction Ignore) } catch { $backupTaken = $false }
+}
+if ($backupTaken) {
     [Console]::Error.WriteLine("migrate-global-claude-md: backup already exists, refusing to overwrite: $backup")
     exit 2
 }
-Copy-Item -LiteralPath $Path -Destination $backup -ErrorAction Stop
+[System.IO.File]::Copy($Path, $backup, $false)
 $sb = [System.Text.StringBuilder]::new()
 # The BOM is not part of the block: keep it when the block's first line carried it.
 if ($hasBom -and $start -eq 0) { [void]$sb.Append($bom) }
