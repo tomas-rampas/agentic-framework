@@ -558,6 +558,17 @@ If you are running the test suites manually on Windows, use the Git Bash bash.ex
 /agentic-framework:analyze-framework                     # Verify success
 ```
 
+### Serena troubleshooting
+
+- **Interface.** Serena 2.x defaults to `agent_interface: REPL` in `~/.serena/serena_config.yml`, exposing one code tool, `serena_repl`, plus `initial_instructions` and, when the session is not bound to one project, `activate_project`. The classic `tools` interface exposes one tool per operation. The agents' allowlists name both; either works.
+- **No active project.** Outside a repository, no project is active until an agent activates one ([MCP Servers](#mcp-servers)). Every client of that server shares activation, so parallel agents in worktrees or sibling repositories can switch each other's project. Start the session inside the repository.
+- **Empty `Active language servers`.** Right after first activation it is empty; servers start a few seconds later. Alone, it does not mean a server is missing.
+- **Reference search returns nothing.** A language server that cannot load the project empties `find_referencing_symbols`; per-file lookups still work. With C#, a `global.json` asking for an SDK that is not installed gives "A compatible .NET SDK was not found" for every project. Install the SDK the project asks for, then restart the session.
+
+Each server start writes a log under `~/.serena/logs/<date>/`: the interface, project activations, and language-server start-up and load errors.
+
+**Permissions.** `serena_repl` runs Python in the Serena server process, outside Claude Code's Bash permission rules and this plugin's push/PR gate. Do not add it, or the whole server, to `permissions.allow`; keep the per-call prompt.
+
 ---
 
 ## Contributing
@@ -582,5 +593,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 9 Hook Scripts • 11 Skills • 13 Commands • v5.2.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 9 Hook Scripts • 11 Skills • 13 Commands • v5.2.1**
 <!-- END GENERATED: framework-stats -->
