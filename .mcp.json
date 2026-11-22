@@ -2,7 +2,7 @@
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_FS_ROOT:-${CLAUDE_PROJECT_DIR}}"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_FS_ROOT:-.}"]
     },
     "context7": {
       "command": "npx",

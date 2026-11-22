@@ -280,7 +280,7 @@ State clearly to the user:
 
 **Explain the default:**
 
-When `MCP_FS_ROOT` is unset, the filesystem MCP server roots at the current project directory (`${MCP_FS_ROOT:-${CLAUDE_PROJECT_DIR}}`). This is the safe, sensible default and works for most users.
+When `MCP_FS_ROOT` is unset, the filesystem MCP server roots at the current project directory (`${MCP_FS_ROOT:-.}`, resolved against the directory the session starts in). This is the safe, sensible default and works for most users.
 
 **Offer to set a custom root:**
 

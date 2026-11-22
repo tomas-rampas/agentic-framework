@@ -360,6 +360,7 @@ Besides `name`, `description`, `model`, `tools` and `memory: user`, each `agents
 | `omitClaudeMd` | `true` on all 21 agents | The sub-agent loads no `CLAUDE.md`, including a consumer project's own. The delegation brief's `Project rules` block is the carrier (see [Policy delivery](#policy-delivery-and-the-claudemd-marker)). |
 | `disallowedTools` | `Artifact` on every agent; `Agent` on all but `system-architect` | Agents cannot publish artifacts, and cannot delegate onward. A need outside an agent's domain is reported in its hand-back, and the orchestrator routes it. Executors carry `Agent, Artifact`; `peer-review-critic` and `spec-compliance-reviewer` merged both into their existing deny list. |
 | `effort` | reviewers and gates `high`, `system-architect` and `comprehensive-analyst` `high`, implementers `medium`, executors `low` | Default reasoning effort per role. The orchestrator may pass a per-call `effort: low` on mechanical delegations, never below `high` for a reviewer. |
+| `tools` (Serena) | an allowlist naming any Serena tool in one spelling also names `serena_repl` in that spelling (`mcp__serena__serena_repl`, `mcp__plugin_agentic-framework_serena__serena_repl`) | Serena 2.x defaults to a REPL interface whose only code tool is `serena_repl`; without it the agent has no symbol tools. Failure detail: `missing-serena-repl: <agent> -> <tool>`. |
 
 The language experts no longer list `Agent` in `tools:`. The four reviewers record per-project false-positive patterns in their memory, so a later re-review does not re-derive a rejected finding.
 
@@ -557,6 +558,17 @@ If you are running the test suites manually on Windows, use the Git Bash bash.ex
 /agentic-framework:analyze-framework                     # Verify success
 ```
 
+### Serena troubleshooting
+
+- **Interface.** Serena 2.x defaults to `agent_interface: REPL` in `~/.serena/serena_config.yml`, exposing one code tool, `serena_repl`, plus `initial_instructions` and, when the session is not bound to one project, `activate_project`. The classic `tools` interface exposes one tool per operation. The agents' allowlists name both; either works.
+- **No active project.** Outside a repository, no project is active until an agent activates one ([MCP Servers](#mcp-servers)). Every client of that server shares activation, so parallel agents in worktrees or sibling repositories can switch each other's project. Start the session inside the repository.
+- **Empty `Active language servers`.** Right after first activation it is empty; servers start a few seconds later. Alone, it does not mean a server is missing.
+- **Reference search returns nothing.** A language server that cannot load the project empties `find_referencing_symbols`; per-file lookups still work. With C#, a `global.json` asking for an SDK that is not installed gives "A compatible .NET SDK was not found" for every project. Install the SDK the project asks for, then restart the session.
+
+Each server start writes a log under `~/.serena/logs/<date>/`: the interface, project activations, and language-server start-up and load errors.
+
+**Permissions.** `serena_repl` runs Python in the Serena server process, outside Claude Code's Bash permission rules and this plugin's push/PR gate. Do not add it, or the whole server, to `permissions.allow`; keep the per-call prompt.
+
 ---
 
 ## Contributing
@@ -581,5 +593,5 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 ---
 
 <!-- BEGIN GENERATED: framework-stats -->
-**Built for Claude Code CLI • 21 Specialized Agents • 9 Hook Scripts • 11 Skills • 13 Commands • v5.2.0**
+**Built for Claude Code CLI • 21 Specialized Agents • 9 Hook Scripts • 11 Skills • 13 Commands • v5.2.1**
 <!-- END GENERATED: framework-stats -->

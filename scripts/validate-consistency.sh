@@ -1178,11 +1178,13 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
 #   (h) token economy (REQ-016, unconditional): omitClaudeMd must be exactly
 #       `true`; disallowedTools must contain `Artifact`; disallowedTools must
 #       contain `Agent` on every agent except system-architect.
+#   (i) tools: any mcp__serena__* tool implies serena_repl in the same
+#       spelling (Serena 2.x REPL interface); applied per spelling like (d).
 # An entry that names no server at all (a bare 'mcp__') is malformed and is
 # reported (malformed-mcp-entry) rather than silently discarded.
 #
 # When the plugin prefix cannot be DERIVED (see below), rules (c)/(e) and the
-# prefixed half of (d) are skipped for the whole run: every prefixed entry would
+# prefixed halves of (d) and (i) are skipped for the whole run: every prefixed entry would
 # otherwise be reported as its own undeclared server, burying the one failure
 # that actually explains the run. The run still exits non-zero.
 #
@@ -1196,8 +1198,8 @@ section "[14] Execution-policy drift guard (selective policy pinned on operative
 #
 # disallowedTools: is parsed with the SAME single-line tokenizer as tools: and
 # is subject to rules (c) and (e); a block-style value is rejected loudly as
-# unparseable-disallowedtools. Rule (d) does not apply to it (a denylist cannot
-# create a bootstrap obligation).
+# unparseable-disallowedtools. Rules (d) and (i) do not apply to it (a denylist
+# cannot create a bootstrap or serena_repl obligation).
 # Parsing follows check 7's convention: grep -m1 the single physical line, with
 # any trailing YAML comment stripped (`effort: xhigh  # deliberate` -> xhigh).
 # Every SINGLE-LINE list spelling is accepted and normalised identically for
@@ -1505,6 +1507,23 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
       fi
     done
 
+    # --- (i) serena tools require serena_repl ------------------------------
+    # Serena 2.x defaults to a REPL interface whose only code tool is
+    # serena_repl; an allowlist naming per-operation tools but not serena_repl
+    # leaves the agent with no symbol tools. Per spelling, like (d), with the
+    # infix matched as data via index().
+    for boot_pfx in "${boot_prefixes[@]}"; do
+      if printf '%s\n' "$tool_entries" \
+         | awk -v p="mcp__${boot_pfx}serena__" 'index($0, p) == 1 { f = 1 } END { exit !f }'; then
+        repl="mcp__${boot_pfx}serena__serena_repl"
+        if ! printf '%s\n' "$tool_entries" | grep -qxF -- "$repl"; then
+          ok=0
+          fail "$agent: tools include mcp__${boot_pfx}serena__* but omit $repl"
+          detail "missing-serena-repl: $agent -> $repl"
+        fi
+      fi
+    done
+
     # --- (e) bare and plugin-prefixed entries must come in twins -----------
     # Skipped when the prefix could not be derived: with no infix every prefixed
     # entry is an orphan, which would drown the root-cause failure.
@@ -1537,7 +1556,7 @@ section "[15] Agent frontmatter keys (effort/mcpServers/tools in agents/*.md)"
   shopt -u nullglob
 
   if [[ "$ok" -eq 1 ]]; then
-    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity with mcpServers declared wherever tools use MCP, disallowedTools servers known to .mcp.json, serena bootstrap present in both spellings, bare/plugin-prefixed twins complete, omitClaudeMd true, Artifact denied everywhere, Agent denied except system-architect)"
+    pass "$fm_checked agent frontmatter block(s) valid (effort tier, mcpServers declared, tool/server parity with mcpServers declared wherever tools use MCP, disallowedTools servers known to .mcp.json, serena bootstrap and serena_repl present in both spellings, bare/plugin-prefixed twins complete, omitClaudeMd true, Artifact denied everywhere, Agent denied except system-architect)"
   fi
 }
 

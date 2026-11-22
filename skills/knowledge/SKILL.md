@@ -21,14 +21,14 @@ Invoke as `/agentic-framework:knowledge`.
 | Store | Location | Scope | Tools |
 |-------|----------|-------|-------|
 | Agent memory (primary) | `~/.claude/agent-memory/<dir>/` | Per agent, all projects | Glob, Grep, Read, Write, Edit |
-| Serena memories (secondary, read-only here) | `<project>/.serena/memories/` | Per project | Serena `list_memories`, `read_memory` (this skill never writes or deletes them) |
+| Serena memories (secondary, read-only here) | `<project>/.serena/memories/` | Per project | Glob, Grep, Read (this skill never writes or deletes them) |
 
 Layout of one agent directory:
 
 - `MEMORY.md` is the index. The first 200 lines or 25 KB, whichever comes first, are injected into the agent at start, so keep it short.
 - The Glob, Grep and Read tools take absolute paths and do not expand `~`: resolve the home directory once (`echo "$HOME"` in Git Bash, `$env:USERPROFILE` in PowerShell) and use it in every path below (written `<home>` here).
 - Other `*.md` files are topic files. The index links to them with `[title](file.md)` lines.
-- The Serena tools are named `mcp__plugin_agentic-framework_serena__<tool>` (plugin) or `mcp__serena__<tool>` (user scope). Serena has no search tool; use Grep on `.serena/memories/` instead.
+- Serena memories are Markdown files under `.serena/memories/`: read them with Glob, Grep and Read. That works whichever interface Serena runs with; its own memory operations (`list_memories`, `read_memory` as tools, or `s.mem.list_memories` and `s.mem.read_memory` through `serena_repl` under the default REPL interface of Serena 2.x) are not needed here.
 
 ### Deriving the agent key
 
@@ -52,7 +52,7 @@ List memories by agent, by topic, or by recency.
 2. By agent: per directory report the topic-file count and the `MEMORY.md` line count and size; flag an index over 200 lines or 25 KB, since the rest is not injected.
 3. By topic: `Read` each `MEMORY.md` and list its index entries (the `[title](file.md)` lines) with the one-line hook that follows each link.
 4. By recency: order files by modification time, newest first. Use `ls -t` on the directory under Git Bash, or `Get-ChildItem | Sort-Object LastWriteTime -Descending` in PowerShell. Glob returns files sorted by mtime and can serve when exact dates are not needed.
-5. If the project has `.serena/memories/` and a Serena server is available, call `list_memories` and list the results as project memories in a separate section; use `read_memory` for any entry the user asks to see. If Serena is unavailable, say so and skip.
+5. If the project has `.serena/memories/`, Glob its `*.md` files and list them as project memories in a separate section; Read any entry the user asks to see. If the directory does not exist, say so and skip.
 6. Orphaned stores: run the read-only detection under "Orphaned stores" in Prune and list each orphaned directory with its path, total bytes, file count, newest date and plugin-scoped sibling. Browse does not migrate or delete anything.
 
 Index entries whose linked file does not exist, and topic files no index line links to, are worth flagging as orphans.

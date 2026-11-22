@@ -87,6 +87,13 @@ the installs. Dropping the `__<tool>` suffix grants a whole server: `mcp__<serve
 `disallowedTools:` uses the same syntax to remove tools an agent would otherwise get,
 and the validator applies the same twin rules to it.
 
+An allowlist that names any Serena tool in one spelling must also name `serena_repl` in
+that spelling (`mcp__serena__serena_repl`,
+`mcp__plugin_agentic-framework_serena__serena_repl`); check 15 reports
+`missing-serena-repl: <agent> -> <tool>`. Serena 2.x defaults to a REPL interface whose
+only code tool is `serena_repl`, so an allowlist without it leaves the agent with no
+symbol tools.
+
 ### 2. Register in `claude.json`
 
 In the `.sub_agents` object, add an entry with `model`, `specialization`, and `focus`:

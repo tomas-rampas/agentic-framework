@@ -83,6 +83,15 @@ _serena_shape_violations() {
   fi
 }
 
+# --- shared predicate: no nested ${...} in a launcher (REQ-006) -------------
+# Used by Assertion 14c and its RED-23 fixture. Claude Code expands
+# ${VAR:-default} in a project-scope .mcp.json but stops the default at the
+# first "}", so "${A:-${B}}" reaches the server as a path with a stray "}" and
+# the server fails to connect. The pattern finds a "${" that opens while an
+# earlier "${" is still unclosed. It covers .args, .command and string .env
+# values, and prints one "<server>: <value>" line per hit (nothing when clean).
+readonly MANIFEST_NESTED_DEFAULT_FILTER='.mcpServers | to_entries[] | .key as $srv | ((.value.args // []) + [.value.command // empty] + ((.value.env // {}) | map(.))) | .[] | select(type == "string" and test("\\$\\{[^}]*\\$\\{")) | "\($srv): \(.)"'
+
 # Track every temp dir we create so the global trap can sweep them even if a
 # case dies unexpectedly. The real tree never appears in here.
 # Use a tracking file since array mutations inside subshells don't propagate to parent.
@@ -625,6 +634,27 @@ rm -rf "$copy"
   rm -rf "$copy"
 }
 
+# --- Assertion 14c: no launcher argument nests a ${...} default ---
+# Predicate: MANIFEST_NESTED_DEFAULT_FILTER (header). A jq error is exactly one
+# FAIL; the verdict branch is skipped so the assertion cannot also PASS.
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  jq_ok=1
+  out="$(jq -r "$MANIFEST_NESTED_DEFAULT_FILTER" "$copy/.mcp.json" 2>&1)" || {
+    _fail "no launcher argument nests a \${...} default" "jq error: $out"
+    jq_ok=0
+  }
+  if (( jq_ok )); then
+    if [[ -z "$out" ]]; then
+      _pass "no launcher argument nests a \${...} default"
+    else
+      _fail "no launcher argument nests a \${...} default" "found: $(printf '%s' "$out" | head -1)"
+    fi
+  fi
+  rm -rf "$copy"
+}
+
 # ===========================================================================
 # RED PATH CASE 6: Corrupt core plugin.json version
 # ===========================================================================
@@ -1003,6 +1033,33 @@ section "[RED-22] Fixture: drop --project-from-cwd from serena args (should fail
     _pass "RED-22: fixture: missing --project-from-cwd correctly fails the serena-shape check"
   else
     _fail "RED-22: fixture: missing --project-from-cwd should fail the serena-shape check" "violations: $violations"
+  fi
+
+  rm -rf "$copy"
+}
+
+# ===========================================================================
+# RED PATH CASE 23: Restore the nested default in the filesystem argument
+#                   (should be reported by Assertion 14c's real filter)
+# ===========================================================================
+section "[RED-23] Fixture: nest \${...} inside the filesystem default (should fail nested-default check)"
+{
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  tmp_json="$(mktemp)"
+  jq '.mcpServers.filesystem.args[-1] = "${MCP_FS_ROOT:-${CLAUDE_PROJECT_DIR}}"' "$copy/.mcp.json" > "$tmp_json" && mv "$tmp_json" "$copy/.mcp.json"
+
+  jq_ok=1
+  out="$(jq -r "$MANIFEST_NESTED_DEFAULT_FILTER" "$copy/.mcp.json" 2>&1)" || {
+    _fail "RED-23: fixture: nested filesystem default should fail the nested-default check" "jq error: $out"
+    jq_ok=0
+  }
+  if (( jq_ok )); then
+    if [[ "$out" == 'filesystem: '*'${MCP_FS_ROOT:-${CLAUDE_PROJECT_DIR}}'* ]]; then
+      _pass "RED-23: fixture: nested filesystem default correctly fails the nested-default check"
+    else
+      _fail "RED-23: fixture: nested filesystem default should fail the nested-default check" "violations: $out"
+    fi
   fi
 
   rm -rf "$copy"
