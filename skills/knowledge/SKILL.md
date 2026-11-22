@@ -21,7 +21,7 @@ Invoke as `/agentic-framework:knowledge`.
 | Store | Location | Scope | Tools |
 |-------|----------|-------|-------|
 | Agent memory (primary) | `~/.claude/agent-memory/<dir>/` | Per agent, all projects | Glob, Grep, Read, Write, Edit |
-| Serena memories (secondary, read-only here) | `<project>/.serena/memories/` | Per project | Glob, Read (this skill never writes or deletes them) |
+| Serena memories (secondary, read-only here) | `<project>/.serena/memories/` | Per project | Glob, Grep, Read (this skill never writes or deletes them) |
 
 Layout of one agent directory:
 

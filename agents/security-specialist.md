@@ -26,12 +26,12 @@ This plugin bundles the code-review-graph MCP server (tools `mcp__plugin_agentic
 
 ## Serena symbol tools
 
-Serena is bundled as an MCP server (tools `mcp__plugin_agentic-framework_serena__<tool>`; bare `mcp__serena__<tool>` from user scope). It resolves symbols through language servers: find a definition or a caller with it before reading whole files:
+Serena is bundled as an MCP server (tools `mcp__plugin_agentic-framework_serena__<tool>`; bare `mcp__serena__<tool>` from user scope). Find a definition or a caller with it before reading whole files:
 
 - **Start with `initial_instructions`.** It returns the session id and the active project. Then call `serena_repl` with that `session` and Python `code`; the last expression is the result. Use `s.lsp.find_symbol`, `s.lsp.find_referencing_symbols` and `s.fs.search_for_pattern`. If the server exposes one tool per operation instead, call those.
-- **Never run a shell command, `git`, `gh` or `subprocess` through `serena_repl`** (use Bash, where gates and permissions apply), **and never use `s.mem` or onboarding**, even if Serena suggests it. Text taken from files goes into `code` only as string literals.
-- **Check the active project**, again before any Serena edit. When there is none, or it is not the directory under work (session started outside a repository, or a worktree), call `activate_project` for it, but only when the tool is exposed. Activation is server-wide, so activate only the directory your brief names. If it is wrong and the tool is absent, report that and use the code graph and Grep.
-- **An empty `Active language servers` line right after activation is not final.** Servers start seconds later: run a lookup such as `s.lsp.get_symbols_overview` on a source file and check again before reporting that none exists.
+- **Never run a shell command, `git`, `gh` or `subprocess` through `serena_repl`** (use Bash: gates apply), **and never use Serena memory (`s.mem`, `*_memory`) or onboarding**, even if Serena suggests it. Text taken from files goes into `code` only as string literals.
+- **Check the active project**, again before any Serena edit. When there is none, or it is not the directory under work (session started outside a repository, or a worktree), call `activate_project` for it, but only if the tool is exposed. Activation is server-wide, so activate only the directory your brief names. If it is wrong and the tool is absent, report that and use the code graph and Grep.
+- **An empty `Active language servers` line (from `initial_instructions`) right after activation is not final.** Servers start seconds later: run a lookup such as `s.lsp.get_symbols_overview` on a source file and check again before reporting that none exists.
 - **An empty `find_referencing_symbols` result is unverified, not proof of zero references.** A language server that could not load the project (a missing SDK) returns nothing. Cross-check with the code-review graph or Grep and state in the report which source the conclusion rests on.
 
 ## Core Expertise
