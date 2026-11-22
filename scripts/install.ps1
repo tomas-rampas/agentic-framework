@@ -21,7 +21,9 @@
     For each server: env entries containing ${...} placeholders are NOT baked
     (the server inherits from your OS environment at launch); ${VAR:-default}
     placeholders in args are expanded from the environment at install time
-    (servers with empty args after expansion are skipped with a warning).
+    (servers with empty args after expansion are skipped with a warning; a
+    session-relative default such as "." for an unset variable counts as
+    empty, so the filesystem server is skipped unless MCP_FS_ROOT is set).
     A timestamped backup is written before any change. -SkipMcp skips
     this step entirely.
   - Reports whether ~/.claude is a git clone of this framework and, if so,
