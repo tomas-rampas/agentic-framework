@@ -102,16 +102,24 @@ function Get-CanonJson($node) {
 }
 
 # Expand ${VAR} / ${VAR:-default} from the current environment (the syntax the
-# repo's .mcp.json uses), supporting nested defaults like ${VAR1:-${VAR2}}.
-# Expands innermost-first via repeated passes until no placeholders remain (max 10 iterations).
+# repo's .mcp.json uses). Nested defaults like ${VAR1:-${VAR2}} also work: it
+# expands innermost-first via repeated passes until no placeholders remain (max 10 iterations).
 # Applied at install time so the merged user-scope definition is self-contained.
+# A session-relative default (., .., ./... or ..\...) for an unset variable means "whatever
+# directory the session starts in". Baked into the user-scope ~/.claude.json it
+# would follow the user into every directory and shadow the plugin's copy, so it
+# is treated as unresolved: it expands to an empty string, and the caller skips the
+# server when the placeholder was the whole argument.
 function Expand-EnvPlaceholder([string]$s) {
     $maxIterations = 10
     for ($i = 0; $i -lt $maxIterations; $i++) {
         $result = [regex]::Replace($s, '\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^${}]*))?\}', {
             param($m)
             $v = [Environment]::GetEnvironmentVariable($m.Groups[1].Value)
-            if ($null -ne $v -and $v -ne '') { $v } else { $m.Groups[2].Value ?? '' }
+            if ($null -ne $v -and $v -ne '') { return $v }
+            $default = $m.Groups[2].Value
+            if ($default -match '^\.\.?([\\/].*)?$') { return '' }
+            $default
         })
         if ($result -eq $s) { break }  # No more replacements - done
         $s = $result
@@ -420,7 +428,7 @@ if ($SkipMcp) {
                         }
                     }
                     $varToSet = if ($emptyArgVar) { $emptyArgVar } else { 'MISSING_VAR' }
-                    Write-Host "    $name skipped: $varToSet is not set (its default is a session-runtime variable, unavailable at install time) — set $varToSet and re-run, or use the plugin pipeline"
+                    Write-Host "    $name skipped: $varToSet is not set (no usable install-time value) — set $varToSet and re-run, or use the plugin pipeline"
                 }
             }
             Write-Host ""
@@ -468,7 +476,7 @@ if ($SkipMcp) {
                             }
                         }
                         $varToSet = if ($emptyArgVar) { $emptyArgVar } else { 'MISSING_VAR' }
-                        Write-Host "    $name skipped: $varToSet is not set (its default is a session-runtime variable, unavailable at install time) — set $varToSet and re-run, or use the plugin pipeline"
+                        Write-Host "    $name skipped: $varToSet is not set (no usable install-time value) — set $varToSet and re-run, or use the plugin pipeline"
                     }
                 }
                 Write-Host ""
@@ -561,7 +569,7 @@ Write-Host '    this installer merges shadow the plugin''s servers - delete them
 Write-Host '    ~/.claude.json to use the plugin''s copies, and run /agentic-framework:setup'
 Write-Host '    for the optional env vars (CONTEXT7_API_KEY, MCP_FS_ROOT).'
 Write-Host '  - Servers that have unresolved env variables in their args (defaults are'
-Write-Host '    session-runtime variables like ${CLAUDE_PROJECT_DIR}) are skipped; set the'
+Write-Host '    session-relative paths like ".") are skipped; set the'
 Write-Host '    missing variables and re-run, or use the plugin pipeline for automated setup.'
 Write-Host '  - Env entries containing placeholders are never baked into mcpServers; servers'
 Write-Host '    inherit CONTEXT7_API_KEY, MCP_FS_ROOT, etc. from your OS environment at launch.'

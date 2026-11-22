@@ -48,7 +48,7 @@ Assert 'copies every hook as new' ((Get-ChildItem (Join-Path $claudeHome 'hooks'
 Assert 'creates settings.json from template' ((Test-Path (Join-Path $claudeHome 'settings.json')) -and $r.Out -match 'created from template')
 Assert 'creates state dir' (Test-Path (Join-Path $claudeHome '.state' 'peer-review'))
 $cfg = Get-Content $claudeJson -Raw | ConvertFrom-Json
-# FIX 1: filesystem skipped due to unresolvable nested placeholder; expect every framework server except filesystem added
+# FIX 1: filesystem skipped because its MCP_FS_ROOT default is session-relative (.), treated as unresolved; expect every framework server except filesystem added
 $addedCount = @($cfg.mcpServers.PSObject.Properties.Name | Where-Object { $_ -in $repoMcpNames }).Count
 Assert 'adds framework servers (filesystem skipped due to unresolvable placeholder)' ($addedCount -eq ($repoMcpCount - 1) -and $r.Out -match 'filesystem.*skipped')
 Assert 'context7 server added (env placeholder removed, not baked)' ($cfg.mcpServers.PSObject.Properties.Name -contains 'context7')
@@ -193,6 +193,8 @@ $cfg = Get-Content $claudeJson -Raw | ConvertFrom-Json -AsHashtable
 Assert 'exits 0 with MCP_FS_ROOT unset' ($r.Code -eq 0)
 Assert 'filesystem server skipped (MCP_FS_ROOT unset)' ($cfg['mcpServers']['filesystem'] -eq $null -and $r.Out -match 'filesystem.*skipped')
 Assert 'warning message names the unresolved variable' ($r.Out -match 'MCP_FS_ROOT is not set')
+# A session-relative default (.) must never be baked into user scope: it would follow the user into every directory
+Assert 'no server in user scope has a bare . argument (session-relative default not baked)' (@($cfg['mcpServers'].Values | Where-Object { @($_['args']) -contains '.' }).Count -eq 0)
 $otherServers = @($cfg['mcpServers'].Keys | Where-Object { $_ -ne 'filesystem' })
 Assert "other servers added ($($otherServers.Count) servers)" (@($repoMcpNames | Where-Object { $_ -ne 'filesystem' } | Where-Object { $cfg['mcpServers'].Contains($_) }).Count -eq ($repoMcpCount - 1))
 
