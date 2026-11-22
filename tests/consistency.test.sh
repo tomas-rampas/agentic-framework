@@ -1082,6 +1082,31 @@ EOF
     "missing-serena-bootstrap: go-expert -> mcp__plugin_agentic-framework_serena__activate_project"
   rm -rf "$copy"
 
+  # --- 26u: RED — serena tools without serena_repl (bare spelling) --------
+  # Serena 2.x defaults to a REPL interface whose only code tool is
+  # serena_repl. Drop ONLY the bare serena_repl token; rule (i) must name it.
+  # (Rule (e) also fires on the orphaned prefixed twin; that is expected.)
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/, ?mcp__serena__serena_repl//' \
+    "$copy/agents/go-expert.md" && rm -f "$copy/agents/go-expert.md.bak"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when serena tools omit the bare serena_repl"
+  assert_out_contains "reports missing-serena-repl (bare) for go-expert" \
+    "missing-serena-repl: go-expert -> mcp__serena__serena_repl"
+  rm -rf "$copy"
+
+  # --- 26v: RED — prefixed serena tools without the prefixed serena_repl ---
+  copy="$(make_copy)"
+  _verify_copy "$copy"
+  sed -i.bak -E 's/, ?mcp__plugin_agentic-framework_serena__serena_repl//' \
+    "$copy/agents/go-expert.md" && rm -f "$copy/agents/go-expert.md.bak"
+  run_validate "$copy" 15
+  assert_rc_nonzero "validator fails when serena tools omit the prefixed serena_repl"
+  assert_out_contains "reports missing-serena-repl (prefixed) for go-expert" \
+    "missing-serena-repl: go-expert -> mcp__plugin_agentic-framework_serena__serena_repl"
+  rm -rf "$copy"
+
   # --- 26m: RED — a denylist server must at least EXIST (rule g) ----------
   # Rules (c)/(f) deliberately do NOT apply to disallowedTools (denying a server
   # you never granted is the defensive spelling), so the obligation a denylist

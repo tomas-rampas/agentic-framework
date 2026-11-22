@@ -360,6 +360,7 @@ Besides `name`, `description`, `model`, `tools` and `memory: user`, each `agents
 | `omitClaudeMd` | `true` on all 21 agents | The sub-agent loads no `CLAUDE.md`, including a consumer project's own. The delegation brief's `Project rules` block is the carrier (see [Policy delivery](#policy-delivery-and-the-claudemd-marker)). |
 | `disallowedTools` | `Artifact` on every agent; `Agent` on all but `system-architect` | Agents cannot publish artifacts, and cannot delegate onward. A need outside an agent's domain is reported in its hand-back, and the orchestrator routes it. Executors carry `Agent, Artifact`; `peer-review-critic` and `spec-compliance-reviewer` merged both into their existing deny list. |
 | `effort` | reviewers and gates `high`, `system-architect` and `comprehensive-analyst` `high`, implementers `medium`, executors `low` | Default reasoning effort per role. The orchestrator may pass a per-call `effort: low` on mechanical delegations, never below `high` for a reviewer. |
+| `tools` (Serena) | an allowlist naming any Serena tool in one spelling also names `serena_repl` in that spelling (`mcp__serena__serena_repl`, `mcp__plugin_agentic-framework_serena__serena_repl`) | Serena 2.x defaults to a REPL interface whose only code tool is `serena_repl`; without it the agent has no symbol tools. Failure detail: `missing-serena-repl: <agent> -> <tool>`. |
 
 The language experts no longer list `Agent` in `tools:`. The four reviewers record per-project false-positive patterns in their memory, so a later re-review does not re-derive a rejected finding.
 
